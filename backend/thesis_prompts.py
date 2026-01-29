@@ -1,0 +1,410 @@
+"""
+Prompt per la generazione di tesi/relazioni.
+
+Questo modulo contiene i prompt dettagliati per ogni fase
+della generazione di tesi utilizzando OpenAI o1/o3.
+"""
+
+from typing import Dict, Any, List, Optional
+
+
+def build_chapters_prompt(thesis_data: Dict[str, Any], attachments_context: str = "") -> str:
+    """
+    Costruisce il prompt per la FASE 1: Generazione titoli capitoli.
+
+    Args:
+        thesis_data: Dizionario con tutti i parametri della tesi
+        attachments_context: Contesto estratto dagli allegati
+
+    Returns:
+        Prompt completo per la generazione dei capitoli
+    """
+    key_topics_str = ", ".join(thesis_data.get('key_topics', [])) if thesis_data.get('key_topics') else "Non specificati"
+
+    return f"""
+═══════════════════════════════════════════════════════════════════════════════
+GENERAZIONE INDICE TESI/RELAZIONE - FASE 1: CAPITOLI
+═══════════════════════════════════════════════════════════════════════════════
+
+Sei un esperto nella strutturazione di documenti accademici e professionali.
+Il tuo compito è generare l'INDICE (titoli dei capitoli) per una tesi/relazione.
+
+═══════════════════════════════════════════════════════════════════════════════
+PARAMETRI DELLA TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+TITOLO: {thesis_data.get('title', 'Non specificato')}
+DESCRIZIONE: {thesis_data.get('description', 'Non specificata')}
+ARGOMENTI CHIAVE: {key_topics_str}
+
+═══════════════════════════════════════════════════════════════════════════════
+PARAMETRI DI GENERAZIONE
+═══════════════════════════════════════════════════════════════════════════════
+
+STILE DI SCRITTURA: {thesis_data.get('writing_style_name', 'Non specificato')}
+  → Indicazione: {thesis_data.get('writing_style_hint', '')}
+
+LIVELLO DI PROFONDITÀ: {thesis_data.get('content_depth_name', 'Intermedio')}
+NUMERO CAPITOLI RICHIESTI: {thesis_data.get('num_chapters', 5)}
+SEZIONI PER CAPITOLO: {thesis_data.get('sections_per_chapter', 3)}
+PAROLE PER SEZIONE: ~{thesis_data.get('words_per_section', 5000)}
+
+═══════════════════════════════════════════════════════════════════════════════
+CARATTERISTICHE DEL PUBBLICO
+═══════════════════════════════════════════════════════════════════════════════
+
+LIVELLO DI CONOSCENZA: {thesis_data.get('knowledge_level_name', 'Intermedio')}
+  → Indicazione: {thesis_data.get('knowledge_level_hint', '')}
+
+DIMENSIONE PUBBLICO: {thesis_data.get('audience_size_name', 'Medio')}
+SETTORE/INDUSTRIA: {thesis_data.get('industry_name', 'Generale')}
+DESTINATARI: {thesis_data.get('target_audience_name', 'Pubblico Generale')}
+  → Indicazione: {thesis_data.get('target_audience_hint', '')}
+
+═══════════════════════════════════════════════════════════════════════════════
+CONTESTO DAGLI ALLEGATI
+═══════════════════════════════════════════════════════════════════════════════
+{attachments_context if attachments_context else "Nessun allegato fornito."}
+
+═══════════════════════════════════════════════════════════════════════════════
+ISTRUZIONI
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Genera esattamente {thesis_data.get('num_chapters', 5)} titoli di capitoli
+
+2. I titoli devono essere:
+   - INFORMATIVI e SPECIFICI (evita titoli generici come "Introduzione", "Conclusioni",
+     "Panoramica" - se necessari, rendili specifici al tema)
+   - COERENTI con lo stile di scrittura richiesto
+   - In PROGRESSIONE LOGICA (dal generale al particolare, o dal problema alla soluzione,
+     o dalla teoria alla pratica - scegli la struttura più appropriata)
+   - ADATTI al pubblico target e al loro livello di conoscenza
+
+3. Ogni capitolo deve avere:
+   - Un titolo chiaro e descrittivo
+   - Una breve descrizione (1-2 frasi) di cosa tratterà
+
+4. Se sono stati forniti allegati, integra i temi rilevanti nella struttura
+
+5. La struttura deve essere bilanciata: ogni capitolo dovrebbe avere
+   importanza e dimensione simile
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT RICHIESTO
+═══════════════════════════════════════════════════════════════════════════════
+
+Restituisci SOLO un JSON valido con questa struttura esatta:
+{{
+  "chapters": [
+    {{
+      "index": 1,
+      "title": "Titolo del primo capitolo",
+      "brief_description": "Breve descrizione di cosa tratterà questo capitolo (1-2 frasi)"
+    }},
+    {{
+      "index": 2,
+      "title": "Titolo del secondo capitolo",
+      "brief_description": "Breve descrizione di cosa tratterà questo capitolo (1-2 frasi)"
+    }}
+  ]
+}}
+
+IMPORTANTE:
+- Restituisci SOLO il JSON, senza testo aggiuntivo
+- Non usare markdown code blocks
+- Assicurati che il JSON sia valido e parsabile
+"""
+
+
+def build_sections_prompt(
+    thesis_data: Dict[str, Any],
+    chapters: List[Dict[str, Any]],
+    attachments_context: str = ""
+) -> str:
+    """
+    Costruisce il prompt per la FASE 2: Generazione titoli sezioni.
+
+    Args:
+        thesis_data: Dizionario con i parametri della tesi
+        chapters: Lista dei capitoli confermati
+        attachments_context: Contesto estratto dagli allegati
+
+    Returns:
+        Prompt completo per la generazione delle sezioni
+    """
+    chapters_text = "\n".join([
+        f"  Capitolo {c.get('index', i+1)}: {c.get('title', 'Senza titolo')}\n"
+        f"    → {c.get('brief_description', 'Nessuna descrizione')}"
+        for i, c in enumerate(chapters)
+    ])
+
+    return f"""
+═══════════════════════════════════════════════════════════════════════════════
+GENERAZIONE INDICE TESI/RELAZIONE - FASE 2: SEZIONI
+═══════════════════════════════════════════════════════════════════════════════
+
+Sei un esperto nella strutturazione di documenti accademici e professionali.
+Il tuo compito è generare i TITOLI DELLE SEZIONI per ogni capitolo della tesi.
+
+═══════════════════════════════════════════════════════════════════════════════
+CONTESTO DELLA TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+TITOLO: {thesis_data.get('title', 'Non specificato')}
+DESCRIZIONE: {thesis_data.get('description', 'Non specificata')}
+STILE: {thesis_data.get('writing_style_name', 'Non specificato')}
+LIVELLO PROFONDITÀ: {thesis_data.get('content_depth_name', 'Intermedio')}
+
+PUBBLICO: {thesis_data.get('target_audience_name', 'Generale')}
+  (Livello: {thesis_data.get('knowledge_level_name', 'Intermedio')})
+
+SEZIONI PER CAPITOLO: {thesis_data.get('sections_per_chapter', 3)}
+PAROLE PER SEZIONE: ~{thesis_data.get('words_per_section', 5000)}
+
+═══════════════════════════════════════════════════════════════════════════════
+CAPITOLI CONFERMATI
+═══════════════════════════════════════════════════════════════════════════════
+
+{chapters_text}
+
+═══════════════════════════════════════════════════════════════════════════════
+CONTESTO DAGLI ALLEGATI
+═══════════════════════════════════════════════════════════════════════════════
+{attachments_context if attachments_context else "Nessun allegato fornito."}
+
+═══════════════════════════════════════════════════════════════════════════════
+ISTRUZIONI
+═══════════════════════════════════════════════════════════════════════════════
+
+Per OGNI capitolo, genera esattamente {thesis_data.get('sections_per_chapter', 3)} sezioni.
+
+Le sezioni devono:
+1. COPRIRE l'argomento del capitolo in modo completo e esaustivo
+2. Avere una PROGRESSIONE LOGICA interna (dalla teoria alla pratica,
+   dal generale al particolare, ecc.)
+3. Essere sufficientemente AMPIE da giustificare ~{thesis_data.get('words_per_section', 5000)} parole
+4. NON SOVRAPPORSI tra loro - ogni sezione deve coprire aspetti distinti
+5. Essere SPECIFICHE e descrittive (evita titoli vaghi)
+6. Avere 2-4 punti chiave che verranno sviluppati nella sezione
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT RICHIESTO
+═══════════════════════════════════════════════════════════════════════════════
+
+Restituisci SOLO un JSON valido con questa struttura esatta:
+{{
+  "chapters": [
+    {{
+      "chapter_index": 1,
+      "chapter_title": "Titolo del primo capitolo (esattamente come fornito)",
+      "sections": [
+        {{
+          "index": 1,
+          "title": "Titolo della prima sezione",
+          "key_points": [
+            "Primo punto chiave da sviluppare",
+            "Secondo punto chiave da sviluppare",
+            "Terzo punto chiave da sviluppare"
+          ]
+        }},
+        {{
+          "index": 2,
+          "title": "Titolo della seconda sezione",
+          "key_points": [
+            "Primo punto chiave",
+            "Secondo punto chiave",
+            "Terzo punto chiave"
+          ]
+        }}
+      ]
+    }}
+  ]
+}}
+
+IMPORTANTE:
+- Restituisci SOLO il JSON, senza testo aggiuntivo
+- Mantieni i titoli dei capitoli ESATTAMENTE come forniti
+- Ogni sezione deve avere 2-4 key_points
+- Assicurati che il JSON sia valido e parsabile
+"""
+
+
+def build_section_content_prompt(
+    thesis_data: Dict[str, Any],
+    chapter: Dict[str, Any],
+    section: Dict[str, Any],
+    previous_sections_summary: str = "",
+    attachments_context: str = "",
+    author_style_context: str = ""
+) -> str:
+    """
+    Costruisce il prompt per la FASE 3: Generazione contenuto sezione.
+
+    Args:
+        thesis_data: Parametri della tesi
+        chapter: Dati del capitolo corrente
+        section: Dati della sezione da generare
+        previous_sections_summary: Riassunto delle sezioni precedenti
+        attachments_context: Contesto dagli allegati
+        author_style_context: Contesto dello stile autore (se addestrato)
+
+    Returns:
+        Prompt completo per la generazione del contenuto
+    """
+    key_points = section.get('key_points', [])
+    key_points_text = "\n".join([f"• {point}" for point in key_points]) if key_points else "Non specificati"
+
+    return f"""
+═══════════════════════════════════════════════════════════════════════════════
+GENERAZIONE CONTENUTO SEZIONE
+═══════════════════════════════════════════════════════════════════════════════
+
+TESI: "{thesis_data.get('title', 'Non specificato')}"
+CAPITOLO {chapter.get('chapter_index', '?')}: {chapter.get('chapter_title', 'Non specificato')}
+SEZIONE {section.get('index', '?')}: {section.get('title', 'Non specificato')}
+
+═══════════════════════════════════════════════════════════════════════════════
+PARAMETRI DI SCRITTURA
+═══════════════════════════════════════════════════════════════════════════════
+
+STILE: {thesis_data.get('writing_style_name', 'Non specificato')}
+  → {thesis_data.get('writing_style_hint', '')}
+
+LIVELLO PROFONDITÀ: {thesis_data.get('content_depth_name', 'Intermedio')}
+PAROLE TARGET: ~{thesis_data.get('words_per_section', 5000)} parole
+
+═══════════════════════════════════════════════════════════════════════════════
+PUBBLICO TARGET
+═══════════════════════════════════════════════════════════════════════════════
+
+DESTINATARI: {thesis_data.get('target_audience_name', 'Pubblico Generale')}
+  → {thesis_data.get('target_audience_hint', '')}
+
+LIVELLO CONOSCENZA: {thesis_data.get('knowledge_level_name', 'Intermedio')}
+  → {thesis_data.get('knowledge_level_hint', '')}
+
+SETTORE: {thesis_data.get('industry_name', 'Generale')}
+
+═══════════════════════════════════════════════════════════════════════════════
+PUNTI CHIAVE DA SVILUPPARE
+═══════════════════════════════════════════════════════════════════════════════
+{key_points_text}
+
+═══════════════════════════════════════════════════════════════════════════════
+CONTESTO PRECEDENTE
+═══════════════════════════════════════════════════════════════════════════════
+{previous_sections_summary if previous_sections_summary else "Questa è la prima sezione della tesi."}
+
+═══════════════════════════════════════════════════════════════════════════════
+MATERIALE DI RIFERIMENTO (dagli allegati)
+═══════════════════════════════════════════════════════════════════════════════
+{attachments_context if attachments_context else "Nessun materiale allegato."}
+
+═══════════════════════════════════════════════════════════════════════════════
+STILE DELL'AUTORE
+═══════════════════════════════════════════════════════════════════════════════
+{author_style_context if author_style_context else "Nessuno stile specifico addestrato - usa lo stile richiesto nei parametri."}
+
+═══════════════════════════════════════════════════════════════════════════════
+ISTRUZIONI DI SCRITTURA
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Scrivi circa {thesis_data.get('words_per_section', 5000)} parole per questa sezione
+
+2. STRUTTURA il contenuto in modo chiaro:
+   - Introduzione al tema della sezione (1-2 paragrafi)
+   - Sviluppo completo di ogni punto chiave
+   - Esempi concreti e casi pratici dove appropriato
+   - Eventuali riferimenti a fonti/studi (se rilevante per lo stile)
+   - Transizione verso la sezione successiva (se non è l'ultima)
+
+3. MANTIENI COERENZA con le sezioni precedenti:
+   - Non ripetere concetti già trattati
+   - Fai riferimento a quanto già discusso quando rilevante
+   - Usa terminologia consistente
+
+4. ADATTA il linguaggio al pubblico target:
+   - Livello di tecnicità appropriato
+   - Spiegazioni adeguate al livello di conoscenza
+   - Esempi pertinenti al settore
+
+5. Se sono stati forniti allegati:
+   - Integra informazioni rilevanti
+   - Fai riferimento ai materiali dove appropriato
+   - Non copiare verbatim, rielabora
+
+6. SCRIVI IN MODO NATURALE:
+   - Evita frasi troppo lunghe o complesse
+   - Usa variazione nella struttura delle frasi
+   - Includi occasionali imperfezioni stilistiche che rendano il testo umano
+   - Non usare strutture troppo "perfette" o ripetitive
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════════════════════════════════════
+
+Scrivi SOLO il contenuto della sezione.
+
+IMPORTANTE:
+- NON includere il titolo della sezione (verrà aggiunto separatamente)
+- NON includere meta-commenti o note per l'autore
+- NON usare placeholder o [inserire qui]
+- Scrivi il contenuto completo e definitivo
+- Il testo deve essere pronto per la pubblicazione
+"""
+
+
+def build_section_summary_prompt(section_content: str, max_words: int = 150) -> str:
+    """
+    Costruisce un prompt per riassumere una sezione.
+
+    Usato per creare il contesto per le sezioni successive.
+
+    Args:
+        section_content: Contenuto della sezione da riassumere
+        max_words: Numero massimo di parole per il riassunto
+
+    Returns:
+        Prompt per la generazione del riassunto
+    """
+    return f"""
+Riassumi il seguente testo in massimo {max_words} parole, mantenendo i concetti chiave:
+
+{section_content}
+
+Rispondi SOLO con il riassunto, senza introduzioni o commenti.
+"""
+
+
+def build_thesis_title_enhancement_prompt(
+    original_title: str,
+    thesis_data: Dict[str, Any]
+) -> str:
+    """
+    Prompt per migliorare il titolo della tesi se necessario.
+
+    Args:
+        original_title: Titolo originale
+        thesis_data: Parametri della tesi
+
+    Returns:
+        Prompt per il miglioramento del titolo
+    """
+    return f"""
+Valuta il seguente titolo per una tesi/relazione e, se necessario, suggerisci un miglioramento.
+
+TITOLO ORIGINALE: {original_title}
+
+CONTESTO:
+- Stile: {thesis_data.get('writing_style_name', 'Non specificato')}
+- Settore: {thesis_data.get('industry_name', 'Generale')}
+- Pubblico: {thesis_data.get('target_audience_name', 'Generale')}
+- Argomenti chiave: {', '.join(thesis_data.get('key_topics', []))}
+
+Se il titolo è già efficace, rispondi con: {{"keep_original": true, "title": "{original_title}"}}
+
+Se suggerisci un miglioramento, rispondi con:
+{{"keep_original": false, "title": "Nuovo titolo migliorato", "reason": "Breve spiegazione"}}
+
+Rispondi SOLO con il JSON, senza altro testo.
+"""
