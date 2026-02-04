@@ -231,13 +231,20 @@ class ClaudeClient:
                 "Chiama il metodo addestramento() prima."
             )
 
+        # Calcola il numero di parole del testo originale per mantenere la lunghezza
+        word_count = len(testo_originale.split())
+        # Target: almeno lo stesso numero di parole, con margine del 10%
+        min_words = word_count
+        max_words = int(word_count * 1.15)
+
         # Prompt di umanizzazione che sfrutta il contesto dell'addestramento
         humanize_prompt = f"""
 ═══════════════════════════════════════════════════════════════════════════════
 RISCRITTURA ANTI-DETECTION v5 — ELIMINAZIONE PATTERN SPECIFICI
 ═══════════════════════════════════════════════════════════════════════════════
 
-Riscrivi questo testo AI espandendolo a 2000-2400 parole.
+Riscrivi questo testo AI mantenendo ALMENO {min_words} parole (target: {min_words}-{max_words} parole).
+Il testo originale contiene {word_count} parole. NON accorciare, NON riassumere, NON sintetizzare.
 Hai interiorizzato lo stile dell'autore. Applicalo.
 
 ---
@@ -619,7 +626,7 @@ LESSICO:
 □ Parole dalla lista bianca presenti
 
 LUNGHEZZA:
-□ 2000-2400 parole
+□ ALMENO {min_words} parole (target: {min_words}-{max_words})
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT
@@ -630,7 +637,11 @@ Il testo deve sembrare scritto da un giornalista esperto che conosce il tema,
 scrive velocemente per una deadline, non rilegge troppo, lascia imperfezioni,
 cambia idea, divaga, torna sui suoi passi, a volte si perde, a volte ripete.
 
-SOLO il testo riscritto. 
+REQUISITO CRITICO: il testo riscritto DEVE contenere ALMENO {min_words} parole.
+NON tagliare, NON abbreviare, NON sintetizzare. Se il testo originale ha {word_count} parole,
+la riscrittura deve averne almeno lo stesso numero. Se necessario, espandi i concetti.
+
+SOLO il testo riscritto.
 NESSUN commento, NESSUNA introduzione, NESSUNA spiegazione.
 """
 
@@ -640,10 +651,14 @@ NESSUN commento, NESSUNA introduzione, NESSUNA spiegazione.
             "content": humanize_prompt
         })
 
+        # Calcola max_tokens in base alla lunghezza del testo (~2.5 token per parola italiana + margine)
+        estimated_tokens = int(word_count * 2.5) + 2000
+        dynamic_max_tokens = max(estimated_tokens, MAX_TOKENS_TEST)
+
         # Invia la richiesta a Claude (stessa sessione, mantiene il contesto dell'addestramento)
         response = self.client.messages.create(
             model=self.MODEL_ID,
-            max_tokens=MAX_TOKENS_TEST,
+            max_tokens=dynamic_max_tokens,
             system=self.system_prompt,
             messages=self.conversation_history
         )
