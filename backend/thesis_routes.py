@@ -790,6 +790,24 @@ async def confirm_sections(
     return {"message": "Sezioni confermate con successo", "status": "sections_confirmed"}
 
 
+def _humanize_content(content: str, trained_session_client, section_name: str = "Sezione") -> str:
+    """Helper per umanizzare il contenuto con fallback."""
+    try:
+        if trained_session_client:
+            logger.info(f"Umanizzazione con sessione addestrata per: {section_name}")
+            return trained_session_client.umanizzazione(content)
+        else:
+            logger.info(f"Umanizzazione con Claude per: {section_name}")
+            return humanize_text_with_claude(content)
+    except Exception as e:
+        logger.warning(f"Errore umanizzazione Claude: {e}, uso fallback algoritmico")
+        try:
+            from anti_ai_processor import humanize_text_post_processing
+            return humanize_text_post_processing(content)
+        except Exception:
+            return content
+
+
 def generate_content_task(thesis_id: str, user_id: str):
     """Task background per generare il contenuto completo."""
     db = SessionLocal()
@@ -834,12 +852,25 @@ def generate_content_task(thesis_id: str, user_id: str):
         client = get_ai_client(provider)
         logger.info(f"Generazione contenuto con provider: {provider}")
 
-        generated_content = []
+        # Import prompt builders per capitoli speciali
+        from thesis_prompts import build_introduction_prompt, build_conclusion_prompt, build_bibliography_prompt
+
+        generated_chapters_content = []
         previous_summary = ""
 
-        total_sections = sum(len(c.get("sections", [])) for c in chapters)
+        # Total: sezioni normali + 3 (introduzione, conclusione, bibliografia)
+        total_sections = sum(len(c.get("sections", [])) for c in chapters) + 3
         completed_sections = 0
 
+        # Raccoglie titoli dei capitoli per i prompt di intro/conclusione
+        chapters_titles = [
+            c.get('chapter_title') or c.get('title', f"Capitolo {i+1}")
+            for i, c in enumerate(chapters)
+        ]
+
+        # ===================================================================
+        # FASE 1: Genera contenuto dei capitoli normali (con citazioni [x])
+        # ===================================================================
         for chapter in chapters:
             chapter_content = f"\n\n# {chapter.get('chapter_title', 'Capitolo')}\n\n"
 
@@ -855,22 +886,7 @@ def generate_content_task(thesis_id: str, user_id: str):
                 )
 
                 # Applica umanizzazione
-                try:
-                    if trained_session_client:
-                        # Umanizzazione completa con sessione addestrata (Claude + algoritmo)
-                        logger.info(f"Umanizzazione con sessione addestrata per sezione: {section.get('title', 'Sezione')}")
-                        content = trained_session_client.umanizzazione(content)
-                    else:
-                        # Umanizzazione con Claude + algoritmo (senza sessione)
-                        logger.info(f"Umanizzazione con Claude per sezione: {section.get('title', 'Sezione')}")
-                        content = humanize_text_with_claude(content)
-                except Exception as e:
-                    logger.warning(f"Errore umanizzazione Claude: {e}, uso fallback algoritmico")
-                    try:
-                        from anti_ai_processor import humanize_text_post_processing
-                        content = humanize_text_post_processing(content)
-                    except Exception:
-                        pass  # Continua senza umanizzazione se fallisce
+                content = _humanize_content(content, trained_session_client, section.get('title', 'Sezione'))
 
                 section_text = f"\n## {section.get('title', 'Sezione')}\n\n{content}\n"
                 chapter_content += section_text
@@ -887,10 +903,119 @@ def generate_content_task(thesis_id: str, user_id: str):
                 thesis.total_words_generated += len(content.split())
                 db.commit()
 
-            generated_content.append(chapter_content)
+            generated_chapters_content.append(chapter_content)
+
+        # ===================================================================
+        # FASE 2: Genera INTRODUZIONE
+        # ===================================================================
+        logger.info("Generazione Introduzione...")
+        intro_prompt = build_introduction_prompt(
+            thesis_data=thesis_data,
+            chapters_titles=chapters_titles,
+            attachments_context=attachments_context,
+            author_style_context=author_style_context
+        )
+        intro_content = client.generate_text(intro_prompt)
+        intro_content = _humanize_content(intro_content, trained_session_client, "Introduzione")
+
+        completed_sections += 1
+        progress = int((completed_sections / total_sections) * 100)
+        thesis.generation_progress = progress
+        thesis.total_words_generated += len(intro_content.split())
+        db.commit()
+
+        # ===================================================================
+        # FASE 3: Genera CONCLUSIONE
+        # ===================================================================
+        logger.info("Generazione Conclusione...")
+        # Costruisci riassunto completo per la conclusione
+        conclusion_summary = previous_summary
+        conclusion_prompt = build_conclusion_prompt(
+            thesis_data=thesis_data,
+            content_summary=conclusion_summary,
+            chapters_titles=chapters_titles,
+            author_style_context=author_style_context
+        )
+        conclusion_content = client.generate_text(conclusion_prompt)
+        conclusion_content = _humanize_content(conclusion_content, trained_session_client, "Conclusione")
+
+        completed_sections += 1
+        progress = int((completed_sections / total_sections) * 100)
+        thesis.generation_progress = progress
+        thesis.total_words_generated += len(conclusion_content.split())
+        db.commit()
+
+        # ===================================================================
+        # FASE 4: Genera BIBLIOGRAFIA
+        # ===================================================================
+        logger.info("Generazione Bibliografia...")
+        # Assembla tutto il contenuto per trovare le citazioni [x]
+        all_chapters_text = "\n".join(generated_chapters_content)
+        bibliography_prompt = build_bibliography_prompt(
+            thesis_data=thesis_data,
+            all_content=all_chapters_text
+        )
+        bibliography_content = client.generate_text(bibliography_prompt)
+        # NON umanizzare la bibliografia (è una lista formale)
+
+        completed_sections += 1
+        thesis.generation_progress = 100
+        db.commit()
+
+        # ===================================================================
+        # FASE 5: Assembla contenuto finale
+        # ===================================================================
+        # Ordine: Introduzione → Capitoli → Conclusione → Bibliografia
+        final_content_parts = []
+
+        # Introduzione
+        final_content_parts.append(f"\n\n# Introduzione\n\n{intro_content}\n")
+
+        # Capitoli normali
+        final_content_parts.extend(generated_chapters_content)
+
+        # Conclusione
+        final_content_parts.append(f"\n\n# Conclusione\n\n{conclusion_content}\n")
+
+        # Bibliografia
+        final_content_parts.append(f"\n\n# Bibliografia\n\n{bibliography_content}\n")
 
         # Salva contenuto finale
-        thesis.generated_content = "\n".join(generated_content)
+        thesis.generated_content = "\n".join(final_content_parts)
+
+        # ===================================================================
+        # FASE 6: Aggiorna chapters_structure con capitoli speciali per TOC
+        # ===================================================================
+        updated_chapters = []
+
+        # Introduzione (primo)
+        updated_chapters.append({
+            "chapter_index": 0,
+            "chapter_title": "Introduzione",
+            "is_special": True
+        })
+
+        # Capitoli normali (rinumerati da 1)
+        for i, ch in enumerate(chapters):
+            ch_copy = dict(ch)
+            ch_copy["chapter_index"] = i + 1
+            updated_chapters.append(ch_copy)
+
+        # Conclusione (penultimo)
+        updated_chapters.append({
+            "chapter_index": len(chapters) + 1,
+            "chapter_title": "Conclusione",
+            "is_special": True
+        })
+
+        # Bibliografia (ultimo)
+        updated_chapters.append({
+            "chapter_index": len(chapters) + 2,
+            "chapter_title": "Bibliografia",
+            "is_special": True
+        })
+
+        thesis.chapters_structure = {"chapters": updated_chapters}
         thesis.status = 'completed'
         thesis.current_phase = 3
         thesis.generation_progress = 100
@@ -1052,6 +1177,9 @@ def generate_table_of_contents(chapters_structure: dict, format_type: str = "txt
     """
     Genera l'indice della tesi basato sulla struttura dei capitoli.
 
+    Supporta capitoli speciali (Introduzione, Conclusione, Bibliografia)
+    che non hanno sezioni e vengono mostrati solo come titolo.
+
     Args:
         chapters_structure: Dizionario con la struttura dei capitoli
         format_type: "txt", "md" o "pdf"
@@ -1070,38 +1198,50 @@ def generate_table_of_contents(chapters_structure: dict, format_type: str = "txt
         # Formato Markdown
         toc = "## Indice\n\n"
         for ch_idx, chapter in enumerate(chapters):
-            ch_num = chapter.get("chapter_index", ch_idx + 1)
-            ch_title = chapter.get("chapter_title") or chapter.get("title", f"Capitolo {ch_num}")
-            toc += f"**Capitolo {ch_num}: {ch_title}**\n\n"
+            ch_title = chapter.get("chapter_title") or chapter.get("title", f"Capitolo {ch_idx + 1}")
+            is_special = chapter.get("is_special", False)
 
-            sections = chapter.get("sections", [])
-            for sec_idx, section in enumerate(sections):
-                sec_num = section.get("index", sec_idx + 1)
-                sec_title = section.get("title", f"Sezione {sec_num}")
-                toc += f"  - {ch_num}.{sec_num}: {sec_title}\n"
-            toc += "\n"
+            if is_special:
+                # Capitoli speciali (Introduzione, Conclusione, Bibliografia)
+                toc += f"**{ch_title}**\n\n"
+            else:
+                ch_num = chapter.get("chapter_index", ch_idx + 1)
+                toc += f"**Capitolo {ch_num}: {ch_title}**\n\n"
+
+                sections = chapter.get("sections", [])
+                for sec_idx, section in enumerate(sections):
+                    sec_num = section.get("index", sec_idx + 1)
+                    sec_title = section.get("title", f"Sezione {sec_num}")
+                    toc += f"  - {ch_num}.{sec_num}: {sec_title}\n"
+                toc += "\n"
 
         toc += "---\n\n"
         return toc
 
     else:
-        # Formato TXT (anche per PDF)
+        # Formato TXT (anche per PDF e DOCX)
         separator = "═" * 65
         toc = f"{separator}\n"
         toc += "                           INDICE\n"
         toc += f"{separator}\n\n"
 
         for ch_idx, chapter in enumerate(chapters):
-            ch_num = chapter.get("chapter_index", ch_idx + 1)
-            ch_title = chapter.get("chapter_title") or chapter.get("title", f"Capitolo {ch_num}")
-            toc += f"Capitolo {ch_num}: {ch_title}\n"
+            ch_title = chapter.get("chapter_title") or chapter.get("title", f"Capitolo {ch_idx + 1}")
+            is_special = chapter.get("is_special", False)
 
-            sections = chapter.get("sections", [])
-            for sec_idx, section in enumerate(sections):
-                sec_num = section.get("index", sec_idx + 1)
-                sec_title = section.get("title", f"Sezione {sec_num}")
-                toc += f"    {ch_num}.{sec_num}: {sec_title}\n"
-            toc += "\n"
+            if is_special:
+                # Capitoli speciali senza sezioni
+                toc += f"{ch_title}\n\n"
+            else:
+                ch_num = chapter.get("chapter_index", ch_idx + 1)
+                toc += f"Capitolo {ch_num}: {ch_title}\n"
+
+                sections = chapter.get("sections", [])
+                for sec_idx, section in enumerate(sections):
+                    sec_num = section.get("index", sec_idx + 1)
+                    sec_title = section.get("title", f"Sezione {sec_num}")
+                    toc += f"    {ch_num}.{sec_num}: {sec_title}\n"
+                toc += "\n"
 
         toc += f"{separator}\n\n"
         return toc
@@ -1117,7 +1257,7 @@ async def export_thesis(
     """
     Esporta la tesi completata nel formato richiesto.
 
-    Formati supportati: pdf, txt, md
+    Formati supportati: pdf, txt, md, docx
     Include automaticamente l'indice all'inizio del documento.
     """
     thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
@@ -1170,6 +1310,89 @@ async def export_thesis(
             path=file_path,
             filename=f"tesi_{safe_title}.md",
             media_type="text/markdown"
+        )
+
+    elif format == "docx":
+        # Export DOCX con indice
+        from docx import Document as DocxDocument
+        from docx.shared import Pt, Inches
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+        file_path = config.RESULTS_DIR / f"thesis_{safe_title}_{timestamp}.docx"
+
+        doc = DocxDocument()
+
+        # Imposta stile del documento
+        style = doc.styles['Normal']
+        font = style.font
+        font.name = 'Times New Roman'
+        font.size = Pt(12)
+
+        # Titolo principale
+        title_para = doc.add_heading(thesis.title, level=0)
+        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # Descrizione
+        if thesis.description:
+            desc_para = doc.add_paragraph()
+            desc_run = desc_para.add_run(thesis.description)
+            desc_run.italic = True
+            desc_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            doc.add_paragraph()  # Spazio
+
+        # Indice
+        chapters_for_toc = thesis.chapters_structure.get("chapters", []) if thesis.chapters_structure else []
+        if chapters_for_toc:
+            doc.add_heading('Indice', level=1)
+
+            for ch_idx, chapter in enumerate(chapters_for_toc):
+                ch_title = chapter.get("chapter_title") or chapter.get("title", f"Capitolo {ch_idx + 1}")
+                is_special = chapter.get("is_special", False)
+
+                if is_special:
+                    # Capitoli speciali (Introduzione, Conclusione, Bibliografia)
+                    toc_para = doc.add_paragraph()
+                    toc_run = toc_para.add_run(ch_title)
+                    toc_run.bold = True
+                    toc_run.font.size = Pt(11)
+                else:
+                    ch_num = chapter.get("chapter_index", ch_idx + 1)
+                    toc_para = doc.add_paragraph()
+                    toc_run = toc_para.add_run(f"Capitolo {ch_num}: {ch_title}")
+                    toc_run.bold = True
+                    toc_run.font.size = Pt(11)
+
+                    sections = chapter.get("sections", [])
+                    for sec_idx, section in enumerate(sections):
+                        sec_num = section.get("index", sec_idx + 1)
+                        sec_title = section.get("title", f"Sezione {sec_num}")
+                        sec_para = doc.add_paragraph(
+                            f"    {ch_num}.{sec_num}: {sec_title}",
+                            style='List Bullet'
+                        )
+                        sec_para.paragraph_format.left_indent = Inches(0.5)
+                        for run in sec_para.runs:
+                            run.font.size = Pt(10)
+
+            doc.add_page_break()
+
+        # Contenuto
+        for line in content.split('\n'):
+            if line.startswith('# '):
+                doc.add_heading(line[2:], level=1)
+            elif line.startswith('## '):
+                doc.add_heading(line[3:], level=2)
+            elif line.strip():
+                para = doc.add_paragraph(line)
+                para.paragraph_format.space_after = Pt(6)
+            # Righe vuote: non aggiungere nulla (spazio naturale)
+
+        doc.save(str(file_path))
+
+        return FileResponse(
+            path=file_path,
+            filename=f"tesi_{safe_title}.docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
 
     else:
@@ -1236,33 +1459,45 @@ async def export_thesis(
                     current_page = doc.new_page(width=page_width, height=page_height)
                     y = margin
 
-                ch_num = chapter.get("chapter_index", ch_idx + 1)
-                ch_title = chapter.get("chapter_title") or chapter.get("title", f"Capitolo {ch_num}")
+                ch_title = chapter.get("chapter_title") or chapter.get("title", f"Capitolo {ch_idx + 1}")
+                is_special = chapter.get("is_special", False)
 
-                current_page.insert_text(
-                    (margin, y),
-                    f"Capitolo {ch_num}: {ch_title}",
-                    fontsize=11,
-                    fontname="helv"
-                )
-                y += line_height
-
-                sections = chapter.get("sections", [])
-                for sec_idx, section in enumerate(sections):
-                    if y + line_height > page_height - margin:
-                        current_page = doc.new_page(width=page_width, height=page_height)
-                        y = margin
-
-                    sec_num = section.get("index", sec_idx + 1)
-                    sec_title = section.get("title", f"Sezione {sec_num}")
-
+                if is_special:
+                    # Capitoli speciali senza sezioni
                     current_page.insert_text(
-                        (margin + 20, y),
-                        f"{ch_num}.{sec_num}: {sec_title}",
-                        fontsize=10,
+                        (margin, y),
+                        ch_title,
+                        fontsize=11,
                         fontname="helv"
                     )
-                    y += line_height * 0.9
+                    y += line_height
+                else:
+                    ch_num = chapter.get("chapter_index", ch_idx + 1)
+
+                    current_page.insert_text(
+                        (margin, y),
+                        f"Capitolo {ch_num}: {ch_title}",
+                        fontsize=11,
+                        fontname="helv"
+                    )
+                    y += line_height
+
+                    sections = chapter.get("sections", [])
+                    for sec_idx, section in enumerate(sections):
+                        if y + line_height > page_height - margin:
+                            current_page = doc.new_page(width=page_width, height=page_height)
+                            y = margin
+
+                        sec_num = section.get("index", sec_idx + 1)
+                        sec_title = section.get("title", f"Sezione {sec_num}")
+
+                        current_page.insert_text(
+                            (margin + 20, y),
+                            f"{ch_num}.{sec_num}: {sec_title}",
+                            fontsize=10,
+                            fontname="helv"
+                        )
+                        y += line_height * 0.9
 
                 y += 5  # Spazio tra capitoli
 

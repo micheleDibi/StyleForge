@@ -485,6 +485,7 @@ export const exportThesis = async (thesisId, format = 'pdf') => {
   // Determina estensione e tipo MIME
   const mimeTypes = {
     pdf: 'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     txt: 'text/plain',
     md: 'text/markdown'
   };

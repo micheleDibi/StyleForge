@@ -31,6 +31,7 @@ const ThesisPreview = ({ thesis, content }) => {
 
   const formatExportOptions = [
     { value: 'pdf', label: 'PDF', icon: FileText, description: 'Documento formattato' },
+    { value: 'docx', label: 'DOCX', icon: FileType, description: 'Documento Word' },
     { value: 'txt', label: 'TXT', icon: FileType, description: 'Testo semplice' },
     { value: 'md', label: 'Markdown', icon: FileCode, description: 'Con formattazione' }
   ];
@@ -50,13 +51,17 @@ const ThesisPreview = ({ thesis, content }) => {
     toc += '═══════════════════════════════════════════════════════════════\n\n';
 
     chaptersStructure.forEach((chapter, chIndex) => {
-      toc += `Capitolo ${chapter.chapter_index || chIndex + 1}: ${chapter.chapter_title || chapter.title}\n`;
-      if (chapter.sections && chapter.sections.length > 0) {
-        chapter.sections.forEach((section) => {
-          toc += `    ${chapter.chapter_index || chIndex + 1}.${section.index}: ${section.title}\n`;
-        });
+      if (chapter.is_special) {
+        toc += `${chapter.chapter_title || chapter.title}\n\n`;
+      } else {
+        toc += `Capitolo ${chapter.chapter_index || chIndex + 1}: ${chapter.chapter_title || chapter.title}\n`;
+        if (chapter.sections && chapter.sections.length > 0) {
+          chapter.sections.forEach((section) => {
+            toc += `    ${chapter.chapter_index || chIndex + 1}.${section.index}: ${section.title}\n`;
+          });
+        }
+        toc += '\n';
       }
-      toc += '\n';
     });
 
     toc += '═══════════════════════════════════════════════════════════════\n\n';
@@ -148,9 +153,12 @@ const ThesisPreview = ({ thesis, content }) => {
             {chaptersStructure.map((chapter, chIndex) => (
               <div key={chIndex} className="border-l-2 border-orange-200 pl-3">
                 <p className="font-medium text-slate-800">
-                  Capitolo {chapter.chapter_index || chIndex + 1}: {chapter.chapter_title || chapter.title}
+                  {chapter.is_special
+                    ? (chapter.chapter_title || chapter.title)
+                    : `Capitolo ${chapter.chapter_index || chIndex + 1}: ${chapter.chapter_title || chapter.title}`
+                  }
                 </p>
-                {chapter.sections && chapter.sections.length > 0 && (
+                {!chapter.is_special && chapter.sections && chapter.sections.length > 0 && (
                   <ul className="mt-1 space-y-1 text-sm text-slate-600">
                     {chapter.sections.map((section, secIndex) => (
                       <li key={secIndex} className="pl-4">
@@ -239,7 +247,7 @@ const ThesisPreview = ({ thesis, content }) => {
                 <label className="block text-sm font-medium text-slate-700 mb-3">
                   Seleziona il formato di esportazione
                 </label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {formatExportOptions.map((format) => {
                     const Icon = format.icon;
                     return (
