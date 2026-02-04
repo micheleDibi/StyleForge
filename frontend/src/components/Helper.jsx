@@ -71,7 +71,7 @@ const Helper = () => {
       'Step 1-2: configura titolo, stile di scrittura, profondità e pubblico.',
       'Step 3: puoi caricare PDF, DOCX o TXT come materiale di riferimento.',
       'Step 4-5: l\'AI genera capitoli e sezioni che puoi modificare prima di confermare.',
-      'Step 6-7: il contenuto viene generato e puoi esportare in PDF, TXT o Markdown!',
+      'Step 6-7: il contenuto viene generato e puoi esportare in PDF, DOCX, TXT o Markdown!',
     ],
     'session': [
       'Benvenuto nella pagina di dettaglio della sessione!',

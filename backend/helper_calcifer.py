@@ -52,7 +52,7 @@ Procedura guidata in 7 step:
 4. Capitoli: l'AI genera i titoli dei capitoli, puoi modificarli prima di confermare
 5. Sezioni: l'AI genera le sezioni per ogni capitolo, puoi modificarle
 6. Generazione: il contenuto viene generato sezione per sezione con barra di avanzamento
-7. Download: esporta la tesi in PDF, TXT o Markdown (con indice automatico)
+7. Download: esporta la tesi in PDF, DOCX, TXT o Markdown (con indice automatico)
 
 **DETTAGLIO SESSIONE** ("/sessions/:id"):
 - Visualizza i dettagli di una sessione specifica
@@ -196,7 +196,7 @@ def get_contextual_tip(page: str, context: Optional[Dict] = None) -> str:
             "train": "Carica un PDF con il tuo stile di scrittura e io lo analizzerò per te. Più pagine carichi, meglio imparo! 🔥",
             "generate": "Scegli una sessione addestrata, scrivi un argomento e il numero di parole. Creo il contenuto nel tuo stile! 🔥",
             "humanize": "Incolla un testo generato da AI e lo riscrivo nel tuo stile, rendendolo non rilevabile dai detector! 🔥",
-            "thesis": "Qui puoi generare una tesi completa in 7 step: dai parametri fino all'esportazione in PDF! 🔥",
+            "thesis": "Qui puoi generare una tesi completa in 7 step: dai parametri fino all'esportazione in PDF, DOCX, TXT o Markdown! 🔥",
             "session": "Da qui puoi gestire la sessione: fare training aggiuntivi, generare contenuti o vedere i job associati! 🔥"
         }
 
