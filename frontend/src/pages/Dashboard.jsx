@@ -580,6 +580,14 @@ const Dashboard = () => {
                               PDF
                             </button>
                             <button
+                              onClick={() => handleExportThesis(thesis.id, 'docx')}
+                              disabled={exportingThesis === thesis.id}
+                              className="btn btn-secondary btn-sm"
+                            >
+                              <Download className="w-4 h-4" />
+                              DOCX
+                            </button>
+                            <button
                               onClick={() => handleExportThesis(thesis.id, 'txt')}
                               disabled={exportingThesis === thesis.id}
                               className="btn btn-secondary btn-sm"
