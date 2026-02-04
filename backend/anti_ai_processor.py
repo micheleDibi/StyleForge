@@ -1318,11 +1318,35 @@ class AntiAIProcessor:
     # METODO PRINCIPALE DI PROCESSING
     # ═══════════════════════════════════════════════════════════════════════
 
+    def _protect_citations(self, testo: str):
+        """
+        Protegge le citazioni bibliografiche [x] sostituendole con placeholder
+        che non verranno toccati dalle trasformazioni.
+
+        Returns:
+            Tuple (testo_con_placeholder, mappa_ripristino)
+        """
+        import re
+        citations = re.findall(r'\[\d+\]', testo)
+        mappa = {}
+        for i, cit in enumerate(citations):
+            placeholder = f"__CITE{i}__"
+            mappa[placeholder] = cit
+            testo = testo.replace(cit, placeholder, 1)
+        return testo, mappa
+
+    def _restore_citations(self, testo: str, mappa: dict) -> str:
+        """Ripristina le citazioni bibliografiche dai placeholder."""
+        for placeholder, citation in mappa.items():
+            testo = testo.replace(placeholder, citation)
+        return testo
+
     def process(self, testo: str) -> str:
         """
         Esegue l'intero pipeline di post-processing anti-AI.
 
         Il processo è organizzato in fasi:
+        0. PROTEZIONE CITAZIONI - Protegge [x] dalle trasformazioni
         1. PULIZIA - Rimuove elementi facilmente rilevabili
         2. FRASI AI ALTA FREQUENZA - Sostituisce frasi rilevate da Copyleaks (CRITICO)
         3. TRASFORMAZIONE PATTERN - Modifica strutture AI riconoscibili
@@ -1331,6 +1355,7 @@ class AntiAIProcessor:
         6. INIEZIONE UMANA - Aggiunge elementi tipicamente umani
         7. VARIAZIONE STRUTTURA - Aumenta perplessità e burstiness
         8. NORMALIZZAZIONE - Pulizia finale
+        9. RIPRISTINO CITAZIONI - Ripristina [x] dai placeholder
 
         Args:
             testo: Il testo generato dall'AI da processare
@@ -1338,6 +1363,11 @@ class AntiAIProcessor:
         Returns:
             Il testo trasformato, non rilevabile dai detector AI
         """
+
+        # ═══════════════════════════════════════════════════════════════
+        # FASE 0: PROTEZIONE CITAZIONI BIBLIOGRAFICHE
+        # ═══════════════════════════════════════════════════════════════
+        testo, mappa_citazioni = self._protect_citations(testo)
 
         # ═══════════════════════════════════════════════════════════════
         # FASE 1: PULIZIA
@@ -1410,6 +1440,11 @@ class AntiAIProcessor:
         testo = re.sub(r'—\s*—', '—', testo)
         # Ripristina a capo per i titoli
         testo = re.sub(r'\s*(#{1,6})\s*', r'\n\n\1 ', testo)
+
+        # ═══════════════════════════════════════════════════════════════
+        # FASE 9: RIPRISTINO CITAZIONI BIBLIOGRAFICHE
+        # ═══════════════════════════════════════════════════════════════
+        testo = self._restore_citations(testo, mappa_citazioni)
 
         return testo.strip()
 

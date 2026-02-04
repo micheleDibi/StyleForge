@@ -111,7 +111,13 @@ class BaseAIClient(ABC):
             author_style_context=author_style_context
         )
 
-        return self.generate_text(prompt)
+        # Calcola max_tokens in base alle parole richieste
+        # ~2.5 token per parola italiana + margine
+        words_per_section = thesis_data.get('words_per_section', 5000)
+        estimated_tokens = int(words_per_section * 2.5) + 2000
+        max_tokens = max(estimated_tokens, MAX_TOKENS)
+
+        return self.generate_text(prompt, max_tokens=max_tokens)
 
 
 class OpenAIClient(BaseAIClient):
@@ -292,6 +298,16 @@ TERMINI COLLOQUIALI VIETATI:
 ❌ "bhe", "beh", "meh", "vabbè", "boh", "mah" — troppo informali per un testo accademico
 ❌ Interiezioni da chat o messaggistica
 ❌ Forme dialettali o gergali estreme
+
+═══════════════════════════════════════════════════════════════
+CITAZIONI BIBLIOGRAFICHE — PRESERVA OBBLIGATORIAMENTE
+═══════════════════════════════════════════════════════════════
+
+✓ MANTIENI INTATTE tutte le citazioni bibliografiche nel formato [x] (es. [1], [2], [3])
+✓ NON rimuovere, NON modificare, NON riformulare le citazioni [x]
+✓ Le citazioni devono restare nel testo — se il testo dice "secondo studi recenti [3]",
+  la riscrittura DEVE contenere "[3]" nello stesso punto o posizione equivalente
+✓ Se una frase contiene [x], riscrivi la frase ma MANTIENI [x] al suo interno
 
 ═══════════════════════════════════════════════════════════════
 COSA DEVI FARE ATTIVAMENTE

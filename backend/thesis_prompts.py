@@ -309,7 +309,13 @@ STILE DELL'AUTORE
 ISTRUZIONI DI SCRITTURA
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. Scrivi circa {thesis_data.get('words_per_section', 5000)} parole per questa sezione
+1. REQUISITO CRITICO — LUNGHEZZA MINIMA:
+   ⚠️ Devi scrivere ALMENO {thesis_data.get('words_per_section', 5000)} parole per questa sezione
+   ⚠️ NON scrivere meno di {thesis_data.get('words_per_section', 5000)} parole — è un requisito OBBLIGATORIO
+   ⚠️ Se il testo ti sembra lungo, VA BENE — deve essere lungo!
+   ⚠️ Sviluppa OGNI punto in profondità con esempi, analisi, dati e riflessioni
+   ⚠️ Ogni paragrafo deve avere almeno 150-200 parole
+   ⚠️ NON riassumere, NON sintetizzare, NON abbreviare
 
 2. STRUTTURA il contenuto in modo chiaro:
    - Introduzione al tema della sezione (1-2 paragrafi)
@@ -359,6 +365,7 @@ IMPORTANTE:
 - NON usare placeholder o [inserire qui]
 - Scrivi il contenuto completo e definitivo
 - Il testo deve essere pronto per la pubblicazione
+- RICORDA: ALMENO {thesis_data.get('words_per_section', 5000)} parole! Questo è NON negoziabile.
 """
 
 
@@ -497,7 +504,9 @@ STILE DELL'AUTORE
 ISTRUZIONI
 ═══════════════════════════════════════════════════════════════════════════════
 
-Scrivi l'introduzione della tesi (circa {thesis_data.get('words_per_section', 5000)} parole).
+⚠️ REQUISITO CRITICO — LUNGHEZZA: Scrivi ALMENO {thesis_data.get('words_per_section', 5000)} parole.
+NON scrivere meno di {thesis_data.get('words_per_section', 5000)} parole — è OBBLIGATORIO.
+Sviluppa ogni punto in profondità con analisi, esempi e riflessioni dettagliate.
 
 L'introduzione deve:
 1. Presentare il TEMA GENERALE della tesi e il suo contesto
@@ -600,7 +609,9 @@ STILE DELL'AUTORE
 ISTRUZIONI
 ═══════════════════════════════════════════════════════════════════════════════
 
-Scrivi la conclusione della tesi (circa {thesis_data.get('words_per_section', 5000)} parole).
+⚠️ REQUISITO CRITICO — LUNGHEZZA: Scrivi ALMENO {thesis_data.get('words_per_section', 5000)} parole.
+NON scrivere meno di {thesis_data.get('words_per_section', 5000)} parole — è OBBLIGATORIO.
+Sviluppa ogni punto in profondità con analisi dettagliate e riflessioni.
 
 La conclusione deve:
 1. RIASSUMERE i punti principali trattati nei vari capitoli
