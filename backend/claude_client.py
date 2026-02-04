@@ -247,6 +247,9 @@ Riscrivi questo testo AI mantenendo ALMENO {min_words} parole (target: {min_word
 Il testo originale contiene {word_count} parole. NON accorciare, NON riassumere, NON sintetizzare.
 Hai interiorizzato lo stile dell'autore. Applicalo.
 
+⚠️ CITAZIONI BIBLIOGRAFICHE: MANTIENI INTATTE tutte le citazioni [x] (es. [1], [2], [3]).
+NON rimuoverle, NON spostarle. Se una frase contiene [3], la riscrittura DEVE contenere [3].
+
 ---
 {testo_originale}
 ---

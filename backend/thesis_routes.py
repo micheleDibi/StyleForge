@@ -856,6 +856,7 @@ def generate_content_task(thesis_id: str, user_id: str):
         from thesis_prompts import build_introduction_prompt, build_conclusion_prompt, build_bibliography_prompt
 
         generated_chapters_content = []
+        raw_chapters_content = []  # Contenuto PRE-umanizzazione per la bibliografia
         previous_summary = ""
 
         # Total: sezioni normali + 3 (introduzione, conclusione, bibliografia)
@@ -873,10 +874,11 @@ def generate_content_task(thesis_id: str, user_id: str):
         # ===================================================================
         for chapter in chapters:
             chapter_content = f"\n\n# {chapter.get('chapter_title', 'Capitolo')}\n\n"
+            raw_chapter_content = ""
 
             for section in chapter.get("sections", []):
                 # Genera contenuto sezione
-                content = client.generate_section_content(
+                raw_content = client.generate_section_content(
                     thesis_data=thesis_data,
                     chapter=chapter,
                     section=section,
@@ -885,8 +887,11 @@ def generate_content_task(thesis_id: str, user_id: str):
                     author_style_context=author_style_context
                 )
 
+                # Salva contenuto raw per la bibliografia (con citazioni [x] intatte)
+                raw_chapter_content += f"\n{raw_content}\n"
+
                 # Applica umanizzazione
-                content = _humanize_content(content, trained_session_client, section.get('title', 'Sezione'))
+                content = _humanize_content(raw_content, trained_session_client, section.get('title', 'Sezione'))
 
                 section_text = f"\n## {section.get('title', 'Sezione')}\n\n{content}\n"
                 chapter_content += section_text
@@ -904,6 +909,7 @@ def generate_content_task(thesis_id: str, user_id: str):
                 db.commit()
 
             generated_chapters_content.append(chapter_content)
+            raw_chapters_content.append(raw_chapter_content)
 
         # ===================================================================
         # FASE 2: Genera INTRODUZIONE
@@ -949,11 +955,18 @@ def generate_content_task(thesis_id: str, user_id: str):
         # FASE 4: Genera BIBLIOGRAFIA
         # ===================================================================
         logger.info("Generazione Bibliografia...")
-        # Assembla tutto il contenuto per trovare le citazioni [x]
-        all_chapters_text = "\n".join(generated_chapters_content)
+        # Usa il contenuto RAW (pre-umanizzazione) per trovare le citazioni [x]
+        # perché l'umanizzazione potrebbe averle alterate
+        all_raw_text = "\n".join(raw_chapters_content)
+        # Fallback: se il raw non ha citazioni, prova anche con il contenuto umanizzato
+        import re as _re
+        raw_citations = _re.findall(r'\[\d+\]', all_raw_text)
+        if not raw_citations:
+            # Prova con il contenuto umanizzato (l'anti-AI ora preserva le citazioni)
+            all_raw_text = "\n".join(generated_chapters_content)
         bibliography_prompt = build_bibliography_prompt(
             thesis_data=thesis_data,
-            all_content=all_chapters_text
+            all_content=all_raw_text
         )
         bibliography_content = client.generate_text(bibliography_prompt)
         # NON umanizzare la bibliografia (è una lista formale)
