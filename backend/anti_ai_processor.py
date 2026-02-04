@@ -195,8 +195,6 @@ class AntiAIProcessor:
             'evidenzia': ['mostra', 'fa vedere', 'dice', 'mette in luce'],
             'sottolinea': ['dice', 'fa notare', 'segnala', 'punta su'],
             'emerge': ['viene fuori', 'si vede', 'salta fuori', 'appare'],
-            # 'risulta' rimosso perché può matchare in "risultato" (sostantivo comune)
-            # È già gestito nei pattern "risulta essere", "risulta che", etc.
             'in conclusione': ['insomma', 'alla fine', 'ecco', 'e niente'],
             'in sintesi': ['in breve', 'insomma', 'ecco', 'stringendo'],
             'per riassumere': ['insomma', 'in breve', 'ecco', 'a farla corta'],
@@ -558,10 +556,10 @@ class AntiAIProcessor:
 
         # Colloquialismi (obiettivo: 6+ nel testo)
         self.colloquialismi = [
-            'insomma', 'cioè', 'diciamo', 'ecco', "be'", 'già',
+            'insomma', 'cioè', 'diciamo', 'ecco', 'già',
             'tipo', 'roba', 'faccenda', 'storia', 'giro',
             'mica', 'mica tanto', 'non è che',
-            'magari', 'boh', 'mah', 'vabbè'
+            'magari', 'quindi', 'pertanto', 'vabbè'
         ]
 
         # Espressioni di incertezza (obiettivo: 4+ nel testo)
