@@ -333,7 +333,15 @@ ISTRUZIONI DI SCRITTURA
    - Fai riferimento ai materiali dove appropriato
    - Non copiare verbatim, rielabora
 
-6. SCRIVI IN MODO NATURALE:
+6. CITAZIONI BIBLIOGRAFICHE:
+   - Inserisci almeno 3-5 citazioni bibliografiche nel testo usando il formato [x]
+     dove x è un numero progressivo (es. [1], [2], [3], ecc.)
+   - Usa le citazioni quando menzioni studi, ricerche, dati, teorie o opinioni di autori
+   - Esempio: "Secondo recenti studi [1], l'intelligenza artificiale sta trasformando..."
+   - I numeri devono essere progressivi e coerenti all'interno della tesi
+   - Queste citazioni verranno poi elencate nella bibliografia finale
+
+7. SCRIVI IN MODO NATURALE:
    - Evita frasi troppo lunghe o complesse
    - Usa variazione nella struttura delle frasi
    - Includi occasionali imperfezioni stilistiche che rendano il testo umano
@@ -407,4 +415,305 @@ Se suggerisci un miglioramento, rispondi con:
 {{"keep_original": false, "title": "Nuovo titolo migliorato", "reason": "Breve spiegazione"}}
 
 Rispondi SOLO con il JSON, senza altro testo.
+"""
+
+
+def build_introduction_prompt(
+    thesis_data: Dict[str, Any],
+    chapters_titles: List[str],
+    attachments_context: str = "",
+    author_style_context: str = ""
+) -> str:
+    """
+    Costruisce il prompt per generare l'Introduzione della tesi.
+
+    Args:
+        thesis_data: Parametri della tesi
+        chapters_titles: Lista dei titoli dei capitoli
+        attachments_context: Contesto dagli allegati
+        author_style_context: Contesto dello stile autore
+
+    Returns:
+        Prompt completo per la generazione dell'introduzione
+    """
+    key_topics_str = ", ".join(thesis_data.get('key_topics', [])) if thesis_data.get('key_topics') else "Non specificati"
+    chapters_list = "\n".join([f"  {i+1}. {title}" for i, title in enumerate(chapters_titles)])
+
+    return f"""
+═══════════════════════════════════════════════════════════════════════════════
+GENERAZIONE INTRODUZIONE TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+Sei un esperto nella scrittura di documenti accademici e professionali.
+Il tuo compito è scrivere l'INTRODUZIONE della tesi.
+
+═══════════════════════════════════════════════════════════════════════════════
+PARAMETRI DELLA TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+TITOLO: {thesis_data.get('title', 'Non specificato')}
+DESCRIZIONE: {thesis_data.get('description', 'Non specificata')}
+ARGOMENTI CHIAVE: {key_topics_str}
+
+═══════════════════════════════════════════════════════════════════════════════
+PARAMETRI DI SCRITTURA
+═══════════════════════════════════════════════════════════════════════════════
+
+STILE: {thesis_data.get('writing_style_name', 'Non specificato')}
+  → {thesis_data.get('writing_style_hint', '')}
+
+LIVELLO PROFONDITÀ: {thesis_data.get('content_depth_name', 'Intermedio')}
+PAROLE TARGET: ~{thesis_data.get('words_per_section', 5000)} parole
+
+═══════════════════════════════════════════════════════════════════════════════
+PUBBLICO TARGET
+═══════════════════════════════════════════════════════════════════════════════
+
+DESTINATARI: {thesis_data.get('target_audience_name', 'Pubblico Generale')}
+  → {thesis_data.get('target_audience_hint', '')}
+
+LIVELLO CONOSCENZA: {thesis_data.get('knowledge_level_name', 'Intermedio')}
+  → {thesis_data.get('knowledge_level_hint', '')}
+
+SETTORE: {thesis_data.get('industry_name', 'Generale')}
+
+═══════════════════════════════════════════════════════════════════════════════
+STRUTTURA DEI CAPITOLI DELLA TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+{chapters_list}
+
+═══════════════════════════════════════════════════════════════════════════════
+MATERIALE DI RIFERIMENTO (dagli allegati)
+═══════════════════════════════════════════════════════════════════════════════
+{attachments_context if attachments_context else "Nessun materiale allegato."}
+
+═══════════════════════════════════════════════════════════════════════════════
+STILE DELL'AUTORE
+═══════════════════════════════════════════════════════════════════════════════
+{author_style_context if author_style_context else "Nessuno stile specifico addestrato - usa lo stile richiesto nei parametri."}
+
+═══════════════════════════════════════════════════════════════════════════════
+ISTRUZIONI
+═══════════════════════════════════════════════════════════════════════════════
+
+Scrivi l'introduzione della tesi (circa {thesis_data.get('words_per_section', 5000)} parole).
+
+L'introduzione deve:
+1. Presentare il TEMA GENERALE della tesi e il suo contesto
+2. Spiegare la RILEVANZA e l'importanza dell'argomento
+3. Definire gli OBIETTIVI della tesi
+4. Descrivere brevemente la STRUTTURA del lavoro, menzionando cosa verrà trattato
+   nei vari capitoli (senza entrare troppo nel dettaglio)
+5. Contestualizzare il lavoro nel panorama attuale del settore
+6. Essere COINVOLGENTE e motivare il lettore a proseguire
+
+NON inserire citazioni bibliografiche [x] nell'introduzione.
+
+SCRIVI IN MODO NATURALE:
+- Evita frasi troppo lunghe o complesse
+- Usa variazione nella struttura delle frasi
+- Includi occasionali imperfezioni stilistiche che rendano il testo umano
+- Non usare strutture troppo "perfette" o ripetitive
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════════════════════════════════════
+
+Scrivi SOLO il contenuto dell'introduzione.
+NON includere il titolo "Introduzione" (verrà aggiunto separatamente).
+NON includere meta-commenti o note.
+Il testo deve essere pronto per la pubblicazione.
+"""
+
+
+def build_conclusion_prompt(
+    thesis_data: Dict[str, Any],
+    content_summary: str,
+    chapters_titles: List[str],
+    author_style_context: str = ""
+) -> str:
+    """
+    Costruisce il prompt per generare la Conclusione della tesi.
+
+    Args:
+        thesis_data: Parametri della tesi
+        content_summary: Riassunto del contenuto generato
+        chapters_titles: Lista dei titoli dei capitoli
+        author_style_context: Contesto dello stile autore
+
+    Returns:
+        Prompt completo per la generazione della conclusione
+    """
+    chapters_list = "\n".join([f"  {i+1}. {title}" for i, title in enumerate(chapters_titles)])
+
+    return f"""
+═══════════════════════════════════════════════════════════════════════════════
+GENERAZIONE CONCLUSIONE TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+Sei un esperto nella scrittura di documenti accademici e professionali.
+Il tuo compito è scrivere la CONCLUSIONE della tesi.
+
+═══════════════════════════════════════════════════════════════════════════════
+PARAMETRI DELLA TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+TITOLO: {thesis_data.get('title', 'Non specificato')}
+DESCRIZIONE: {thesis_data.get('description', 'Non specificata')}
+
+═══════════════════════════════════════════════════════════════════════════════
+PARAMETRI DI SCRITTURA
+═══════════════════════════════════════════════════════════════════════════════
+
+STILE: {thesis_data.get('writing_style_name', 'Non specificato')}
+  → {thesis_data.get('writing_style_hint', '')}
+
+LIVELLO PROFONDITÀ: {thesis_data.get('content_depth_name', 'Intermedio')}
+PAROLE TARGET: ~{thesis_data.get('words_per_section', 5000)} parole
+
+═══════════════════════════════════════════════════════════════════════════════
+PUBBLICO TARGET
+═══════════════════════════════════════════════════════════════════════════════
+
+DESTINATARI: {thesis_data.get('target_audience_name', 'Pubblico Generale')}
+LIVELLO CONOSCENZA: {thesis_data.get('knowledge_level_name', 'Intermedio')}
+
+═══════════════════════════════════════════════════════════════════════════════
+CAPITOLI DELLA TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+{chapters_list}
+
+═══════════════════════════════════════════════════════════════════════════════
+RIASSUNTO DEI CONTENUTI DELLA TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+{content_summary}
+
+═══════════════════════════════════════════════════════════════════════════════
+STILE DELL'AUTORE
+═══════════════════════════════════════════════════════════════════════════════
+{author_style_context if author_style_context else "Nessuno stile specifico addestrato - usa lo stile richiesto nei parametri."}
+
+═══════════════════════════════════════════════════════════════════════════════
+ISTRUZIONI
+═══════════════════════════════════════════════════════════════════════════════
+
+Scrivi la conclusione della tesi (circa {thesis_data.get('words_per_section', 5000)} parole).
+
+La conclusione deve:
+1. RIASSUMERE i punti principali trattati nei vari capitoli
+2. SINTETIZZARE i risultati e le scoperte chiave
+3. Evidenziare il CONTRIBUTO del lavoro al campo di studio
+4. Discutere le LIMITAZIONI del lavoro (se applicabile)
+5. Suggerire possibili SVILUPPI FUTURI e direzioni di ricerca
+6. Chiudere con una riflessione finale significativa
+
+NON inserire citazioni bibliografiche [x] nella conclusione.
+NON ripetere verbatim frasi dai capitoli precedenti — rielabora i concetti.
+
+SCRIVI IN MODO NATURALE:
+- Evita frasi troppo lunghe o complesse
+- Usa variazione nella struttura delle frasi
+- Il tono deve essere riflessivo e conclusivo
+- Non usare strutture troppo "perfette" o ripetitive
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════════════════════════════════════
+
+Scrivi SOLO il contenuto della conclusione.
+NON includere il titolo "Conclusione" (verrà aggiunto separatamente).
+NON includere meta-commenti o note.
+Il testo deve essere pronto per la pubblicazione.
+"""
+
+
+def build_bibliography_prompt(
+    thesis_data: Dict[str, Any],
+    all_content: str
+) -> str:
+    """
+    Costruisce il prompt per generare la Bibliografia della tesi.
+
+    Analizza il contenuto generato per trovare le citazioni [x]
+    e genera una bibliografia formale.
+
+    Args:
+        thesis_data: Parametri della tesi
+        all_content: Tutto il contenuto generato (per trovare le citazioni [x])
+
+    Returns:
+        Prompt completo per la generazione della bibliografia
+    """
+    # Estrai le citazioni [x] dal testo
+    import re
+    citations = sorted(set(int(m) for m in re.findall(r'\[(\d+)\]', all_content)))
+    citations_str = ", ".join([f"[{c}]" for c in citations]) if citations else "Nessuna citazione trovata"
+    num_citations = len(citations)
+
+    return f"""
+═══════════════════════════════════════════════════════════════════════════════
+GENERAZIONE BIBLIOGRAFIA TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+Sei un esperto nella redazione di bibliografie accademiche.
+Il tuo compito è generare la BIBLIOGRAFIA completa per la tesi.
+
+═══════════════════════════════════════════════════════════════════════════════
+PARAMETRI DELLA TESI
+═══════════════════════════════════════════════════════════════════════════════
+
+TITOLO: {thesis_data.get('title', 'Non specificato')}
+DESCRIZIONE: {thesis_data.get('description', 'Non specificata')}
+SETTORE: {thesis_data.get('industry_name', 'Generale')}
+
+═══════════════════════════════════════════════════════════════════════════════
+CITAZIONI TROVATE NEL TESTO
+═══════════════════════════════════════════════════════════════════════════════
+
+Citazioni presenti: {citations_str}
+Numero totale di citazioni: {num_citations}
+
+═══════════════════════════════════════════════════════════════════════════════
+CONTENUTO DELLA TESI (per contesto)
+═══════════════════════════════════════════════════════════════════════════════
+
+{all_content[:15000]}
+{"[...contenuto troncato...]" if len(all_content) > 15000 else ""}
+
+═══════════════════════════════════════════════════════════════════════════════
+ISTRUZIONI
+═══════════════════════════════════════════════════════════════════════════════
+
+Genera una bibliografia formale che includa ESATTAMENTE una voce per ogni
+citazione [x] trovata nel testo.
+
+Per ogni citazione, genera una voce bibliografica REALISTICA e COERENTE
+con il contesto in cui è stata usata nel testo.
+
+FORMATO per ogni voce:
+[x] Cognome, N. (Anno). Titolo dell'opera. Editore/Rivista. DOI/URL se applicabile.
+
+REGOLE:
+1. Genera esattamente {num_citations} voci bibliografiche, una per ogni [x]
+2. I numeri devono corrispondere esattamente alle citazioni nel testo
+3. Le voci devono essere in ordine numerico [1], [2], [3], ecc.
+4. Ogni voce deve essere COERENTE con il contesto in cui la citazione appare nel testo
+5. Usa un formato bibliografico standard (APA-style adattato all'italiano)
+6. Includi autori con nomi realistici, anni plausibili (2015-2024), titoli pertinenti
+7. Mescola tipologie: libri, articoli di rivista, report, risorse online
+8. Per articoli scientifici includi nome rivista e volume
+9. Per libri includi editore e città
+10. Per risorse online includi URL plausibile e data di accesso
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════════════════════════════════════
+
+Scrivi SOLO la lista bibliografica.
+NON includere il titolo "Bibliografia" (verrà aggiunto separatamente).
+NON includere introduzioni, commenti o note.
+Ogni voce deve iniziare con [x] e andare a capo.
 """
