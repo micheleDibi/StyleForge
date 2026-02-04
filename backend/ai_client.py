@@ -288,6 +288,11 @@ PATTERN RETORICI VIETATI:
 ❌ Similitudini eleganti ("è come...", "funziona come...")
 ❌ Trattini con definizione incorporata ("L'ansia — cioè la sensazione di —")
 
+TERMINI COLLOQUIALI VIETATI:
+❌ "bhe", "beh", "meh", "vabbè", "boh", "mah" — troppo informali per un testo accademico
+❌ Interiezioni da chat o messaggistica
+❌ Forme dialettali o gergali estreme
+
 ═══════════════════════════════════════════════════════════════
 COSA DEVI FARE ATTIVAMENTE
 ═══════════════════════════════════════════════════════════════
@@ -299,7 +304,7 @@ INSERISCI OBBLIGATORIAMENTE:
 ✓ Almeno 3 ripetizioni lessicali ravvicinate (stessa parola 2-3 volte)
 ✓ Almeno 2 parentesi lunghe che interrompono il flusso
 ✓ Almeno 1 momento di incertezza ("forse", "non è chiaro", "probabilmente")
-✓ Almeno 1 frase goffa, che avresti potuto scrivere meglio
+✓ Almeno 1 frase un po' meno fluida, come se stessi ancora pensando
 ✓ Almeno 1 passaggio dove ripeti un concetto già detto
 
 ANCORAGGI CONCRETI:
@@ -341,6 +346,9 @@ RICORDA:
 - ALMENO {word_count} parole nella risposta
 - Ogni frase che ti sembra "ben riuscita" è probabilmente un segnale AI. Sporcala.
 - Se suona "scritto bene", è un problema. Deve suonare come qualcuno che pensa.
+- TUTTE le parole devono essere scritte per intero e correttamente — niente troncamenti, lettere mancanti o parole incomplete
+- TUTTE le frasi devono essere grammaticalmente complete — ogni frase deve avere soggetto e verbo e terminare con la punteggiatura corretta
+- NON usare termini troppo informali come "bhe", "meh", "vabbè", "boh", "mah" — il tono deve essere colloquiale ma non da chat
 - Output SOLO il testo riscritto, senza commenti."""
 
     try:
