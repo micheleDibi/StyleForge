@@ -339,13 +339,22 @@ ISTRUZIONI DI SCRITTURA
    - Fai riferimento ai materiali dove appropriato
    - Non copiare verbatim, rielabora
 
-6. CITAZIONI BIBLIOGRAFICHE:
+6. CITAZIONI BIBLIOGRAFICHE — SOLO FONTI REALI:
    - Inserisci almeno 3-5 citazioni bibliografiche nel testo usando il formato [x]
      dove x è un numero progressivo (es. [1], [2], [3], ecc.)
+   - ⚠️ REQUISITO CRITICO: Cita ESCLUSIVAMENTE opere REALI e VERIFICABILI
+   - Ogni citazione [x] DEVE riferirsi a un'opera che ESISTE REALMENTE:
+     • Libri pubblicati da autori reali con ISBN verificabile
+     • Articoli pubblicati su riviste scientifiche reali
+     • Report di organizzazioni reali (OMS, ISTAT, UE, ecc.)
+     • Pubblicazioni accademiche reali e verificabili
+   - ⚠️ NON INVENTARE MAI fonti, autori, titoli o pubblicazioni
+   - ⚠️ Se non sei sicuro che una fonte esista realmente, NON citarla
    - Usa le citazioni quando menzioni studi, ricerche, dati, teorie o opinioni di autori
-   - Esempio: "Secondo recenti studi [1], l'intelligenza artificiale sta trasformando..."
+   - Esempio: "Secondo Kahneman [1], i bias cognitivi influenzano..."
    - I numeri devono essere progressivi e coerenti all'interno della tesi
-   - Queste citazioni verranno poi elencate nella bibliografia finale
+   - Quando citi, includi nel testo abbastanza contesto per identificare la fonte
+     (es. nome autore, anno, titolo abbreviato) così la bibliografia sarà accurata
 
 7. SCRIVI IN MODO NATURALE:
    - Evita frasi troppo lunghe o complesse
@@ -701,23 +710,35 @@ ISTRUZIONI
 Genera una bibliografia formale che includa ESATTAMENTE una voce per ogni
 citazione [x] trovata nel testo.
 
-Per ogni citazione, genera una voce bibliografica REALISTICA e COERENTE
-con il contesto in cui è stata usata nel testo.
+⚠️⚠️⚠️ REQUISITO CRITICO — SOLO FONTI REALI ⚠️⚠️⚠️
+
+OGNI voce bibliografica DEVE essere una pubblicazione REALE e VERIFICABILE.
+NON INVENTARE MAI autori, titoli, riviste, editori, DOI o URL.
+
+Per ogni citazione [x], analizza il contesto in cui è usata nel testo e
+associa una fonte REALE che conosci dalla tua base di conoscenza.
 
 FORMATO per ogni voce:
-[x] Cognome, N. (Anno). Titolo dell'opera. Editore/Rivista. DOI/URL se applicabile.
+[x] Cognome, N. (Anno). Titolo dell'opera. Editore/Rivista. DOI/URL se disponibile.
 
 REGOLE:
 1. Genera esattamente {num_citations} voci bibliografiche, una per ogni [x]
 2. I numeri devono corrispondere esattamente alle citazioni nel testo
 3. Le voci devono essere in ordine numerico [1], [2], [3], ecc.
-4. Ogni voce deve essere COERENTE con il contesto in cui la citazione appare nel testo
-5. Usa un formato bibliografico standard (APA-style adattato all'italiano)
-6. Includi autori con nomi realistici, anni plausibili (2015-2024), titoli pertinenti
-7. Mescola tipologie: libri, articoli di rivista, report, risorse online
-8. Per articoli scientifici includi nome rivista e volume
-9. Per libri includi editore e città
-10. Per risorse online includi URL plausibile e data di accesso
+4. ⚠️ OGNI fonte DEVE essere REALE — un'opera che ESISTE VERAMENTE:
+   • Libri realmente pubblicati (autore reale, titolo reale, editore reale)
+   • Articoli su riviste scientifiche reali (rivista reale, volume reale)
+   • Report di organizzazioni reali (ISTAT, OMS, OCSE, UE, ecc.)
+   • Risorse online reali (URL che esistono davvero)
+5. ⚠️ NON INVENTARE: Se non sei sicuro che un'opera esista, usa un'opera
+   nota e verificabile nel campo pertinente
+6. Usa un formato bibliografico standard (APA-style adattato all'italiano)
+7. Privilegia opere di autori noti e riconosciuti nel campo
+8. Includi DOI reali dove possibile (es. https://doi.org/10.xxxx/xxxxx)
+9. Per libri includi editore reale e anno reale di pubblicazione
+10. Per risorse online includi URL reali verificabili
+11. Se il testo nel contesto menziona già un autore o un'opera specifica,
+    usa ESATTAMENTE quella fonte (verificando che sia reale)
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT

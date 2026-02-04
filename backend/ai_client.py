@@ -324,9 +324,10 @@ INSERISCI OBBLIGATORIAMENTE:
 ✓ Almeno 1 passaggio dove ripeti un concetto già detto
 
 ANCORAGGI CONCRETI:
-✓ Dettagli specifici anche se inventati: "nel 2019", "in uno studio recente"
+✓ Dettagli specifici: date, percentuali, riferimenti temporali
 ✓ Numeri non tondi: "circa il 23%", "dopo 7-8 settimane"
 ✓ Casi o esempi concreti
+✓ NON inventare riferimenti a studi o autori — le citazioni [x] nel testo sono già corrette
 
 VARIAZIONI:
 ✓ Paragrafi di lunghezze MOLTO diverse
