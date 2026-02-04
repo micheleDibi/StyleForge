@@ -229,9 +229,25 @@ def build_attachments_context(
         text = att['extracted_text']
         filename = att.get('original_filename', 'Allegato')
 
-        # Limita il testo di ogni allegato
+        # Limita il testo di ogni allegato (tronca al confine di frase più vicino)
         if len(text) > chars_per_attachment:
-            text = text[:chars_per_attachment] + "\n[...testo troncato...]"
+            # Cerca l'ultimo punto, esclamativo o interrogativo prima del limite
+            truncated = text[:chars_per_attachment]
+            last_sentence_end = max(
+                truncated.rfind('. '),
+                truncated.rfind('.\n'),
+                truncated.rfind('! '),
+                truncated.rfind('? ')
+            )
+            if last_sentence_end > chars_per_attachment * 0.5:
+                text = truncated[:last_sentence_end + 1] + "\n[...testo troncato...]"
+            else:
+                # Fallback: tronca all'ultimo spazio
+                last_space = truncated.rfind(' ')
+                if last_space > chars_per_attachment * 0.8:
+                    text = truncated[:last_space] + "\n[...testo troncato...]"
+                else:
+                    text = truncated + "\n[...testo troncato...]"
 
         context_part = f"""
 --- ALLEGATO: {filename} ---

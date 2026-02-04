@@ -108,32 +108,39 @@ const ThesisGenerator = () => {
     loadData();
   }, []);
 
-  // Create thesis when moving from step 3 to step 4
-  const createThesisAndGenerateChapters = async () => {
+  // Create thesis before entering step 3 (needed for file uploads)
+  const ensureThesisCreated = async () => {
+    if (thesisId) return thesisId;
+
+    const thesisData = {
+      ...parametersData,
+      ...audienceData
+    };
+
+    const newThesis = await createThesis(thesisData);
+    setThesisId(newThesis.id);
+    setThesis(newThesis);
+    return newThesis.id;
+  };
+
+  // Generate chapters when moving from step 3 to step 4
+  const generateChaptersForThesis = async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // Create thesis
-      const thesisData = {
-        ...parametersData,
-        ...audienceData
-      };
-
-      const newThesis = await createThesis(thesisData);
-      setThesisId(newThesis.id);
-      setThesis(newThesis);
+      const currentThesisId = await ensureThesisCreated();
 
       // Move to step 4 and generate chapters
       setCurrentStep(4);
       setIsGeneratingChapters(true);
 
-      const chaptersResponse = await generateThesisChapters(newThesis.id);
+      const chaptersResponse = await generateThesisChapters(currentThesisId);
       setChapters(chaptersResponse.chapters);
       setIsGeneratingChapters(false);
 
       // Update thesis
-      const updatedThesis = await getThesis(newThesis.id);
+      const updatedThesis = await getThesis(currentThesisId);
       setThesis(updatedThesis);
     } catch (err) {
       console.error('Errore creazione tesi:', err);
@@ -219,9 +226,22 @@ const ThesisGenerator = () => {
   };
 
   // Navigation
-  const handleNext = () => {
-    if (currentStep === 3) {
-      createThesisAndGenerateChapters();
+  const handleNext = async () => {
+    if (currentStep === 2) {
+      // Create thesis before entering step 3 so thesisId is available for uploads
+      setIsLoading(true);
+      setError(null);
+      try {
+        await ensureThesisCreated();
+        setCurrentStep(3);
+      } catch (err) {
+        console.error('Errore creazione tesi:', err);
+        setError(err.response?.data?.detail || 'Errore nella creazione della tesi');
+      } finally {
+        setIsLoading(false);
+      }
+    } else if (currentStep === 3) {
+      generateChaptersForThesis();
     } else if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1);
     }

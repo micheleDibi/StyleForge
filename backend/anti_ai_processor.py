@@ -559,7 +559,7 @@ class AntiAIProcessor:
             'insomma', 'cioè', 'diciamo', 'ecco', 'già',
             'tipo', 'roba', 'faccenda', 'storia', 'giro',
             'mica', 'mica tanto', 'non è che',
-            'magari', 'quindi', 'pertanto', 'vabbè'
+            'magari', 'quindi', 'pertanto', 'comunque'
         ]
 
         # Espressioni di incertezza (obiettivo: 4+ nel testo)
@@ -612,9 +612,9 @@ class AntiAIProcessor:
             'Ma torniamo al punto.',
             'Comunque.',
             'Già.',
-            'E vabbè.',
             'Però ecco.',
-            'Insomma.'
+            'Insomma.',
+            'Detto questo.'
         ]
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -1002,6 +1002,48 @@ class AntiAIProcessor:
     # METODI DI TRASFORMAZIONE - INIEZIONE ELEMENTI UMANI
     # ═══════════════════════════════════════════════════════════════════════
 
+    def _split_preserving_paragraphs(self, testo: str):
+        """
+        Divide il testo in frasi preservando la struttura dei paragrafi.
+        Restituisce una lista di tuple (frase, separatore_dopo) dove il separatore
+        può essere ' ' o '\n\n' per preservare i paragrafi.
+        """
+        paragraphs = re.split(r'(\n\s*\n)', testo)
+        frasi = []
+        separatori = []
+
+        for i, block in enumerate(paragraphs):
+            if re.match(r'^\n\s*\n$', block):
+                if separatori:
+                    separatori[-1] = block
+                continue
+
+            sentence_parts = re.split(r'(?<=[.!?])\s+', block)
+            for j, s in enumerate(sentence_parts):
+                frasi.append(s)
+                if j < len(sentence_parts) - 1:
+                    separatori.append(' ')
+                else:
+                    separatori.append(' ')
+
+            if i < len(paragraphs) - 1 and i + 1 < len(paragraphs) and re.match(r'^\n\s*\n$', paragraphs[i + 1]):
+                if separatori:
+                    separatori[-1] = '\n\n'
+
+        return frasi, separatori
+
+    def _join_preserving_paragraphs(self, frasi, separatori):
+        """
+        Ricompone le frasi preservando i separatori originali (spazi e paragrafi).
+        """
+        if not frasi:
+            return ''
+        risultato = frasi[0]
+        for i in range(1, len(frasi)):
+            sep = separatori[i - 1] if i - 1 < len(separatori) else ' '
+            risultato += sep + frasi[i]
+        return risultato
+
     def inietta_colloquialismi(self, testo: str, obiettivo: int = 6) -> str:
         """
         Inserisce colloquialismi in modo naturale nel testo.
@@ -1012,7 +1054,7 @@ class AntiAIProcessor:
         if da_inserire == 0:
             return testo
 
-        frasi = re.split(r'(?<=[.!?])\s+', testo)
+        frasi, separatori = self._split_preserving_paragraphs(testo)
 
         if len(frasi) <= da_inserire + 2:
             return testo
@@ -1028,10 +1070,11 @@ class AntiAIProcessor:
 
             if len(parole) >= 3:
                 posizione = random.randint(1, min(2, len(parole) - 1))
-                parole.insert(posizione, f', {colloquialismo},')
+                # Inserisci il colloquialismo come parte della frase senza spazi extra
+                parole[posizione] = f', {colloquialismo}, {parole[posizione]}'
                 frasi[idx] = ' '.join(parole)
 
-        return ' '.join(frasi)
+        return self._join_preserving_paragraphs(frasi, separatori)
 
     def inietta_incertezze(self, testo: str, obiettivo: int = 4) -> str:
         """
@@ -1043,7 +1086,7 @@ class AntiAIProcessor:
         if da_inserire == 0:
             return testo
 
-        frasi = re.split(r'(?<=[.!?])\s+', testo)
+        frasi, separatori = self._split_preserving_paragraphs(testo)
 
         if len(frasi) <= da_inserire + 2:
             return testo
@@ -1061,13 +1104,13 @@ class AntiAIProcessor:
             elif frase.strip():
                 frasi[idx] = frase + f' ({incertezza})'
 
-        return ' '.join(frasi)
+        return self._join_preserving_paragraphs(frasi, separatori)
 
     def aggiungi_frasi_e_ma(self, testo: str, obiettivo: int = 6) -> str:
         """
         Assicura che ci siano abbastanza frasi che iniziano con "E" o "Ma".
         """
-        frasi = re.split(r'(?<=[.!?])\s+', testo)
+        frasi, separatori = self._split_preserving_paragraphs(testo)
         conteggio = sum(1 for f in frasi if f.strip().startswith(('E ', 'Ma ', 'Però ')))
 
         da_aggiungere = max(0, obiettivo - conteggio)
@@ -1091,7 +1134,7 @@ class AntiAIProcessor:
             if frase and frase[0].isupper():
                 frasi[idx] = connettivo + ' ' + frase[0].lower() + frase[1:]
 
-        return ' '.join(frasi)
+        return self._join_preserving_paragraphs(frasi, separatori)
 
     def inserisci_imperfezioni(self, testo: str) -> str:
         """
@@ -1101,7 +1144,7 @@ class AntiAIProcessor:
         - Parentesi "buttate lì"
         - Cambi bruschi di argomento
         """
-        frasi = re.split(r'(?<=[.!?])\s+', testo)
+        frasi, separatori = self._split_preserving_paragraphs(testo)
 
         if len(frasi) < 6:
             return testo
@@ -1155,8 +1198,13 @@ class AntiAIProcessor:
             idx = random.randint(3, len(frasi) - 2)
             transizione = random.choice(self.transizioni_brusche)
             frasi.insert(idx, transizione)
+            # Aggiungi separatore corrispondente
+            if idx - 1 < len(separatori):
+                separatori.insert(idx, separatori[idx - 1])
+            else:
+                separatori.append(' ')
 
-        return ' '.join(frasi)
+        return self._join_preserving_paragraphs(frasi, separatori)
 
     def varia_lunghezza_frasi(self, testo: str) -> str:
         """
@@ -1164,19 +1212,20 @@ class AntiAIProcessor:
         - Spezza frasi molto lunghe
         - Aggiunge incisi con trattino alle frasi medie
         """
-        frasi = re.split(r'(?<=[.!?])\s+', testo)
+        frasi, separatori = self._split_preserving_paragraphs(testo)
         nuove_frasi = []
+        nuovi_separatori = []
 
-        for frase in frasi:
+        for i, frase in enumerate(frasi):
             parole = frase.split()
             num_parole = len(parole)
 
             # Frasi molto lunghe (>45 parole): spezza
             if num_parole > 45:
                 punto_rottura = num_parole // 2
-                for i in range(punto_rottura - 5, punto_rottura + 5):
-                    if 0 < i < len(parole) and parole[i] in [',', 'e', 'ma', 'che', 'dove', 'quando']:
-                        punto_rottura = i + 1
+                for j in range(punto_rottura - 5, punto_rottura + 5):
+                    if 0 < j < len(parole) and parole[j] in [',', 'e', 'ma', 'che', 'dove', 'quando']:
+                        punto_rottura = j + 1
                         break
 
                 parte1 = ' '.join(parole[:punto_rottura])
@@ -1189,6 +1238,7 @@ class AntiAIProcessor:
 
                 nuove_frasi.append(parte1)
                 if parte2.strip():
+                    nuovi_separatori.append(' ')
                     nuove_frasi.append(parte2)
 
             # Frasi medie (15-35 parole): occasionalmente aggiungi inciso
@@ -1201,7 +1251,11 @@ class AntiAIProcessor:
             else:
                 nuove_frasi.append(frase)
 
-        return ' '.join(nuove_frasi)
+            # Preserva il separatore originale
+            if i < len(separatori):
+                nuovi_separatori.append(separatori[i])
+
+        return self._join_preserving_paragraphs(nuove_frasi, nuovi_separatori)
 
     def varia_punteggiatura(self, testo: str) -> str:
         """
@@ -1225,14 +1279,14 @@ class AntiAIProcessor:
         )
 
         # Inserisci qualche punto e virgola
-        frasi = re.split(r'(?<=[.!?])\s+', testo)
+        frasi, separatori = self._split_preserving_paragraphs(testo)
         for i in range(len(frasi)):
             if ', e ' in frasi[i] and random.random() < 0.2:
                 frasi[i] = frasi[i].replace(', e ', '; ', 1)
             elif ', ma ' in frasi[i] and random.random() < 0.15:
                 frasi[i] = frasi[i].replace(', ma ', '; ma ', 1)
 
-        return ' '.join(frasi)
+        return self._join_preserving_paragraphs(frasi, separatori)
 
     def varia_titoli(self, testo: str) -> str:
         """
@@ -1340,11 +1394,14 @@ class AntiAIProcessor:
         # ═══════════════════════════════════════════════════════════════
         # FASE 8: NORMALIZZAZIONE FINALE
         # ═══════════════════════════════════════════════════════════════
-        # Rimuovi spazi multipli
-        testo = re.sub(r'\s+', ' ', testo)
+        # Preserva i paragrafi: normalizza solo gli spazi orizzontali, non i newline
+        # Prima preserva i paragrafi (doppio newline)
+        testo = re.sub(r'\n\s*\n', '\n\n', testo)
+        # Rimuovi spazi multipli (solo orizzontali, non newline)
+        testo = re.sub(r'[^\S\n]+', ' ', testo)
         # Rimuovi spazi prima della punteggiatura
         testo = re.sub(r'\s+([.!?,;:])', r'\1', testo)
-        # Assicura spazio dopo punteggiatura
+        # Assicura spazio dopo punteggiatura (ma non dopo punto seguito da newline)
         testo = re.sub(r'([.!?,;:])([A-Za-zÀ-ÿ])', r'\1 \2', testo)
         # Rimuovi virgole doppie
         testo = re.sub(r',\s*,', ',', testo)
