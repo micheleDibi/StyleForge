@@ -40,30 +40,44 @@ const Helper = () => {
   const tips = {
     '/': [
       'Ciao! Sono Calcifer, il tuo assistente personale di StyleForge! 🔥',
-      'Dalla dashboard puoi gestire le tue sessioni e monitorare i job attivi.',
-      'Clicca su "Nuova Sessione" per creare una sessione e iniziare il training.',
-      'Ogni sessione può apprendere uno stile di scrittura unico dal tuo PDF.',
+      'Dalla dashboard puoi gestire sessioni, tesi e monitorare i job attivi.',
+      'Usa i pulsanti rapidi per accedere a Training, Generazione, Umanizzazione o Tesi.',
+      'Ogni sessione addestrata può essere usata per generare contenuti, umanizzare testi o creare tesi.',
       'Prova a chiedermi qualcosa usando la chat! Clicca su "Chatta con me" qui sotto.',
     ],
     '/train': [
-      'Perfetto! Qui puoi addestrare una nuova sessione con il tuo stile.',
-      'Carica un PDF contenente esempi del tuo stile di scrittura.',
-      'Consiglio: più pagine carichi (fino a 50), migliore sarà l\'apprendimento!',
+      'Qui puoi addestrare una nuova sessione con il tuo stile di scrittura.',
+      'Carica un PDF contenente esempi del tuo stile (max 100MB, fino a 500 pagine).',
+      'Consiglio: più pagine carichi, migliore sarà l\'apprendimento dello stile!',
       'Il training può richiedere alcuni minuti. Vedrai il progresso nella dashboard.',
-      'Una volta completato il training, potrai generare contenuti nello stesso stile!',
+      'Una volta completato, potrai generare contenuti, umanizzare testi e creare tesi!',
     ],
     '/generate': [
-      'Pronto a creare contenuti con il tuo stile personale! 🎨',
+      'Pronto a creare contenuti con il tuo stile personale! 🔥',
       'Seleziona una sessione già addestrata dal menu a tendina.',
-      'Specifica l\'argomento e il numero di parole desiderato.',
-      'Puoi anche scegliere il destinatario per adattare il tono.',
+      'Specifica l\'argomento, il numero di parole (100-10.000) e il destinatario.',
       'Il contenuto generato manterrà lo stile che ho imparato dal tuo PDF!',
+      'Puoi copiare il risultato negli appunti o scaricarlo come PDF.',
+    ],
+    '/humanize': [
+      'Qui puoi rendere un testo AI non rilevabile dai detector! 🔥',
+      'Incolla un testo generato da ChatGPT, Claude o altri AI.',
+      'Seleziona una sessione addestrata: il testo verrà riscritto nel tuo stile personale.',
+      'Il risultato supera i controlli di Compilatio, Copyleaks e GPTZero.',
+      'Funziona aumentando la perplessità e la burstiness per simulare la scrittura umana.',
+    ],
+    '/thesis': [
+      'Benvenuto nel generatore di tesi! Un percorso guidato in 7 step. 🔥',
+      'Step 1-2: configura titolo, stile di scrittura, profondità e pubblico.',
+      'Step 3: puoi caricare PDF, DOCX o TXT come materiale di riferimento.',
+      'Step 4-5: l\'AI genera capitoli e sezioni che puoi modificare prima di confermare.',
+      'Step 6-7: il contenuto viene generato e puoi esportare in PDF, TXT o Markdown!',
     ],
     'session': [
       'Benvenuto nella pagina di dettaglio della sessione!',
       'Da qui puoi addestrare la sessione caricando un PDF.',
       'Monitora tutti i job di training e generazione associati.',
-      'Dopo il training, clicca su "Genera Contenuto" per utilizzare questa sessione.',
+      'Dopo il training, puoi generare contenuti, umanizzare testi o creare tesi.',
       'Puoi eliminare la sessione quando non ti serve più.',
     ],
   };
@@ -72,6 +86,9 @@ const Helper = () => {
   const getTips = () => {
     if (location.pathname.startsWith('/sessions/')) {
       return tips['session'];
+    }
+    if (location.pathname.startsWith('/thesis')) {
+      return tips['/thesis'];
     }
     return tips[location.pathname] || tips['/'];
   };
@@ -124,6 +141,8 @@ const Helper = () => {
         pageName: location.pathname === '/' ? 'Dashboard' :
                   location.pathname === '/train' ? 'Training' :
                   location.pathname === '/generate' ? 'Generazione Contenuti' :
+                  location.pathname === '/humanize' ? 'Umanizzazione Testi' :
+                  location.pathname === '/thesis' ? 'Generazione Tesi' :
                   location.pathname.startsWith('/sessions/') ? 'Dettaglio Sessione' : 'Altra Pagina'
       };
 
