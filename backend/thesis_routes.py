@@ -808,6 +808,51 @@ def _humanize_content(content: str, trained_session_client, section_name: str = 
             return content
 
 
+def _ensure_word_count(client, content: str, target_words: int, context_info: str, max_tokens: int) -> str:
+    """
+    Verifica che il contenuto raggiunga il target di parole.
+    Se è sotto il 70%, chiede al modello di continuare ed espandere.
+    Effettua al massimo 2 tentativi di continuazione.
+    """
+    for attempt in range(2):
+        current_words = len(content.split())
+        if current_words >= target_words * 0.70:
+            return content
+
+        missing_words = target_words - current_words
+        logger.info(
+            f"Contenuto troppo corto ({current_words}/{target_words} parole) "
+            f"per {context_info}. Tentativo di espansione {attempt + 1}/2..."
+        )
+
+        continuation_prompt = f"""Il testo seguente dovrebbe avere ALMENO {target_words} parole, ma ne ha solo circa {current_words}.
+
+⚠️ DEVI aggiungere almeno {missing_words} parole NUOVE per raggiungere il target.
+
+REGOLE:
+- Continua il discorso da dove si è interrotto
+- NON ripetere concetti già scritti — approfondisci con nuovi dettagli, esempi, analisi
+- NON scrivere "in conclusione" o "per riassumere" — stai CONTINUANDO, non chiudendo
+- Mantieni lo stesso stile e tono del testo esistente
+- Se il testo contiene citazioni [x], mantienile e puoi aggiungerne di nuove (solo fonti REALI)
+
+TESTO ESISTENTE DA CONTINUARE:
+
+{content[-3000:]}
+
+═══════════════════════════════════════════════════════════════
+SCRIVI la continuazione (almeno {missing_words} parole):"""
+
+        try:
+            continuation = client.generate_text(continuation_prompt, max_tokens=max_tokens)
+            content = content.rstrip() + "\n\n" + continuation.strip()
+        except Exception as e:
+            logger.warning(f"Errore nella continuazione: {e}")
+            break
+
+    return content
+
+
 def generate_content_task(thesis_id: str, user_id: str):
     """Task background per generare il contenuto completo."""
     db = SessionLocal()
@@ -863,6 +908,10 @@ def generate_content_task(thesis_id: str, user_id: str):
         total_sections = sum(len(c.get("sections", [])) for c in chapters) + 3
         completed_sections = 0
 
+        # Calcola max_tokens dinamico per le generazioni
+        words_per_section = thesis_data.get('words_per_section', 5000)
+        dynamic_max_tokens = max(int(words_per_section * 2.5) + 2000, 16000)
+
         # Raccoglie titoli dei capitoli per i prompt di intro/conclusione
         chapters_titles = [
             c.get('chapter_title') or c.get('title', f"Capitolo {i+1}")
@@ -885,6 +934,13 @@ def generate_content_task(thesis_id: str, user_id: str):
                     previous_sections_summary=previous_summary,
                     attachments_context=attachments_context,
                     author_style_context=author_style_context
+                )
+
+                # Verifica word count e richiedi continuazione se troppo corto
+                section_label = f"Cap. {chapter.get('chapter_index', '?')} - {section.get('title', 'Sezione')}"
+                raw_content = _ensure_word_count(
+                    client, raw_content, words_per_section,
+                    section_label, dynamic_max_tokens
                 )
 
                 # Salva contenuto raw per la bibliografia (con citazioni [x] intatte)
@@ -921,7 +977,10 @@ def generate_content_task(thesis_id: str, user_id: str):
             attachments_context=attachments_context,
             author_style_context=author_style_context
         )
-        intro_content = client.generate_text(intro_prompt)
+        intro_content = client.generate_text(intro_prompt, max_tokens=dynamic_max_tokens)
+        intro_content = _ensure_word_count(
+            client, intro_content, words_per_section, "Introduzione", dynamic_max_tokens
+        )
         intro_content = _humanize_content(intro_content, trained_session_client, "Introduzione")
 
         completed_sections += 1
@@ -942,7 +1001,10 @@ def generate_content_task(thesis_id: str, user_id: str):
             chapters_titles=chapters_titles,
             author_style_context=author_style_context
         )
-        conclusion_content = client.generate_text(conclusion_prompt)
+        conclusion_content = client.generate_text(conclusion_prompt, max_tokens=dynamic_max_tokens)
+        conclusion_content = _ensure_word_count(
+            client, conclusion_content, words_per_section, "Conclusione", dynamic_max_tokens
+        )
         conclusion_content = _humanize_content(conclusion_content, trained_session_client, "Conclusione")
 
         completed_sections += 1
