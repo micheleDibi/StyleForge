@@ -592,15 +592,32 @@ async def confirm_chapters(
     """
     Conferma i titoli dei capitoli (eventualmente modificati dall'utente).
     """
-    logger.info(f"Conferma capitoli per tesi {thesis_id}")
-    logger.info(f"Capitoli ricevuti: {len(request.chapters)}")
+    logger.info(f"=== CONFERMA CAPITOLI - INIZIO ===")
+    logger.info(f"Thesis ID: {thesis_id}")
+    logger.info(f"User ID: {current_user.id}")
+    logger.info(f"Numero capitoli ricevuti: {len(request.chapters)}")
+
+    # Log dettaglio di ogni capitolo ricevuto
+    for i, c in enumerate(request.chapters):
+        logger.info(f"  Capitolo {i+1}: title='{c.title}', index={c.index}, "
+                     f"brief_desc='{c.brief_description}', desc='{c.description}', "
+                     f"sections={c.sections is not None}")
+
+    # Log del payload raw
+    try:
+        raw_payload = [c.model_dump() for c in request.chapters]
+        logger.info(f"Payload raw: {json.dumps(raw_payload, ensure_ascii=False, default=str)[:2000]}")
+    except Exception as log_err:
+        logger.warning(f"Impossibile loggare payload raw: {log_err}")
 
     thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
 
     logger.info(f"Stato attuale tesi: {thesis.status}")
+    logger.info(f"chapters_structure attuale: {json.dumps(thesis.chapters_structure, ensure_ascii=False, default=str)[:1000] if thesis.chapters_structure else 'None'}")
 
     # Permetti conferma se lo stato è chapters_pending o se già chapters_confirmed (retry)
     if thesis.status not in ['chapters_pending', 'chapters_confirmed']:
+        logger.error(f"STATO NON AMMESSO: '{thesis.status}' non è in ['chapters_pending', 'chapters_confirmed']")
         raise HTTPException(
             status_code=400,
             detail=f"Impossibile confermare capitoli: stato attuale '{thesis.status}'"
@@ -616,17 +633,21 @@ async def confirm_chapters(
                 chapter_dict['brief_description'] = chapter_dict['description']
             chapters_data.append(chapter_dict)
 
+        logger.info(f"chapters_data da salvare: {json.dumps(chapters_data, ensure_ascii=False, default=str)[:2000]}")
+
         thesis.chapters_structure = {"chapters": chapters_data}
         thesis.status = 'chapters_confirmed'
         thesis.num_chapters = len(request.chapters)
 
         db.commit()
-        logger.info(f"Capitoli confermati con successo per tesi {thesis_id}")
+        logger.info(f"=== CONFERMA CAPITOLI - SUCCESSO === tesi {thesis_id}")
 
         return {"message": "Capitoli confermati con successo", "status": "chapters_confirmed"}
 
     except Exception as e:
-        logger.error(f"Errore conferma capitoli: {str(e)}")
+        logger.error(f"=== CONFERMA CAPITOLI - ERRORE === {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         db.rollback()
         raise HTTPException(
             status_code=500,

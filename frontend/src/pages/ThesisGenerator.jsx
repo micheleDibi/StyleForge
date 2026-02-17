@@ -157,7 +157,14 @@ const ThesisGenerator = () => {
     setError(null);
 
     try {
+      console.log('=== CONFERMA CAPITOLI - DEBUG ===');
+      console.log('thesisId:', thesisId);
+      console.log('chapters da inviare:', JSON.stringify(chapters, null, 2));
+      console.log('numero capitoli:', chapters?.length);
+      console.log('tipo chapters:', typeof chapters, Array.isArray(chapters));
+
       await confirmThesisChapters(thesisId, chapters);
+      console.log('Conferma capitoli OK, genero sezioni...');
 
       // Move to step 5 and generate sections
       setCurrentStep(5);
@@ -171,7 +178,12 @@ const ThesisGenerator = () => {
       const updatedThesis = await getThesis(thesisId);
       setThesis(updatedThesis);
     } catch (err) {
-      console.error('Errore conferma capitoli:', err);
+      console.error('=== CONFERMA CAPITOLI - ERRORE ===');
+      console.error('Errore completo:', err);
+      console.error('Response status:', err.response?.status);
+      console.error('Response data:', JSON.stringify(err.response?.data, null, 2));
+      console.error('Request config:', err.config?.url, err.config?.method);
+      console.error('Request data inviata:', err.config?.data);
       setError(err.response?.data?.detail || 'Errore nella conferma dei capitoli');
       setIsGeneratingSections(false);
     } finally {
