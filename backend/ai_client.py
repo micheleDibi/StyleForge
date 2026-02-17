@@ -30,44 +30,152 @@ class BaseAIClient(ABC):
         """Genera testo dal prompt."""
         pass
 
-    def generate_json(self, prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+    def _clean_json_text(self, text: str) -> str:
+        """Rimuove markdown code blocks e spazi dal testo JSON."""
+        cleaned = text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        if cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        return cleaned.strip()
+
+    def _try_repair_json(self, text: str) -> Optional[Dict[str, Any]]:
         """
-        Genera una risposta JSON dal modello.
+        Tenta di riparare JSON malformato (troncato o con errori di sintassi).
+        Gestisce i casi comuni: JSON troncato, virgole mancanti, bracket non chiusi.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # 1. Prova a estrarre il JSON più esterno
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if json_match:
+            try:
+                return json.loads(json_match.group())
+            except json.JSONDecodeError:
+                pass
+
+        # 2. Prova a chiudere JSON troncato
+        # Trova l'inizio del JSON
+        start = text.find('{')
+        if start == -1:
+            return None
+
+        json_text = text[start:]
+
+        # Conta bracket aperti e chiudi quelli mancanti
+        open_braces = 0
+        open_brackets = 0
+        in_string = False
+        escape_next = False
+        last_valid_pos = 0
+
+        for i, char in enumerate(json_text):
+            if escape_next:
+                escape_next = False
+                continue
+            if char == '\\' and in_string:
+                escape_next = True
+                continue
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+
+            if char == '{':
+                open_braces += 1
+            elif char == '}':
+                open_braces -= 1
+            elif char == '[':
+                open_brackets += 1
+            elif char == ']':
+                open_brackets -= 1
+
+            if open_braces >= 0 and open_brackets >= 0:
+                last_valid_pos = i
+
+        # Tronca alla posizione dell'ultimo valore valido e chiudi
+        json_text = json_text[:last_valid_pos + 1]
+
+        # Rimuovi virgola finale prima di chiudere
+        json_text = re.sub(r',\s*$', '', json_text)
+
+        # Chiudi brackets e braces mancanti
+        # Riconta dopo il troncamento
+        open_braces = json_text.count('{') - json_text.count('}')
+        open_brackets = json_text.count('[') - json_text.count(']')
+
+        json_text += ']' * max(0, open_brackets)
+        json_text += '}' * max(0, open_braces)
+
+        try:
+            result = json.loads(json_text)
+            logger.info("JSON riparato con successo (chiusura bracket mancanti)")
+            return result
+        except json.JSONDecodeError:
+            pass
+
+        # 3. Prova rimuovendo l'ultimo elemento incompleto prima di chiudere
+        # Cerca l'ultima virgola seguita da un oggetto/array incompleto
+        last_comma = json_text.rfind(',')
+        if last_comma > 0:
+            truncated = json_text[:last_comma]
+            open_braces = truncated.count('{') - truncated.count('}')
+            open_brackets = truncated.count('[') - truncated.count(']')
+            truncated += ']' * max(0, open_brackets)
+            truncated += '}' * max(0, open_braces)
+
+            try:
+                result = json.loads(truncated)
+                logger.info("JSON riparato con successo (rimosso ultimo elemento incompleto)")
+                return result
+            except json.JSONDecodeError:
+                pass
+
+        return None
+
+    def generate_json(self, prompt: str, max_tokens: Optional[int] = None, retries: int = 2) -> Dict[str, Any]:
+        """
+        Genera una risposta JSON dal modello con meccanismo di retry e repair.
 
         Args:
             prompt: Il prompt che richiede output JSON
             max_tokens: Numero massimo di token
+            retries: Numero di tentativi in caso di JSON malformato
 
         Returns:
             Dizionario Python parsato dal JSON generato
         """
-        response_text = self.generate_text(prompt, max_tokens)
+        import logging
+        logger = logging.getLogger(__name__)
+        last_error = None
 
-        # Pulisci la risposta (rimuovi markdown code blocks se presenti)
-        cleaned_text = response_text.strip()
-        if cleaned_text.startswith("```json"):
-            cleaned_text = cleaned_text[7:]
-        if cleaned_text.startswith("```"):
-            cleaned_text = cleaned_text[3:]
-        if cleaned_text.endswith("```"):
-            cleaned_text = cleaned_text[:-3]
-        cleaned_text = cleaned_text.strip()
+        for attempt in range(retries + 1):
+            if attempt > 0:
+                logger.warning(f"Tentativo {attempt + 1}/{retries + 1} per generazione JSON")
 
-        try:
-            return json.loads(cleaned_text)
-        except json.JSONDecodeError as e:
-            # Prova a estrarre JSON dalla risposta
-            json_match = re.search(r'\{[\s\S]*\}', response_text)
-            if json_match:
-                try:
-                    return json.loads(json_match.group())
-                except json.JSONDecodeError:
-                    pass
+            response_text = self.generate_text(prompt, max_tokens)
+            cleaned_text = self._clean_json_text(response_text)
 
-            raise ValueError(
-                f"Impossibile parsare la risposta come JSON: {str(e)}\n"
-                f"Risposta ricevuta: {response_text[:500]}..."
-            )
+            # Tentativo 1: parse diretto
+            try:
+                return json.loads(cleaned_text)
+            except json.JSONDecodeError as e:
+                last_error = e
+                logger.warning(f"JSON parse fallito (tentativo {attempt + 1}): {str(e)}")
+
+            # Tentativo 2: repair del JSON
+            repaired = self._try_repair_json(cleaned_text)
+            if repaired is not None:
+                return repaired
+
+        raise ValueError(
+            f"Impossibile parsare la risposta come JSON dopo {retries + 1} tentativi: {str(last_error)}\n"
+            f"Risposta ricevuta: {response_text[:500]}..."
+        )
 
     def generate_chapters(
         self,
@@ -88,7 +196,13 @@ class BaseAIClient(ABC):
         """Genera i titoli delle sezioni per ogni capitolo."""
         from thesis_prompts import build_sections_prompt
         prompt = build_sections_prompt(thesis_data, chapters, attachments_context)
-        return self.generate_json(prompt)
+        # Stima token necessari: più capitoli e sezioni = più token
+        sections_per_chapter = thesis_data.get('sections_per_chapter', 3)
+        num_chapters = len(chapters)
+        # ~200 token per sezione (titolo + key_points) + overhead JSON
+        estimated_tokens = num_chapters * sections_per_chapter * 200 + 1000
+        max_tokens = max(estimated_tokens, MAX_TOKENS)
+        return self.generate_json(prompt, max_tokens=max_tokens)
 
     def generate_section_content(
         self,
