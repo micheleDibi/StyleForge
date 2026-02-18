@@ -240,12 +240,12 @@ class ClaudeClient:
         # Prompt di umanizzazione che sfrutta il contesto dell'addestramento
         humanize_prompt = f"""
 ═══════════════════════════════════════════════════════════════════════════════
-RISCRITTURA ANTI-DETECTION v5 — ELIMINAZIONE PATTERN SPECIFICI
+RISCRITTURA — APPLICA LO STILE APPRESO
 ═══════════════════════════════════════════════════════════════════════════════
 
-Riscrivi questo testo AI mantenendo ALMENO {min_words} parole (target: {min_words}-{max_words} parole).
-Il testo originale contiene {word_count} parole. NON accorciare, NON riassumere, NON sintetizzare.
-Hai interiorizzato lo stile dell'autore. Applicalo.
+Riscrivi il testo seguente applicando lo stile dell'autore che hai appreso durante
+l'addestramento. Il testo originale contiene {word_count} parole. La riscrittura
+DEVE contenere ALMENO {min_words} parole.
 
 ⚠️ CITAZIONI BIBLIOGRAFICHE: MANTIENI INTATTE tutte le citazioni [x] (es. [1], [2], [3]).
 NON rimuoverle, NON spostarle. Se una frase contiene [3], la riscrittura DEVE contenere [3].
@@ -255,397 +255,41 @@ NON rimuoverle, NON spostarle. Se una frase contiene [3], la riscrittura DEVE co
 ---
 
 ═══════════════════════════════════════════════════════════════════════════════
-SEZIONE A: PATTERN AI IDENTIFICATI — VIETATI COMPLETAMENTE
+COME RISCRIVERE
 ═══════════════════════════════════════════════════════════════════════════════
 
-I seguenti pattern sono stati identificati nei testi precedenti e DEVONO
-essere eliminati. Tolleranza ZERO.
-
-─────────────────────────────────────────────────────────────────────────────
-A1. APERTURA "NUMERO/PAROLA. È IL/LA..."
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO:
-  "Quattrocento ispettori. È il numero che..."
-  "Sicurezza. È la parola che..."
-  "2026. È l'anno in cui..."
-
-PERCHÉ: Pattern AI riconoscibile. Troppo "costruito" come incipit.
-
-ALTERNATIVE:
-  - Inizia con una scena o un fatto concreto
-  - Inizia con una voce (qualcuno che parla/racconta)
-  - Inizia in medias res, senza presentazione
-  - Inizia con una domanda NON retorica
-
-ESEMPI CORRETTI:
-  "Il 7 gennaio, mentre la Gazzetta Ufficiale pubblicava l'ennesimo decreto..."
-  "Un ispettore del lavoro in Puglia — uno dei pochi rimasti — raccontava..."
-  "Nelle campagne del foggiano, alle cinque di mattina, i furgoni..."
-
-─────────────────────────────────────────────────────────────────────────────
-A2. DOMANDE RETORICHE + RISPOSTA IMMEDIATA
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO:
-  "Funzionerà? Difficile dirlo."
-  "Dove andranno? Il decreto non lo specifica."
-  "Chi controlla? Nessuno, di fatto."
-  "Cambierà le cose? Cambierà alcune cose."
-
-PERCHÉ: Pattern AI classico. La struttura Q+A breve è un segnale forte.
-
-REGOLA: MAX 1 domanda retorica in TUTTO il testo.
-E se la usi, la risposta deve essere LUNGA (5+ frasi) o ASSENTE.
-
-ALTERNATIVE:
-  - Affermazione dubbiosa: "Se funzionerà è tutto da capire, e non solo per..."
-  - Domanda senza punto interrogativo: "Viene da chiedersi dove andranno"
-  - Domanda lasciata aperta, si passa ad altro
-  - Trasforma in discorso indiretto: "Molti si chiedono se funzionerà"
-
-─────────────────────────────────────────────────────────────────────────────
-A3. CHIUSURE A EFFETTO (PAROLA SINGOLA O FRASE BREVE FINALE)
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO:
-  "Dovrebbero." / "Prova." / "Vedremo." / "Ecco." / "Se." / "È così."
-  "Tocca a tutti." / "Sempre lì si finisce." / "Punto."
-
-PERCHÉ: Troppe chiusure "ad effetto" = pattern AI riconoscibile.
-
-REGOLA: MAX 2 chiusure brevi ad effetto in TUTTO il testo.
-Le altre chiusure devono essere:
-  - Informative (finiscono con un dato, un fatto)
-  - Aperte (il ragionamento continua nel paragrafo dopo)
-  - Sospese (non concludono, lasciano in aria)
-
-ESEMPI DI CHIUSURE NON-AI:
-  "...e i soldi per farlo non si sa da dove arriveranno"
-  "...ma questo lo capiremo solo quando usciranno i dati del prossimo anno"
-  "...che poi è lo stesso problema che avevano segnalato già nel 2019"
-  [nessuna chiusura — il paragrafo dopo inizia collegandosi]
-
-─────────────────────────────────────────────────────────────────────────────
-A4. ANTITESI "SULLA CARTA... NELLA PRATICA"
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO:
-  "Sulla carta è/sembra... Ma nella pratica..."
-  "In teoria funziona. In pratica..."
-  "Tutto giusto sulla carta. Solo che..."
-
-PERCHÉ: Struttura antitetica ripetuta = pattern AI.
-
-REGOLA: Puoi usare questa struttura MAX 1 VOLTA. E in forma variata.
-
-ALTERNATIVE:
-  - "Il decreto dice X — poi bisogna vedere se qualcuno lo fa davvero"
-  - "X è scritto nero su bianco, ma chi lavora nel settore sa che..."
-  - "Tra quello che c'è scritto e quello che succede nelle aziende..."
-  - Elimina l'antitesi e vai diretto alla critica
-
-─────────────────────────────────────────────────────────────────────────────
-A5. LISTE MASCHERATE "C'È... C'È ANCHE... POI C'È..."
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO:
-  "C'è il capitolo su... C'è anche la questione di... Poi c'è..."
-  "Il primo aspetto riguarda... Il secondo tocca... Il terzo..."
-
-PERCHÉ: È una lista numerata mascherata. I detector la riconoscono.
-
-REGOLA: MAI elencare temi in sequenza ordinata.
-
-ALTERNATIVE:
-  - Intreccia i temi invece di separarli
-  - Parti da un tema, fai una digressione, torna
-  - Anticipa qualcosa che approfondirai dopo
-  - Inizia dal tema meno ovvio, non dal più importante
-
-─────────────────────────────────────────────────────────────────────────────
-A6. PARENTESI "META-EDITORIALI"
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO:
-  "(E qui si torna al discorso ispettori. Sempre lì si finisce.)"
-  "(Il che solleva un'altra questione, ma forse è un altro discorso.)"
-  "(E qui si apre un altro discorso, quello sulla burocrazia che...)"
-
-PERCHÉ: Parentesi usate per meta-commenti strutturati = pattern AI.
-
-REGOLA: Le parentesi devono sembrare PENSIERI BUTTATI LÌ, non editoriali.
-
-ESEMPI CORRETTI:
-  "(o almeno così raccontano)"
-  "(ammesso che sia vero)"
-  "(tre, per la precisione)"
-  "(ma chi lo sa)"
-  "(e non è poco)"
-
-─────────────────────────────────────────────────────────────────────────────
-A7. "CHI... SA CHE..." RIPETUTO
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO usare più di 1 VOLTA:
-  "Chi conosce il settore sa che..."
-  "Chi lavora in questo campo sa che..."
-  "Chi si occupa di queste cose sa che..."
-
-ALTERNATIVE (da variare):
-  - "Nel settore lo sanno tutti che..."
-  - "I funzionari te lo dicono subito:"
-  - "Basta parlare con un ispettore per capire che..."
-  - "È risaputo, tra gli addetti ai lavori, che..."
-  - Elimina e afferma direttamente
-
-─────────────────────────────────────────────────────────────────────────────
-A8. "QUESTO NON SIGNIFICA... SIGNIFICA CHE..."
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO:
-  "Questo non significa X. Significa Y."
-  "Non vuol dire X. Vuol dire Y."
-
-PERCHÉ: Struttura di chiarificazione troppo pulita = pattern AI.
-
-ALTERNATIVE:
-  - "Cioè, non è che sia inutile — solo che da solo non basta"
-  - "Inutile no, ma nemmeno risolutivo"
-  - Elimina la negazione e afferma direttamente Y
-
-─────────────────────────────────────────────────────────────────────────────
-A9. SEPARATORI VISIVI
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO: ---, ***, ___, ===, ~~~, o qualsiasi linea di separazione.
-
-ZERO ECCEZIONI. Solo stacchi di paragrafo e titoli.
-
-─────────────────────────────────────────────────────────────────────────────
-A10. STRUTTURE PARALLELE PERFETTE
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO:
-  "I sindacati dicono X. Gli imprenditori dicono Y. Le associazioni dicono Z."
-  "È A, è B, è C, è D."
-  "Serve X, serve Y, serve Z."
-
-PERCHÉ: Parallelismo perfetto = pattern AI.
-
-REGOLA: Se elenchi prospettive o elementi, ROMPI il parallelismo.
-
-ESEMPIO CORRETTO:
-  "I sindacati parlano di passo avanti, anche se insufficiente. 
-   Gli imprenditori — prevedibilmente — si lamentano dei costi. 
-   Le associazioni per i disabili avrebbero voluto di più, e lo dicono."
-
-─────────────────────────────────────────────────────────────────────────────
-A11. "BE'" SEMPRE COME CONNETTIVO DI CONTRASTO
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO usare "be'" sempre nello stesso modo:
-  "be', nella pratica..."
-  "be', il rischio è..."
-  "be', quella è..."
-
-REGOLA: Se usi "be'", varialo:
-  - "be', sì e no"
-  - "be', come dire"
-  - "e be', cosa ti aspettavi"
-  - Oppure sostituisci con: "insomma", "diciamo", "ecco"
-
-─────────────────────────────────────────────────────────────────────────────
-A12. TITOLI UNIFORMI
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO: Tutti i titoli con ## e tutti dichiarativi/descrittivi.
-
-OBBLIGATORIO variare:
-  - 1 titolo con # (più grande)
-  - 1 sezione SENZA titolo (solo stacco)
-  - 1 titolo che è una domanda
-  - 1 titolo lungo (8+ parole, quasi una frase)
-  - 1 titolo secco (1-2 parole)
-  - 1 titolo ironico o colloquiale
-
-─────────────────────────────────────────────────────────────────────────────
-A13. OGNI SEZIONE CHIUDE "BENE"
-─────────────────────────────────────────────────────────────────────────────
-
-VIETATO: Chiudere ogni sezione con riflessione/sintesi/frase ad effetto.
-
-REGOLA: Almeno 2 sezioni devono finire "male":
-  - A metà ragionamento (il paragrafo dopo riprende)
-  - Con un dato/fatto secco, senza commento
-  - Con una frase sospesa che non conclude
-  - Bruscamente, cambiando argomento
-
-─────────────────────────────────────────────────────────────────────────────
-A14. ASSENZA DI IMPERFEZIONI
-─────────────────────────────────────────────────────────────────────────────
-
-Il testo è TROPPO PULITO. Gli umani fanno errori, ripetizioni, frasi che
-"scappano". 
-
-OBBLIGATORIO inserire:
-  - 1 ripetizione di parola a breve distanza (non errore, stile)
-  - 1 frase che parte in un modo e finisce in un altro (anacoluto)
-  - 1 autocorrezione ("anzi", "cioè no", "o meglio")
-  - 1 frase un po' contorta/lunga che si segue a fatica
-  - 1 cambio brusco di argomento senza transizione
-
-═══════════════════════════════════════════════════════════════════════════════
-SEZIONE B: TECNICHE POSITIVE DA APPLICARE
-═══════════════════════════════════════════════════════════════════════════════
-
-▸ STRUTTURA NON LINEARE
-
-  Non seguire: intro → tema 1 → tema 2 → tema 3 → conclusione
-  
-  Invece:
-  - Inizia da un dettaglio, poi allarga
-  - Intreccia i temi (parla di A, digressione su B, torna a A)
-  - Anticipa qualcosa ("ma di questo parliamo dopo")
-  - Torna indietro ("e qui bisogna fare un passo indietro")
-
-▸ ESEMPI CHE ENTRANO NEL FLUSSO
-
-  NON: "Immaginiamo un'azienda..." / "Prendiamo il caso di..."
-  
-  SÌ:
-  - "Un'azienda agricola pugliese con venti stagionali che già fatica..."
-    [entra diretto, senza annuncio]
-  - "Tipo quello che è successo a Brescia l'anno scorso, quando..."
-  - "C'era un caso — non ricordo se in Emilia o in Veneto — di..."
-
-▸ VOCI E PROSPETTIVE (variate nella forma)
-
-  NON: "I sindacati dicono X. Gli imprenditori dicono Y."
-  
-  SÌ:
-  - "Un sindacalista della CGIL, qualche mese fa, raccontava che..."
-  - "Gli imprenditori — quelli onesti, almeno — si lamentano di..."
-  - "Nei centri per l'impiego te lo dicono subito: il problema è..."
-  - "C'è chi sostiene che... ma altri ribattono che..."
-
-▸ COLLOQUIALISMI (distribuiti, non concentrati)
-
-  OBBLIGATORI almeno 6 di questi, sparsi nel testo:
-  - "insomma", "cioè", "diciamo", "ecco", "be'", "già"
-  - "tipo" (come "per esempio")
-  - "roba", "faccenda", "storia", "giro"
-  - "mica", "mica tanto", "non è che"
-  - "magari", "boh", "mah"
-
-▸ INCERTEZZE ESPLICITE
-
-  OBBLIGATORI almeno 4:
-  - "non è chiaro", "non si sa", "difficile capire"
-  - "forse", "probabilmente", "può darsi"
-  - "chi può dirlo", "dipende", "non ho la risposta"
-  - "sembra che", "pare che", "a quanto dicono"
-
-▸ FRASI SPECIFICHE
-
-  OBBLIGATORI:
-  - 8+ frasi SOTTO le 5 parole
-  - 4+ frasi SOPRA le 50 parole
-  - 6+ frasi che iniziano con "E" o "Ma"
-  - 3+ frasi che iniziano con "Ora," / "Poi," / "Già," / "Certo,"
-  - 3+ trattini lunghi — per incisi
-  - 2+ punto e virgola
-  - 1 frase nominale (senza verbo)
-  - 2 frasi sospese/interrotte
-
-▸ PUNTEGGIATURA IRREGOLARE
-
-  - Virgole "di respiro" (dove si farebbe pausa parlando)
-  - Punti che spezzano frasi che potrebbero continuare
-  - Due punti usati in modo non scolastico
-  - Trattini — anche doppi — per incisi lunghi
-
-═══════════════════════════════════════════════════════════════════════════════
-SEZIONE C: LESSICO
-═══════════════════════════════════════════════════════════════════════════════
-
-▸ LISTA NERA (tolleranza zero):
-
-  inoltre, pertanto, conseguentemente, dunque, quindi (a inizio frase)
-  fondamentale, significativo, cruciale, essenziale, rilevante
-  rappresenta, costituisce, evidenzia, sottolinea, emerge, risulta
-  è importante notare, vale la pena, in questo contesto, in tal senso
-  in conclusione, in sintesi, per riassumere, ricapitolando
-  svolta, paradigma, rivoluzione, pietra miliare (per norme)
-  al fine di, allo scopo di, nell'ottica di, in virtù di
-  non da ultimo, non meno importante, da non sottovalutare
-  a tal proposito, a tal fine, a tal riguardo
-  alla luce di, in considerazione di
-
-▸ LISTA BIANCA (usare preferibilmente):
-
-  Connettivi: "insomma", "cioè", "ecco", "già", "poi", "ora"
-  Verbi: "tocca", "serve", "manca", "pesa", "conta", "regge", "tiene"
-  Nomi: "faccenda", "storia", "giro", "roba", "nodo", "punto"
-  Espressioni: "il punto è", "la faccenda sta così", "il nodo è"
-  Negazioni: "mica", "non è che", "neanche", "non proprio"
-
-═══════════════════════════════════════════════════════════════════════════════
-SEZIONE D: CHECKLIST FINALE
-═══════════════════════════════════════════════════════════════════════════════
-
-Prima di restituire il testo, verifica OGNI punto:
-
-PATTERN ELIMINATI:
-□ Zero aperture "X. È il/la..."
-□ Max 1 domanda retorica (con risposta lunga o assente)
-□ Max 2 chiusure brevi ad effetto
-□ Max 1 "sulla carta... nella pratica"
-□ Zero liste mascherate
-□ Parentesi solo "buttate lì", non editoriali
-□ Max 1 "chi... sa che..."
-□ Zero "questo non significa... significa..."
-□ Zero separatori (---, ecc.)
-□ Parallelismi rotti
-□ "Be'" variato o sostituito
-□ Titoli asimmetrici
-□ Almeno 2 sezioni che finiscono "male"
-□ Imperfezioni inserite (anacoluto, autocorrezione, ecc.)
-
-TECNICHE APPLICATE:
-□ Struttura non lineare
-□ Esempi che entrano nel flusso (senza "immaginiamo")
-□ Voci variate nella forma
-□ 6+ colloquialismi
-□ 4+ incertezze esplicite
-□ 8+ frasi sotto 5 parole
-□ 4+ frasi sopra 50 parole
-□ 6+ frasi con E/Ma iniziale
-□ 3+ trattini lunghi
-□ Punteggiatura irregolare
-
-LESSICO:
-□ Zero parole dalla lista nera
-□ Parole dalla lista bianca presenti
-
-LUNGHEZZA:
-□ ALMENO {min_words} parole (target: {min_words}-{max_words})
-
-═══════════════════════════════════════════════════════════════════════════════
-OUTPUT
-═══════════════════════════════════════════════════════════════════════════════
-
-Riscrivi applicando TUTTO quanto sopra.
-Il testo deve sembrare scritto da un giornalista esperto che conosce il tema,
-scrive velocemente per una deadline, non rilegge troppo, lascia imperfezioni,
-cambia idea, divaga, torna sui suoi passi, a volte si perde, a volte ripete.
-
-REQUISITO CRITICO: il testo riscritto DEVE contenere ALMENO {min_words} parole.
-NON tagliare, NON abbreviare, NON sintetizzare. Se il testo originale ha {word_count} parole,
-la riscrittura deve averne almeno lo stesso numero. Se necessario, espandi i concetti.
-
-SOLO il testo riscritto.
-NESSUN commento, NESSUNA introduzione, NESSUNA spiegazione.
+Riscrivi come se fossi lo studente autore di questa tesi che rielabora il materiale
+con le proprie parole. Hai letto e capito il contenuto; ora lo riscrivi nel tuo stile.
+
+VOCABOLARIO:
+- Usa parole semplici e dirette: "usa" non "utilizza", "mostra" non "evidenzia",
+  "aiuta" non "contribuisce a", "serve" non "risulta necessario"
+- Preferisci verbi concreti: "cresce", "cala", "cambia", "funziona", "dipende"
+- NON usare MAI: "fondamentale", "significativo", "cruciale", "rilevante",
+  "sottolineare", "evidenziare", "emergere", "inoltre", "pertanto", "dunque",
+  "tuttavia", "rappresenta", "costituisce", "in questo contesto", "paradigma",
+  "in definitiva", "in ultima analisi", "è importante notare", "vale la pena"
+
+FRASI:
+- Lunghezze MOLTO variabili: corte (8-12 parole), medie (18-25), lunghe (30-40)
+- NON iniziare due paragrafi consecutivi allo stesso modo
+- NON usare strutture simmetriche ("da un lato... dall'altro", "non solo... ma anche")
+- NON usare domande retoriche seguite dalla risposta
+- A volte collega frasi con "e" o "ma" semplici
+
+STRUTTURA:
+- Paragrafi di lunghezze diverse (da 3-4 frasi a 8-10 frasi)
+- NON chiudere paragrafi con frasi a effetto, massime o aforismi
+- Le transizioni tra paragrafi sono a volte esplicite, a volte implicite
+- Il discorso è accademico ma naturale, come lo scriverebbe uno studente preparato
+
+REGOLE:
+- ALMENO {min_words} parole
+- NON abbreviare, NON sintetizzare
+- NON aggiungere interiezioni artificiali ("anzi no", "o meglio", "cioè no")
+- NON inserire frasi incomplete o sospese a caso
+- Scrivi testo accademico naturale, non testo con "errori finti"
+- SOLO il testo riscritto, NESSUN commento o premessa
 """
 
         # Aggiungi il messaggio alla cronologia (usa il contesto dell'addestramento)

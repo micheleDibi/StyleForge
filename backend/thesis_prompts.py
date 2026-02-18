@@ -356,11 +356,31 @@ ISTRUZIONI DI SCRITTURA
    - Quando citi, includi nel testo abbastanza contesto per identificare la fonte
      (es. nome autore, anno, titolo abbreviato) così la bibliografia sarà accurata
 
-7. SCRIVI IN MODO NATURALE:
-   - Evita frasi troppo lunghe o complesse
-   - Usa variazione nella struttura delle frasi
-   - Includi occasionali imperfezioni stilistiche che rendano il testo umano
-   - Non usare strutture troppo "perfette" o ripetitive
+7. SCRIVI COME UNO STUDENTE UNIVERSITARIO:
+   Il testo deve sembrare scritto da uno studente preparato che sta elaborando la propria
+   tesi, NON da un'intelligenza artificiale. Segui queste regole:
+
+   VOCABOLARIO:
+   - Usa parole semplici e dirette: "usa" non "utilizza", "mostra" non "evidenzia",
+     "aiuta" non "contribuisce a", "serve" non "risulta necessario"
+   - Preferisci verbi concreti: "cresce", "cala", "cambia", "funziona", "dipende"
+   - NON usare: "fondamentale", "significativo", "cruciale", "rilevante", "sottolineare",
+     "evidenziare", "emergere", "inoltre", "pertanto", "dunque", "tuttavia",
+     "rappresenta", "costituisce", "in questo contesto", "paradigma"
+
+   FRASI:
+   - Lunghezze MOLTO variabili: alcune corte (8-12 parole), altre medie (18-25),
+     qualcuna lunga con subordinate (30-40 parole)
+   - NON iniziare due paragrafi consecutivi allo stesso modo
+   - NON usare strutture simmetriche ("da un lato... dall'altro")
+   - NON usare triadi ripetute ("X, Y e Z")
+   - A volte collega frasi con "e" o "ma" semplici
+
+   STRUTTURA:
+   - Paragrafi di lunghezze diverse (da 3-4 frasi a 8-10 frasi)
+   - NON chiudere paragrafi con frasi a effetto o massime
+   - NON iniziare frasi con "È importante notare", "Va sottolineato", "Occorre precisare"
+   - NON usare domande retoriche seguite dalla risposta
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT
@@ -528,11 +548,15 @@ L'introduzione deve:
 
 NON inserire citazioni bibliografiche [x] nell'introduzione.
 
-SCRIVI IN MODO NATURALE:
-- Evita frasi troppo lunghe o complesse
-- Usa variazione nella struttura delle frasi
-- Includi occasionali imperfezioni stilistiche che rendano il testo umano
-- Non usare strutture troppo "perfette" o ripetitive
+SCRIVI COME UNO STUDENTE UNIVERSITARIO:
+- Usa parole semplici e dirette, evita vocabolario pomposo
+- NON usare: "fondamentale", "significativo", "cruciale", "rilevante", "evidenziare",
+  "emergere", "inoltre", "pertanto", "dunque", "tuttavia", "rappresenta", "costituisce"
+- Frasi di lunghezze variabili: corte, medie e lunghe mescolate
+- NON usare strutture simmetriche ("da un lato... dall'altro", "non solo... ma anche")
+- NON iniziare due paragrafi allo stesso modo
+- NON chiudere paragrafi con frasi a effetto o massime
+- Paragrafi di lunghezze diverse tra loro
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT
@@ -633,11 +657,15 @@ La conclusione deve:
 NON inserire citazioni bibliografiche [x] nella conclusione.
 NON ripetere verbatim frasi dai capitoli precedenti — rielabora i concetti.
 
-SCRIVI IN MODO NATURALE:
-- Evita frasi troppo lunghe o complesse
-- Usa variazione nella struttura delle frasi
-- Il tono deve essere riflessivo e conclusivo
-- Non usare strutture troppo "perfette" o ripetitive
+SCRIVI COME UNO STUDENTE UNIVERSITARIO:
+- Usa parole semplici e dirette, evita vocabolario pomposo
+- NON usare: "fondamentale", "significativo", "cruciale", "rilevante", "evidenziare",
+  "emergere", "inoltre", "pertanto", "dunque", "tuttavia", "rappresenta", "costituisce"
+- Frasi di lunghezze variabili: corte, medie e lunghe mescolate
+- NON usare strutture simmetriche ("da un lato... dall'altro", "non solo... ma anche")
+- NON iniziare due paragrafi allo stesso modo
+- NON chiudere paragrafi con frasi a effetto o massime
+- Il tono deve essere riflessivo e conclusivo ma naturale
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT

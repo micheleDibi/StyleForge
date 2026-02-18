@@ -354,7 +354,10 @@ def humanize_text_with_claude(text: str) -> str:
     # Calcola il numero approssimativo di parole nel testo originale
     word_count = len(text.split())
 
-    humanize_prompt = f"""Sei un redattore esperto. Devi riscrivere questo testo come un umano vero — con esitazioni, ridondanze, momenti meno brillanti.
+    humanize_prompt = f"""Sei uno studente universitario italiano che sta scrivendo la propria tesi di laurea.
+Devi RISCRIVERE il testo seguente con le TUE parole, come se lo stessi riformulando
+dopo aver letto e capito il materiale. Scrivi come scrivi normalmente quando prepari
+una relazione o un elaborato: con il tuo vocabolario, le tue costruzioni, il tuo ritmo.
 
 ═══════════════════════════════════════════════════════════════
 REQUISITO CRITICO - LUNGHEZZA
@@ -365,105 +368,64 @@ REQUISITO CRITICO - LUNGHEZZA
 - Se necessario, espandi leggermente i concetti per mantenere la lunghezza
 
 ═══════════════════════════════════════════════════════════════
-DIVIETI ASSOLUTI — TOLLERANZA ZERO
-═══════════════════════════════════════════════════════════════
-
-STRUTTURE MAI AMMESSE:
-❌ "Non è X, ma Y" / "Non si tratta di X, ma di Y"
-❌ "Non solo X, ma anche Y" / "Più che X, Y"
-❌ "È qui che..." / "È proprio qui che..." / "È in questo X che Y"
-❌ "Se da un lato... dall'altro..." / "Da una parte... dall'altra..."
-❌ "Quanto più X, tanto più Y"
-❌ "X, certo, ma Y" / "X. E non solo: Y"
-❌ Qualsiasi frase con struttura speculare o bilanciata
-❌ Parallelismi di qualsiasi tipo
-
-PAROLE E FORMULE VIETATE:
-❌ "Naturalmente", "Eppure", "Dunque", "Pertanto", "Inoltre", "Infine", "Infatti" a inizio frase
-❌ "In definitiva", "In ultima analisi", "In questo senso", "In altre parole"
-❌ "Vale la pena", "Non a caso", "Non è un caso", "A ben vedere"
-❌ "Per così dire", "In qualche modo", "In un certo senso"
-❌ "Quest'ultimo/a", "Tale/Tali", "Tutto ciò", "Tutto questo"
-❌ "Appare evidente/chiaro", "È importante sottolineare/notare"
-❌ "È bene ricordare", "Occorre precisare", "Va detto che"
-❌ "Si potrebbe dire", "Potremmo affermare"
-❌ "dinamiche", "meccanismi", "processi" usati genericamente
-❌ "presenta", "emerge", "si manifesta" (troppo clinici)
-
-INIZI PARAGRAFO VIETATI:
-❌ "È" / "Sono" / "Si tratta"
-❌ "Questo" / "Questa" / "Questi" / "Tale" / "Tali"
-❌ "Un aspetto" / "Un punto" / "Un elemento"
-❌ "La questione" / "Il problema" / "Il tema"
-❌ "Sul piano" / "Dal punto di vista"
-❌ "In questo contesto" / "A questo proposito" / "Per quanto riguarda"
-
-PATTERN RETORICI VIETATI:
-❌ Frasi brevi sentenziose a fine paragrafo
-❌ Frasi a effetto, aforismi, massime
-❌ Metafore elaborate o poetiche
-❌ Chiasmi, triadi, anafore
-❌ Domande retoriche seguite dalla risposta
-❌ Chiusure "circolari" che riprendono l'inizio
-❌ Similitudini eleganti ("è come...", "funziona come...")
-❌ Trattini con definizione incorporata ("L'ansia — cioè la sensazione di —")
-
-TERMINI COLLOQUIALI VIETATI:
-❌ "bhe", "beh", "meh", "vabbè", "boh", "mah" — troppo informali per un testo accademico
-❌ Interiezioni da chat o messaggistica
-❌ Forme dialettali o gergali estreme
-
-═══════════════════════════════════════════════════════════════
 CITAZIONI BIBLIOGRAFICHE — PRESERVA OBBLIGATORIAMENTE
 ═══════════════════════════════════════════════════════════════
 
-✓ MANTIENI INTATTE tutte le citazioni bibliografiche nel formato [x] (es. [1], [2], [3])
-✓ NON rimuovere, NON modificare, NON riformulare le citazioni [x]
-✓ Le citazioni devono restare nel testo — se il testo dice "secondo studi recenti [3]",
-  la riscrittura DEVE contenere "[3]" nello stesso punto o posizione equivalente
+✓ MANTIENI INTATTE tutte le citazioni nel formato [x] (es. [1], [2], [3])
+✓ NON rimuovere, NON modificare, NON rinumerare le citazioni [x]
 ✓ Se una frase contiene [x], riscrivi la frase ma MANTIENI [x] al suo interno
 
 ═══════════════════════════════════════════════════════════════
-COSA DEVI FARE ATTIVAMENTE
+COME SCRIVERE — IL TUO STILE NATURALE
 ═══════════════════════════════════════════════════════════════
 
-INSERISCI OBBLIGATORIAMENTE:
-✓ Almeno 4-5 frasi che iniziano con "E" o "Ma"
-✓ Almeno 3 autocorrezioni: "o meglio", "anzi no", "cioè", "diciamo"
-✓ Almeno 2 frasi incomplete o che si interrompono
-✓ Almeno 3 ripetizioni lessicali ravvicinate (stessa parola 2-3 volte)
-✓ Almeno 2 parentesi lunghe che interrompono il flusso
-✓ Almeno 1 momento di incertezza ("forse", "non è chiaro", "probabilmente")
-✓ Almeno 1 frase un po' meno fluida, come se stessi ancora pensando
-✓ Almeno 1 passaggio dove ripeti un concetto già detto
+Immagina di dover riscrivere questo testo per la tua tesi. Non stai copiando,
+stai rielaborando. Ecco come scrivi normalmente:
 
-ANCORAGGI CONCRETI:
-✓ Dettagli specifici: date, percentuali, riferimenti temporali
-✓ Numeri non tondi: "circa il 23%", "dopo 7-8 settimane"
-✓ Casi o esempi concreti
-✓ NON inventare riferimenti a studi o autori — le citazioni [x] nel testo sono già corrette
+VOCABOLARIO:
+- Usa parole semplici e dirette: "usa" invece di "utilizza", "mostra" invece di
+  "evidenzia", "aiuta" invece di "contribuisce a", "serve" invece di "risulta necessario"
+- Preferisci verbi concreti: "cresce", "cala", "cambia", "funziona", "dipende"
+- Evita sostantivi astratti: non "la problematica", ma "il problema"; non "le dinamiche",
+  ma "i cambiamenti" o "come funziona"; non "le criticità", ma "i punti deboli"
+- NON usare mai: "fondamentale", "significativo", "cruciale", "rilevante", "sottolineare",
+  "evidenziare", "emergere", "inoltre", "pertanto", "dunque", "tuttavia", "ciononostante",
+  "rappresenta", "costituisce", "in questo contesto", "in tal senso", "nell'ottica di",
+  "al fine di", "paradigma", "svolta", "non da ultimo"
 
-VARIAZIONI:
-✓ Paragrafi di lunghezze MOLTO diverse
-✓ Inizi paragrafo tutti diversi tra loro
-✓ Almeno 1 cambio di tono (più colloquiale o più tecnico)
+COSTRUZIONE FRASI:
+- Frasi di lunghezza variabile: alcune corte (8-12 parole), altre medie (18-25), qualcuna
+  lunga (30-40 parole con incisi e subordinate)
+- NON iniziare mai due paragrafi consecutivi allo stesso modo
+- NON usare strutture simmetriche ("da un lato... dall'altro", "non solo... ma anche")
+- NON fare liste camuffate ("C'è X. C'è anche Y. Poi c'è Z")
+- A volte una frase lunga è seguita da una molto corta, e viceversa
+- Ogni tanto colleghi due frasi con un semplice "e" o "ma" invece di connettivi formali
 
-═══════════════════════════════════════════════════════════════
-STRUTTURA COMPLESSIVA
-═══════════════════════════════════════════════════════════════
+TONO:
+- Accademico ma non pomposo: scrivi come uno studente preparato, non come un professore
+  che vuole impressionare
+- Ogni tanto aggiungi un commento personale breve ("va detto che", "non è scontato",
+  "il punto è che", "questo è importante perché")
+- Usa "si può dire che", "in pratica", "il fatto è che" come connettivi naturali
+- Non tutti i paragrafi devono concludersi con una frase riassuntiva o una conclusione;
+  a volte il discorso semplicemente prosegue nel paragrafo dopo
 
-Il testo deve sembrare scritto da qualcuno che pensa mentre scrive:
-✓ A volte torna indietro su un punto
-✓ A volte cambia argomento in modo brusco
-✓ A volte un paragrafo non c'entra molto col precedente
-✓ A volte una frase resta un po' appesa
-✓ Transizioni non troppo fluide
+STRUTTURA PARAGRAFI:
+- I paragrafi devono avere lunghezze diverse tra loro (da 3-4 frasi a 8-10 frasi)
+- Non ogni paragrafo ha una "frase topic" chiara all'inizio
+- Le transizioni tra paragrafi sono a volte esplicite, a volte implicite (si cambia
+  argomento senza annunciarlo)
+- NON chiudere mai un paragrafo con una frase a effetto, una massima o un aforisma
 
-I paragrafi umani spesso finiscono:
-✓ A metà di un ragionamento
-✓ Con un dubbio
-✓ Con una frase lunga e faticosa
-✓ Senza chiusura vera
+ERRORI DA EVITARE (SEGNALI AI):
+- NON usare frasi troppo equilibrate o retoricamente costruite
+- NON usare domande retoriche seguite dalla risposta
+- NON usare triadi ("X, Y e Z" ripetute come pattern)
+- NON usare metafore elaborate
+- NON fare chiusure "circolari" che riprendono l'inizio del paragrafo
+- NON iniziare frasi con "È importante notare", "Va sottolineato", "Occorre precisare"
+- NON iniziare paragrafi con "In questo contesto", "Per quanto riguarda", "Sul piano di"
 
 ═══════════════════════════════════════════════════════════════
 TESTO DA RISCRIVERE ({word_count} parole)
@@ -473,14 +435,14 @@ TESTO DA RISCRIVERE ({word_count} parole)
 
 ═══════════════════════════════════════════════════════════════
 
-RICORDA:
+REGOLE FINALI:
 - ALMENO {word_count} parole nella risposta
-- Ogni frase che ti sembra "ben riuscita" è probabilmente un segnale AI. Sporcala.
-- Se suona "scritto bene", è un problema. Deve suonare come qualcuno che pensa.
-- TUTTE le parole devono essere scritte per intero e correttamente — niente troncamenti, lettere mancanti o parole incomplete
-- TUTTE le frasi devono essere grammaticalmente complete — ogni frase deve avere soggetto e verbo e terminare con la punteggiatura corretta
-- NON usare termini troppo informali come "bhe", "meh", "vabbè", "boh", "mah" — il tono deve essere colloquiale ma non da chat
-- Output SOLO il testo riscritto, senza commenti."""
+- Il testo deve sembrare scritto da uno studente universitario, NON da un'intelligenza artificiale
+- Ogni frase deve essere grammaticalmente corretta e completa
+- Mantieni il registro accademico ma con naturalezza
+- NON aggiungere interiezioni, esclamazioni o espressioni troppo colloquiali
+- NON inserire autocorrezioni artificiali ("anzi no", "o meglio") — scrivi e basta
+- Output SOLO il testo riscritto, senza commenti o premesse."""
 
     try:
         client = get_claude_client()

@@ -195,9 +195,9 @@ class AntiAIProcessor:
             'evidenzia': ['mostra', 'fa vedere', 'dice', 'mette in luce'],
             'sottolinea': ['dice', 'fa notare', 'segnala', 'punta su'],
             'emerge': ['viene fuori', 'si vede', 'salta fuori', 'appare'],
-            'in conclusione': ['insomma', 'alla fine', 'ecco', 'e niente'],
-            'in sintesi': ['in breve', 'insomma', 'ecco', 'stringendo'],
-            'per riassumere': ['insomma', 'in breve', 'ecco', 'a farla corta'],
+            'in conclusione': ['per chiudere', 'alla fine', 'in sostanza'],
+            'in sintesi': ['in breve', 'stringendo', 'riassumendo'],
+            'per riassumere': ['in breve', 'stringendo', 'in sostanza'],
             'al fine di': ['per', 'così da', 'in modo da', 'perché'],
             'allo scopo di': ['per', 'così da', 'perché', 'con l\'idea di'],
             "nell'ottica di": ['per', 'pensando a', 'verso', 'guardando a'],
@@ -207,6 +207,9 @@ class AntiAIProcessor:
             'svolta': ['cambiamento', 'novità', 'fatto nuovo'],
             'paradigma': ['modello', 'schema', 'modo di fare'],
             'rivoluzione': ['cambiamento', 'novità grossa'],
+            'punto di svolta': ['momento chiave', 'passaggio importante', 'cambiamento netto'],
+            'game changer': ['novità importante', 'fattore decisivo'],
+            'pietra miliare': ['passo avanti', 'traguardo importante'],
         }
 
         # ═══════════════════════════════════════════════════════════════
@@ -285,11 +288,11 @@ class AntiAIProcessor:
             "è possibile concludere": ["si conclude che", "insomma", "alla fine"],
 
             # Pattern: "per quanto riguarda/concerne"
-            "per quanto riguarda": ["riguardo a", "su", "parlando di"],
-            "per quanto concerne": ["riguardo a", "su", "per"],
-            "relativamente a": ["su", "riguardo a", "per"],
-            "in relazione a": ["riguardo a", "su", "rispetto a"],
-            "con riferimento a": ["riguardo a", "su", "parlando di"],
+            "per quanto riguarda": ["riguardo a", "parlando di", "quanto a"],
+            "per quanto concerne": ["riguardo a", "quanto a", "per"],
+            "relativamente a": ["riguardo a", "quanto a", "per"],
+            "in relazione a": ["riguardo a", "rispetto a", "quanto a"],
+            "con riferimento a": ["riguardo a", "parlando di", "quanto a"],
 
             # Pattern: "a causa di/grazie a/a seguito di"
             "a causa di": ["per", "per via di", "a forza di"],
@@ -370,12 +373,12 @@ class AntiAIProcessor:
             # PATTERN CONCLUSIVI TIPICI AI
             # ─────────────────────────────────────────────────────────────
 
-            "in conclusione": ["insomma", "alla fine", "tirando le somme"],
-            "per concludere": ["insomma", "alla fine", "chiudendo"],
-            "in sintesi": ["insomma", "in breve", "stringendo"],
-            "per riassumere": ["insomma", "in breve", "facendola corta"],
-            "tirando le somme": ["insomma", "alla fine", "in pratica"],
-            "alla luce di quanto detto": ["insomma", "considerando tutto", "visto questo"],
+            "in conclusione": ["insomma", "alla fine", "per chiudere"],
+            "per concludere": ["insomma", "chiudendo", "in breve"],
+            "in sintesi": ["in breve", "stringendo", "riassumendo"],
+            "per riassumere": ["in breve", "stringendo", "in sostanza"],
+            "tirando le somme": ["in sostanza", "nel complesso", "in pratica"],
+            "alla luce di quanto detto": ["considerando tutto", "visto questo", "dopo tutto"],
             "sulla base di quanto esposto": ["visto questo", "considerando tutto", "da qui"],
 
             # ─────────────────────────────────────────────────────────────
@@ -407,11 +410,12 @@ class AntiAIProcessor:
             # VERBI "GONFIATI" IN CONTESTO FRASALE
             # ─────────────────────────────────────────────────────────────
 
-            "si configura come": ["è", "diventa", "funziona da"],
-            "si caratterizza per": ["ha", "si distingue per", "è noto per"],
-            "si distingue per": ["è particolare per", "ha", "è noto per"],
-            "si presenta come": ["appare", "è", "sembra"],
-            "si pone come": ["è", "diventa", "si propone come"],
+            "si configura come": ["è", "funziona come", "agisce come"],
+            "si configurano come": ["sono", "funzionano come", "agiscono come"],
+            "si caratterizza per": ["ha come tratto", "si distingue per", "è noto per"],
+            "si distingue per": ["è particolare per", "ha come tratto", "è noto per"],
+            "si presenta come": ["appare come", "è", "sembra"],
+            "si pone come": ["è", "funziona come", "si propone come"],
             "si colloca": ["sta", "è", "si trova"],
             "si inserisce": ["entra", "fa parte", "sta"],
 
@@ -439,7 +443,7 @@ class AntiAIProcessor:
 
             # Pattern: "rappresenta/costituisce + un/una + elemento/fattore/aspetto + chiave/fondamentale"
             (re.compile(r'\b(rappresenta|costituisce)\s+un[ao]?\s+(elemento|fattore|aspetto|punto)\s+(chiave|fondamentale|cruciale|essenziale)', re.IGNORECASE),
-             ["è", "conta come", "funziona da"]),
+             ["è importante", "è centrale", "ha un peso importante"]),
 
             # Pattern: "emerge/risulta + che/come"
             (re.compile(r'\b(emerge|risulta)\s+(che|come)\b', re.IGNORECASE),
@@ -551,70 +555,35 @@ class AntiAIProcessor:
         ]
 
         # ═══════════════════════════════════════════════════════════════
-        # ELEMENTI UMANI DA INIETTARE
+        # ELEMENTI DI VARIAZIONE NATURALE
         # ═══════════════════════════════════════════════════════════════
 
-        # Colloquialismi (obiettivo: 6+ nel testo)
-        self.colloquialismi = [
-            'insomma', 'cioè', 'diciamo', 'ecco', 'già',
-            'tipo', 'roba', 'faccenda', 'storia', 'giro',
-            'mica', 'mica tanto', 'non è che',
-            'magari', 'quindi', 'pertanto', 'comunque'
-        ]
+        # Connettivi semplici per sostituire quelli formali
+        self.connettivi_semplici = ['e', 'ma', 'però', 'anche', 'poi']
 
-        # Espressioni di incertezza (obiettivo: 4+ nel testo)
-        self.incertezze = [
-            'non è chiaro', 'non si sa', 'difficile capire',
-            'forse', 'probabilmente', 'può darsi',
-            'chi può dirlo', 'dipende', 'chissà',
-            'sembra che', 'pare che', 'a quanto dicono',
-            'non è detto', 'vedremo', 'staremo a vedere'
-        ]
-
-        # Connettivi per frasi che iniziano con E/Ma (obiettivo: 6+)
-        self.connettivi_ema = ['E', 'Ma', 'Però']
-
-        # Autocorrezioni da inserire
-        self.autocorrezioni = [
-            ', anzi,', ', cioè no,', ', o meglio,',
-            ' — no, aspetta —', ', diciamo,', ', o forse,'
-        ]
-
-        # Parentesi "buttate lì" (non editoriali)
-        self.parentesi_umane = [
-            '(o almeno così dicono)',
-            '(ammesso che sia vero)',
-            '(ma chi lo sa)',
-            '(e non è poco)',
-            '(forse)',
-            '(più o meno)',
-            '(si fa per dire)',
-            '(o giù di lì)',
-            '(pare)',
-            '(sembra)'
-        ]
-
-        # Incisi con trattino
+        # Incisi con trattino (brevi e naturali per contesto accademico)
         self.incisi_trattino = [
             '— almeno in parte —',
-            '— per così dire —',
-            '— come spesso accade —',
-            '— ed è questo il punto —',
-            '— a quanto pare —',
-            '— e non è poco —',
-            '— se così si può dire —',
-            '— questo sì —'
+            '— come si è visto —',
+            '— in modo più o meno diretto —',
+            '— e questo è un punto chiave —',
+            '— anche se non sempre —',
+            '— va detto —',
+            '— e non solo —'
         ]
 
-        # Transizioni brusche
-        self.transizioni_brusche = [
-            'Poi c\'è un\'altra cosa.',
-            'Ma torniamo al punto.',
-            'Comunque.',
-            'Già.',
-            'Però ecco.',
-            'Insomma.',
-            'Detto questo.'
+        # Ristrutturazioni di inizio frase per rompere uniformità
+        self.alternative_inizio_frase = [
+            'Il punto è che ',
+            'In pratica, ',
+            'Il fatto è che ',
+            'Va detto che ',
+            'Non è scontato che ',
+            'Si può dire che ',
+            'Come si è visto, ',
+            'Questo aspetto ',
+            'Sul piano pratico, ',
+            'Da questo punto di vista, ',
         ]
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -670,17 +639,18 @@ class AntiAIProcessor:
 
     def conta_elementi_umani(self, testo: str) -> Dict[str, int]:
         """
-        Conta gli elementi "umani" presenti nel testo.
+        Conta gli elementi di variazione presenti nel testo.
         """
         testo_lower = testo.lower()
         frasi = re.split(r'[.!?]+', testo)
 
+        connettivi_semplici = ['e ', 'ma ', 'però ', 'anche ', 'poi ']
+
         return {
-            'colloquialismi': sum(1 for c in self.colloquialismi if c.lower() in testo_lower),
-            'incertezze': sum(1 for i in self.incertezze if i.lower() in testo_lower),
-            'frasi_e_ma': sum(1 for f in frasi if f.strip().startswith(('E ', 'Ma ', 'Però '))),
-            'frasi_corte': sum(1 for f in frasi if 0 < len(f.split()) <= 5),
-            'frasi_lunghe': sum(1 for f in frasi if len(f.split()) > 40),
+            'connettivi_semplici': sum(1 for f in frasi if any(f.strip().lower().startswith(c) for c in connettivi_semplici)),
+            'frasi_corte': sum(1 for f in frasi if 0 < len(f.split()) <= 8),
+            'frasi_medie': sum(1 for f in frasi if 9 <= len(f.split()) <= 25),
+            'frasi_lunghe': sum(1 for f in frasi if len(f.split()) > 25),
             'parentesi': testo.count('('),
             'trattini': testo.count('—') + testo.count(' - '),
             'punto_virgola': testo.count(';')
@@ -768,12 +738,9 @@ class AntiAIProcessor:
 
     def trasforma_parentesi_editoriali(self, testo: str) -> str:
         """
-        Trasforma le parentesi meta-editoriali in parentesi "buttate lì".
+        Rimuove le parentesi meta-editoriali tipiche dell'AI.
         """
-        def sostituisci(match):
-            return random.choice(self.parentesi_umane)
-
-        return self.pattern_parentesi_editoriali.sub(sostituisci, testo)
+        return self.pattern_parentesi_editoriali.sub('', testo)
 
     def riduci_chi_sa_che(self, testo: str) -> str:
         """
@@ -854,16 +821,20 @@ class AntiAIProcessor:
     def sostituisci_lista_nera(self, testo: str) -> str:
         """
         Sostituisce le parole della lista nera con alternative più umane.
+        Ordina per lunghezza decrescente per evitare match parziali.
         """
-        for parola in self.lista_nera:
+        # Ordina per lunghezza decrescente: frasi lunghe prima di parole singole
+        lista_ordinata = sorted(self.lista_nera, key=len, reverse=True)
+        for parola in lista_ordinata:
             if parola.lower() in testo.lower():
                 alternative = self.sostituzioni.get(parola.lower())
                 if alternative:
                     sostituzione = random.choice(alternative)
-                    pattern = re.compile(re.escape(parola), re.IGNORECASE)
+                    # Usa word boundaries per evitare match parziali
+                    pattern = re.compile(r'\b' + re.escape(parola) + r'\b', re.IGNORECASE)
                     testo = pattern.sub(sostituzione, testo, count=1)
                 else:
-                    pattern = re.compile(re.escape(parola) + r',?\s*', re.IGNORECASE)
+                    pattern = re.compile(r'\b' + re.escape(parola) + r'\b,?\s*', re.IGNORECASE)
                     testo = pattern.sub('', testo, count=1)
 
         return testo
@@ -1044,165 +1015,156 @@ class AntiAIProcessor:
             risultato += sep + frasi[i]
         return risultato
 
-    def inietta_colloquialismi(self, testo: str, obiettivo: int = 6) -> str:
+    def diversifica_inizi_frase(self, testo: str) -> str:
         """
-        Inserisce colloquialismi in modo naturale nel testo.
+        Rompe l'uniformità degli inizi di frase e paragrafo.
+        Se due frasi/paragrafi consecutivi iniziano in modo simile, ristruttura uno dei due.
         """
-        conteggio = sum(1 for c in self.colloquialismi if c.lower() in testo.lower())
-        da_inserire = max(0, obiettivo - conteggio)
-
-        if da_inserire == 0:
-            return testo
-
         frasi, separatori = self._split_preserving_paragraphs(testo)
 
-        if len(frasi) <= da_inserire + 2:
+        if len(frasi) < 4:
             return testo
 
-        indici_disponibili = list(range(1, len(frasi) - 1))
-        random.shuffle(indici_disponibili)
-        indici = indici_disponibili[:da_inserire]
+        modifiche = 0
+        max_modifiche = max(3, len(frasi) // 10)
 
-        for idx in indici:
-            colloquialismo = random.choice(self.colloquialismi)
-            frase = frasi[idx]
-            parole = frase.split()
+        for i in range(1, len(frasi)):
+            if modifiche >= max_modifiche:
+                break
 
-            if len(parole) >= 3:
-                posizione = random.randint(1, min(2, len(parole) - 1))
-                # Inserisci il colloquialismo come parte della frase senza spazi extra
-                parole[posizione] = f', {colloquialismo}, {parole[posizione]}'
-                frasi[idx] = ' '.join(parole)
+            frase_corrente = frasi[i].strip()
+            frase_precedente = frasi[i - 1].strip()
+
+            if not frase_corrente or not frase_precedente:
+                continue
+
+            # Rileva inizi simili (stesse prime 2 parole o stessa struttura)
+            parole_corr = frase_corrente.split()
+            parole_prec = frase_precedente.split()
+
+            inizio_simile = False
+            if len(parole_corr) >= 2 and len(parole_prec) >= 2:
+                if parole_corr[0].lower() == parole_prec[0].lower():
+                    inizio_simile = True
+
+            if inizio_simile and len(parole_corr) > 5:
+                # Ristruttura la frase corrente aggiungendo un inizio diverso
+                nuovo_inizio = random.choice(self.alternative_inizio_frase)
+                frasi[i] = nuovo_inizio + parole_corr[0].lower() + ' ' + ' '.join(parole_corr[1:])
+                modifiche += 1
 
         return self._join_preserving_paragraphs(frasi, separatori)
 
-    def inietta_incertezze(self, testo: str, obiettivo: int = 4) -> str:
+    def spezza_frasi_uniformi(self, testo: str) -> str:
         """
-        Inserisce espressioni di incertezza per rendere il testo più umano.
-        """
-        conteggio = sum(1 for i in self.incertezze if i.lower() in testo.lower())
-        da_inserire = max(0, obiettivo - conteggio)
-
-        if da_inserire == 0:
-            return testo
-
-        frasi, separatori = self._split_preserving_paragraphs(testo)
-
-        if len(frasi) <= da_inserire + 2:
-            return testo
-
-        indici_disponibili = list(range(len(frasi)))
-        random.shuffle(indici_disponibili)
-        indici = indici_disponibili[:da_inserire]
-
-        for idx in indici:
-            incertezza = random.choice(self.incertezze)
-            frase = frasi[idx]
-
-            if frase.rstrip().endswith('.'):
-                frasi[idx] = frase.rstrip()[:-1] + f' — {incertezza}.'
-            elif frase.strip():
-                frasi[idx] = frase + f' ({incertezza})'
-
-        return self._join_preserving_paragraphs(frasi, separatori)
-
-    def aggiungi_frasi_e_ma(self, testo: str, obiettivo: int = 6) -> str:
-        """
-        Assicura che ci siano abbastanza frasi che iniziano con "E" o "Ma".
-        """
-        frasi, separatori = self._split_preserving_paragraphs(testo)
-        conteggio = sum(1 for f in frasi if f.strip().startswith(('E ', 'Ma ', 'Però ')))
-
-        da_aggiungere = max(0, obiettivo - conteggio)
-
-        if da_aggiungere == 0 or len(frasi) <= da_aggiungere + 3:
-            return testo
-
-        candidati = [
-            i for i, f in enumerate(frasi)
-            if not f.strip().startswith(('E ', 'Ma ', 'Però ', 'Ora,', 'Poi,', 'Già,'))
-            and len(f.split()) > 5
-            and i > 0
-        ]
-
-        random.shuffle(candidati)
-        indici = candidati[:da_aggiungere]
-
-        for idx in indici:
-            connettivo = random.choice(self.connettivi_ema)
-            frase = frasi[idx].strip()
-            if frase and frase[0].isupper():
-                frasi[idx] = connettivo + ' ' + frase[0].lower() + frase[1:]
-
-        return self._join_preserving_paragraphs(frasi, separatori)
-
-    def inserisci_imperfezioni(self, testo: str) -> str:
-        """
-        Inserisce imperfezioni umane deliberate:
-        - Ripetizioni di parole
-        - Autocorrezioni
-        - Parentesi "buttate lì"
-        - Cambi bruschi di argomento
+        Se le frasi hanno lunghezza troppo uniforme (bassa burstiness),
+        spezza alcune lunghe e unisci alcune corte per creare variazione.
         """
         frasi, separatori = self._split_preserving_paragraphs(testo)
 
         if len(frasi) < 6:
             return testo
 
-        indici_usati = set()
+        lunghezze = [len(f.split()) for f in frasi if f.strip()]
+        if not lunghezze:
+            return testo
 
-        # 1. RIPETIZIONE INTENZIONALE
-        idx = random.randint(2, len(frasi) - 2)
-        indici_usati.add(idx)
-        frase = frasi[idx]
-        parole = frase.split()
+        media = sum(lunghezze) / len(lunghezze)
+        if media == 0:
+            return testo
 
-        if len(parole) > 5:
-            candidati = [
-                (i, p) for i, p in enumerate(parole[1:-1], 1)
-                if len(p) > 4 and p.lower() not in ['della', 'delle', 'degli', 'nella', 'nelle', 'negli', 'questa', 'questo', 'quella', 'quello', 'quando', 'mentre', 'perché', 'quindi']
-            ]
-            if candidati:
-                pos, parola = random.choice(candidati)
-                insert_pos = min(pos + random.randint(2, 3), len(parole))
-                parole.insert(insert_pos, parola)
-                frasi[idx] = ' '.join(parole)
+        # Calcola variazione attuale
+        varianza = sum((l - media) ** 2 for l in lunghezze) / len(lunghezze)
+        cv = math.sqrt(varianza) / media
 
-        # 2. AUTOCORREZIONE
-        idx = random.randint(2, len(frasi) - 2)
-        while idx in indici_usati:
-            idx = random.randint(2, len(frasi) - 2)
-        indici_usati.add(idx)
+        # Se la variazione è già buona (>0.5), non fare nulla
+        if cv > 0.5:
+            return testo
 
-        frase = frasi[idx]
-        parole = frase.split()
-        if len(parole) > 4:
-            pos = random.randint(2, len(parole) - 2)
-            autocorrezione = random.choice(self.autocorrezioni)
-            parole.insert(pos, autocorrezione)
-            frasi[idx] = ' '.join(parole)
+        nuove_frasi = []
+        nuovi_separatori = []
+        i = 0
 
-        # 3. PARENTESI "BUTTATA LÌ"
-        idx = random.randint(1, len(frasi) - 1)
-        while idx in indici_usati:
-            idx = random.randint(1, len(frasi) - 1)
-        indici_usati.add(idx)
+        while i < len(frasi):
+            frase = frasi[i]
+            parole = frase.split()
+            num_parole = len(parole)
 
-        frase = frasi[idx]
-        if '(' not in frase and frase.strip().endswith('.'):
-            parentesi = random.choice(self.parentesi_umane)
-            frasi[idx] = frase.strip()[:-1] + f' {parentesi}.'
+            # Frasi molto lunghe (>35 parole): prova a spezzare
+            if num_parole > 35 and random.random() < 0.5:
+                punto_rottura = num_parole // 2
+                # Cerca un punto naturale di rottura
+                for j in range(punto_rottura - 5, min(punto_rottura + 5, len(parole))):
+                    if 0 < j < len(parole) and parole[j].rstrip(',') in ['e', 'ma', 'che', 'dove', 'quando', 'mentre', 'perché']:
+                        punto_rottura = j
+                        break
 
-        # 4. TRANSIZIONE BRUSCA (con probabilità)
-        if random.random() < 0.4:
-            idx = random.randint(3, len(frasi) - 2)
-            transizione = random.choice(self.transizioni_brusche)
-            frasi.insert(idx, transizione)
-            # Aggiungi separatore corrispondente
-            if idx - 1 < len(separatori):
-                separatori.insert(idx, separatori[idx - 1])
+                parte1 = ' '.join(parole[:punto_rottura])
+                parte2 = ' '.join(parole[punto_rottura:])
+
+                if not parte1.rstrip().endswith(('.', '!', '?')):
+                    parte1 = parte1.rstrip(',') + '.'
+                if parte2 and parte2[0].islower():
+                    parte2 = parte2[0].upper() + parte2[1:]
+
+                nuove_frasi.append(parte1)
+                nuovi_separatori.append(' ')
+                if parte2.strip():
+                    nuove_frasi.append(parte2)
+
+            # Frasi corte consecutive: unisci con "e" o "ma"
+            elif num_parole < 10 and i + 1 < len(frasi) and len(frasi[i + 1].split()) < 10 and random.random() < 0.3:
+                frase2 = frasi[i + 1].strip()
+                if frase.rstrip().endswith('.') and frase2:
+                    # Unisci le due frasi
+                    congiunzione = random.choice(['e ', 'ma ', ', e '])
+                    unita = frase.rstrip()[:-1] + ', ' + congiunzione + frase2[0].lower() + frase2[1:]
+                    nuove_frasi.append(unita)
+                    i += 1  # Salta la frase successiva
+                else:
+                    nuove_frasi.append(frase)
             else:
-                separatori.append(' ')
+                nuove_frasi.append(frase)
+
+            # Preserva separatore
+            if i < len(separatori):
+                nuovi_separatori.append(separatori[i])
+            i += 1
+
+        return self._join_preserving_paragraphs(nuove_frasi, nuovi_separatori)
+
+    def riordina_clausole(self, testo: str) -> str:
+        """
+        Riordina le clausole in alcune frasi complesse per creare variazione sintattica.
+        Es: "Dato che X, si osserva Y" → "Y, dato che X"
+        """
+        frasi, separatori = self._split_preserving_paragraphs(testo)
+
+        modifiche = 0
+        max_modifiche = max(2, len(frasi) // 15)
+
+        for i in range(len(frasi)):
+            if modifiche >= max_modifiche:
+                break
+
+            frase = frasi[i].strip()
+            if not frase or len(frase.split()) < 10:
+                continue
+
+            # Pattern: frase che inizia con subordinata + virgola + principale
+            match = re.match(
+                r'^(Quando|Se|Dato che|Poiché|Sebbene|Anche se|Mentre|Nonostante)\s+([^,]+),\s+(.+)$',
+                frase, re.IGNORECASE
+            )
+            if match and random.random() < 0.4:
+                congiunzione = match.group(1).lower()
+                subordinata = match.group(2)
+                principale = match.group(3)
+                # Inverti: principale + congiunzione + subordinata
+                if principale and principale[0].islower():
+                    principale = principale[0].upper() + principale[1:]
+                frasi[i] = f"{principale.rstrip('.')} {congiunzione} {subordinata}."
+                modifiche += 1
 
         return self._join_preserving_paragraphs(frasi, separatori)
 
@@ -1407,23 +1369,63 @@ class AntiAIProcessor:
         testo = self.rimuovi_hedging_eccessivo(testo)
 
         # ═══════════════════════════════════════════════════════════════
-        # FASE 6: INIEZIONE ELEMENTI UMANI
+        # FASE 6: VARIAZIONE STRUTTURALE NATURALE
         # ═══════════════════════════════════════════════════════════════
-        testo = self.inietta_colloquialismi(testo, obiettivo=6)
-        testo = self.inietta_incertezze(testo, obiettivo=4)
-        testo = self.aggiungi_frasi_e_ma(testo, obiettivo=6)
-        testo = self.inserisci_imperfezioni(testo)
+        testo = self.diversifica_inizi_frase(testo)
+        testo = self.spezza_frasi_uniformi(testo)
+        testo = self.riordina_clausole(testo)
 
         # ═══════════════════════════════════════════════════════════════
-        # FASE 7: VARIAZIONE STRUTTURA
+        # FASE 7: VARIAZIONE PUNTEGGIATURA E TITOLI
         # ═══════════════════════════════════════════════════════════════
-        testo = self.varia_lunghezza_frasi(testo)
         testo = self.varia_punteggiatura(testo)
         testo = self.varia_titoli(testo)
 
         # ═══════════════════════════════════════════════════════════════
         # FASE 8: NORMALIZZAZIONE FINALE
         # ═══════════════════════════════════════════════════════════════
+
+        # Fix grammaticali post-sostituzione
+        # Rimuovi parole duplicate consecutive ("che che", "alla fine alla fine", "di di")
+        testo = re.sub(r'\b(\w+)\s+\1\b', r'\1', testo)
+        # Fix "una cambiamento" → "un cambiamento" (articolo femminile + parola maschile)
+        testo = re.sub(r'\buna\s+(cambiamento|modello|schema|modo|fatto|passo|momento|passaggio|traguardo)\b', r'un \1', testo)
+        # Fix "un novità" → "una novità" (articolo maschile + parola femminile)
+        testo = re.sub(r'\bun\s+(novità)\b', r'una \1', testo)
+        # Fix preposizioni articolate: "di il" → "del", "su il" → "sul", etc.
+        testo = re.sub(r'\bdi il\b', 'del', testo)
+        testo = re.sub(r'\bdi la\b', 'della', testo)
+        testo = re.sub(r'\bdi le\b', 'delle', testo)
+        testo = re.sub(r'\bdi i\b', 'dei', testo)
+        testo = re.sub(r'\bdi gli\b', 'degli', testo)
+        testo = re.sub(r'\bsu il\b', 'sul', testo)
+        testo = re.sub(r'\bsu la\b', 'sulla', testo)
+        testo = re.sub(r'\bsu le\b', 'sulle', testo)
+        testo = re.sub(r'\bsu i\b', 'sui', testo)
+        testo = re.sub(r'\bsu gli\b', 'sugli', testo)
+        testo = re.sub(r'\ba il\b', 'al', testo)
+        testo = re.sub(r'\ba la\b', 'alla', testo)
+        testo = re.sub(r'\ba le\b', 'alle', testo)
+        testo = re.sub(r'\ba i\b', 'ai', testo)
+        testo = re.sub(r'\bda il\b', 'dal', testo)
+        testo = re.sub(r'\bda la\b', 'dalla', testo)
+        testo = re.sub(r'\bin il\b', 'nel', testo)
+        testo = re.sub(r'\bin la\b', 'nella', testo)
+        testo = re.sub(r'\bin le\b', 'nelle', testo)
+        testo = re.sub(r'\bin i\b', 'nei', testo)
+        # Fix case-insensitive versions at start of sentence
+        testo = re.sub(r'\bDi il\b', 'Del', testo)
+        testo = re.sub(r'\bSu il\b', 'Sul', testo)
+        testo = re.sub(r'\bA il\b', 'Al', testo)
+        testo = re.sub(r'\bDa il\b', 'Dal', testo)
+        testo = re.sub(r'\bIn il\b', 'Nel', testo)
+
+        # Capitalizzazione dopo punto fermo (fix per sostituzioni che abbassano la prima lettera)
+        testo = re.sub(r'([.!?]\s+)([a-zà-ÿ])', lambda m: m.group(1) + m.group(2).upper(), testo)
+        # Capitalizzazione a inizio testo
+        if testo and testo[0].islower():
+            testo = testo[0].upper() + testo[1:]
+
         # Preserva i paragrafi: normalizza solo gli spazi orizzontali, non i newline
         # Prima preserva i paragrafi (doppio newline)
         testo = re.sub(r'\n\s*\n', '\n\n', testo)
