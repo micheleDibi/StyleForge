@@ -60,7 +60,7 @@ const ThesisGenerator = () => {
     content_depth_id: null,
     num_chapters: 5,
     sections_per_chapter: 3,
-    words_per_section: 5000,
+    words_per_section: 1000,
     ai_provider: 'openai'
   });
 

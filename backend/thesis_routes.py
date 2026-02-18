@@ -25,7 +25,7 @@ from models import (
     GenerateChaptersResponse, ConfirmChaptersRequest,
     GenerateSectionsResponse, ConfirmSectionsRequest,
     StartContentGenerationResponse, GenerationStatusResponse,
-    ChapterGenerationStatus, LookupDataResponse,
+    ChapterGenerationStatus, SectionGenerationStatus, LookupDataResponse,
     WritingStyleResponse, ContentDepthResponse,
     AudienceKnowledgeLevelResponse, AudienceSizeResponse,
     IndustryResponse, TargetAudienceResponse,
@@ -1268,12 +1268,35 @@ async def get_generation_status(
         else:
             ch_status = 'pending'
 
+        # Costruisci stato per ogni sezione del capitolo
+        sections_status = []
+        for j, sec in enumerate(ch.get("sections", [])):
+            if i < current_chapter:
+                sec_status = 'completed'
+            elif i == current_chapter:
+                if j < current_section:
+                    sec_status = 'completed'
+                elif j == current_section and thesis.status == 'generating':
+                    sec_status = 'in_progress'
+                else:
+                    sec_status = 'pending'
+            else:
+                sec_status = 'pending'
+
+            sections_status.append(SectionGenerationStatus(
+                section_index=j,
+                title=sec.get("title", f"Sezione {j+1}"),
+                status=sec_status,
+                words_count=0  # TODO: calcolare parole reali per sezione
+            ))
+
         chapters_status.append(ChapterGenerationStatus(
             chapter_index=i,
             chapter_title=ch.get("chapter_title", f"Capitolo {i+1}"),
             total_sections=ch_sections,
             completed_sections=ch_completed,
-            status=ch_status
+            status=ch_status,
+            sections=sections_status
         ))
 
     return GenerationStatusResponse(

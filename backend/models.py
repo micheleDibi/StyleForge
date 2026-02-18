@@ -400,6 +400,14 @@ class StartContentGenerationResponse(BaseModel):
     total_sections: int
 
 
+class SectionGenerationStatus(BaseModel):
+    """Stato di generazione di una sezione."""
+    section_index: int
+    title: str
+    status: str  # 'pending', 'in_progress', 'completed'
+    words_count: int = 0
+
+
 class ChapterGenerationStatus(BaseModel):
     """Stato di generazione di un capitolo."""
     chapter_index: int
@@ -407,6 +415,7 @@ class ChapterGenerationStatus(BaseModel):
     total_sections: int
     completed_sections: int
     status: str  # 'pending', 'in_progress', 'completed'
+    sections: List[SectionGenerationStatus] = []
 
 
 class GenerationStatusResponse(BaseModel):

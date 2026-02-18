@@ -246,13 +246,13 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions }) => {
               <input
                 type="number"
                 value={data.words_per_section}
-                onChange={(e) => handleChange('words_per_section', parseInt(e.target.value) || 5000)}
+                onChange={(e) => handleChange('words_per_section', parseInt(e.target.value) || 1000)}
                 className="input w-full"
                 min="500"
                 max="20000"
                 step="500"
               />
-              <p className="text-xs text-slate-500 mt-1">Default: 5000</p>
+              <p className="text-xs text-slate-500 mt-1">Default: 1000</p>
             </div>
           </div>
 
