@@ -48,12 +48,17 @@ class User(Base):
     full_name = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
+    role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
+    credits = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
     # Relazioni
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
+    role = relationship("Role", back_populates="users")
+    user_permissions = relationship("UserPermission", back_populates="user", cascade="all, delete-orphan")
+    credit_transactions = relationship("CreditTransaction", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"
@@ -137,6 +142,116 @@ class RefreshToken(Base):
 
     def __repr__(self):
         return f"<RefreshToken(id={self.id}, user_id={self.user_id}, revoked={self.revoked})>"
+
+
+# ============================================================================
+# ROLES & PERMISSIONS
+# ============================================================================
+
+class Role(Base):
+    """Modello per i ruoli utente."""
+    __tablename__ = "roles"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relazioni
+    users = relationship("User", back_populates="role")
+    permissions = relationship("RolePermission", back_populates="role", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Role(id={self.id}, name={self.name})>"
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "is_default": self.is_default,
+            "permissions": [rp.permission_code for rp in self.permissions] if self.permissions else [],
+            "created_at": self.created_at,
+            "updated_at": self.updated_at
+        }
+
+
+class RolePermission(Base):
+    """Permessi assegnati a ciascun ruolo."""
+    __tablename__ = "role_permissions"
+
+    id = Column(Integer, primary_key=True)
+    role_id = Column(Integer, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False)
+    permission_code = Column(String(50), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relazioni
+    role = relationship("Role", back_populates="permissions")
+
+    # Constraint di unicita
+    __table_args__ = (
+        # UniqueConstraint gestito in SQL
+    )
+
+    def __repr__(self):
+        return f"<RolePermission(role_id={self.role_id}, code={self.permission_code})>"
+
+
+class UserPermission(Base):
+    """Override permessi per singolo utente."""
+    __tablename__ = "user_permissions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    permission_code = Column(String(50), nullable=False)
+    granted = Column(Boolean, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relazioni
+    user = relationship("User", back_populates="user_permissions")
+
+    def __repr__(self):
+        return f"<UserPermission(user_id={self.user_id}, code={self.permission_code}, granted={self.granted})>"
+
+
+# ============================================================================
+# CREDIT TRANSACTIONS
+# ============================================================================
+
+class CreditTransaction(Base):
+    """Storico transazioni crediti."""
+    __tablename__ = "credit_transactions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    amount = Column(Integer, nullable=False)  # positivo=aggiunta, negativo=consumo
+    balance_after = Column(Integer, nullable=False)
+    transaction_type = Column(String(50), nullable=False)  # 'purchase', 'consumption', 'admin_adjustment', 'refund'
+    description = Column(Text, nullable=True)
+    related_job_id = Column(String(50), nullable=True)
+    operation_type = Column(String(50), nullable=True)  # 'train', 'generate', 'humanize', 'thesis_chapters', etc.
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relazioni
+    user = relationship("User", back_populates="credit_transactions")
+
+    def __repr__(self):
+        return f"<CreditTransaction(user_id={self.user_id}, amount={self.amount}, type={self.transaction_type})>"
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "user_id": str(self.user_id),
+            "amount": self.amount,
+            "balance_after": self.balance_after,
+            "transaction_type": self.transaction_type,
+            "description": self.description,
+            "related_job_id": self.related_job_id,
+            "operation_type": self.operation_type,
+            "created_at": self.created_at
+        }
 
 
 # ============================================================================

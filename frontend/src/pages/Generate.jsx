@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Sparkles, Download, Copy, Check } from 'lucide-react';
-import { getSessions, generateContent, pollJobStatus, getResultText } from '../services/api';
+import { getSessions, generateContent, pollJobStatus, getResultText, estimateCredits } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import CreditConfirmDialog from '../components/CreditConfirmDialog';
 import { jsPDF } from 'jspdf';
 
 const Generate = () => {
   const navigate = useNavigate();
+  const { isAdmin, credits, refreshUser } = useAuth();
   const [searchParams] = useSearchParams();
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(searchParams.get('session') || '');
@@ -16,6 +19,11 @@ const Generate = () => {
   const [jobStatus, setJobStatus] = useState(null);
   const [result, setResult] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Credit confirmation state
+  const [showCreditDialog, setShowCreditDialog] = useState(false);
+  const [creditEstimate, setCreditEstimate] = useState(null);
+  const [creditLoading, setCreditLoading] = useState(false);
 
   useEffect(() => {
     loadSessions();
@@ -37,6 +45,24 @@ const Generate = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Stima crediti e mostra dialog di conferma
+    setCreditLoading(true);
+    setShowCreditDialog(true);
+
+    try {
+      const estimate = await estimateCredits('generate', { numero_parole: numeroParole });
+      setCreditEstimate(estimate);
+    } catch (err) {
+      console.error('Errore stima crediti:', err);
+      setCreditEstimate({ credits_needed: 0, breakdown: {}, current_balance: credits, sufficient: true });
+    } finally {
+      setCreditLoading(false);
+    }
+  };
+
+  const handleConfirmedGeneration = async () => {
+    setShowCreditDialog(false);
     setGenerating(true);
 
     try {
@@ -53,9 +79,16 @@ const Generate = () => {
         const text = finalStatus.result;
         setResult(text);
       }
+
+      // Aggiorna saldo crediti
+      refreshUser();
     } catch (error) {
       console.error('Errore nella generazione:', error);
-      alert('Errore nella generazione del contenuto');
+      if (error.response?.status === 402) {
+        alert('Crediti insufficienti per questa operazione.');
+      } else {
+        alert('Errore nella generazione del contenuto');
+      }
     } finally {
       setGenerating(false);
     }
@@ -296,6 +329,18 @@ const Generate = () => {
           </div>
         </div>
       </div>
+
+      {/* Credit Confirmation Dialog */}
+      <CreditConfirmDialog
+        isOpen={showCreditDialog}
+        onConfirm={handleConfirmedGeneration}
+        onCancel={() => setShowCreditDialog(false)}
+        operationName="Genera Contenuto"
+        estimatedCredits={creditEstimate?.credits_needed || 0}
+        breakdown={creditEstimate?.breakdown || {}}
+        currentBalance={isAdmin ? -1 : (creditEstimate?.current_balance ?? credits)}
+        loading={creditLoading}
+      />
     </div>
   );
 };

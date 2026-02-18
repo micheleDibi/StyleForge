@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   login as apiLogin,
   logout as apiLogout,
@@ -96,6 +96,30 @@ export const AuthProvider = ({ children }) => {
 
   const clearError = () => setError(null);
 
+  // ============================================================================
+  // PERMISSIONS & CREDITS HELPERS
+  // ============================================================================
+
+  /**
+   * Verifica se l'utente ha un permesso specifico.
+   * Admin ha sempre tutti i permessi.
+   */
+  const hasPermission = useCallback((permissionCode) => {
+    if (!user) return false;
+    if (user.role === 'admin' || user.is_admin) return true;
+    return user.permissions?.includes(permissionCode) || false;
+  }, [user]);
+
+  /**
+   * Controlla se l'utente e' un amministratore.
+   */
+  const isAdmin = user?.role === 'admin' || user?.is_admin || false;
+
+  /**
+   * Ottieni il saldo crediti. -1 = infiniti (admin).
+   */
+  const credits = user?.credits ?? 0;
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -106,7 +130,11 @@ export const AuthProvider = ({ children }) => {
       register,
       logout,
       refreshUser,
-      clearError
+      clearError,
+      // Nuovi helper per permessi e crediti
+      hasPermission,
+      isAdmin,
+      credits
     }}>
       {children}
     </AuthContext.Provider>

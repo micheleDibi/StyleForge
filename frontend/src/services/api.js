@@ -568,4 +568,89 @@ export const pollJobStatus = async (jobId, onUpdate, interval = 3000, timeout = 
   return poll();
 };
 
+// ============================================================================
+// CREDITS
+// ============================================================================
+
+export const estimateCredits = async (operationType, params = {}) => {
+  const response = await api.post('/credits/estimate', {
+    operation_type: operationType,
+    params
+  });
+  return response.data;
+};
+
+// ============================================================================
+// ADMIN - USERS
+// ============================================================================
+
+export const getAdminUsers = async (search = null, roleId = null, isActive = null) => {
+  const params = {};
+  if (search) params.search = search;
+  if (roleId !== null) params.role_id = roleId;
+  if (isActive !== null) params.is_active = isActive;
+  const response = await api.get('/admin/users', { params });
+  return response.data;
+};
+
+export const getAdminUser = async (userId) => {
+  const response = await api.get(`/admin/users/${userId}`);
+  return response.data;
+};
+
+export const updateAdminUser = async (userId, data) => {
+  const response = await api.put(`/admin/users/${userId}`, data);
+  return response.data;
+};
+
+export const updateUserRole = async (userId, roleId) => {
+  const response = await api.put(`/admin/users/${userId}/role`, { role_id: roleId });
+  return response.data;
+};
+
+export const getUserPermissions = async (userId) => {
+  const response = await api.get(`/admin/users/${userId}/permissions`);
+  return response.data;
+};
+
+export const updateUserPermissions = async (userId, permissions) => {
+  const response = await api.put(`/admin/users/${userId}/permissions`, { permissions });
+  return response.data;
+};
+
+export const adjustUserCredits = async (userId, amount, description) => {
+  const response = await api.post(`/admin/users/${userId}/credits`, { amount, description });
+  return response.data;
+};
+
+export const getUserTransactions = async (userId, limit = 50, offset = 0) => {
+  const response = await api.get(`/admin/users/${userId}/transactions`, {
+    params: { limit, offset }
+  });
+  return response.data;
+};
+
+// ============================================================================
+// ADMIN - ROLES
+// ============================================================================
+
+export const getAdminRoles = async () => {
+  const response = await api.get('/admin/roles');
+  return response.data;
+};
+
+export const updateRolePermissions = async (roleId, permissions) => {
+  const response = await api.put(`/admin/roles/${roleId}/permissions`, { permissions });
+  return response.data;
+};
+
+// ============================================================================
+// ADMIN - STATS
+// ============================================================================
+
+export const getAdminStats = async () => {
+  const response = await api.get('/admin/stats');
+  return response.data;
+};
+
 export default api;

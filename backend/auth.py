@@ -12,10 +12,10 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from database import get_db
-from db_models import User, RefreshToken
+from db_models import User, RefreshToken, Role, RolePermission, UserPermission
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -59,8 +59,12 @@ class UserResponse(BaseModel):
     full_name: Optional[str]
     is_active: bool
     is_admin: bool
+    role: Optional[str] = None
+    credits: int = 0
+    permissions: list = []
     created_at: datetime
-    last_login: Optional[datetime]
+    updated_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -180,18 +184,142 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Use
 
 
 def create_user(db: Session, user_data: UserCreate) -> User:
-    """Crea un nuovo utente."""
+    """Crea un nuovo utente con il ruolo default ('user')."""
     hashed_password = get_password_hash(user_data.password)
+
+    # Trova il ruolo default
+    default_role = db.query(Role).filter(Role.is_default == True).first()
+
     db_user = User(
         email=user_data.email,
         username=user_data.username,
         hashed_password=hashed_password,
-        full_name=user_data.full_name
+        full_name=user_data.full_name,
+        role_id=default_role.id if default_role else None,
+        credits=0
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
+
+
+# ============================================================================
+# PERMISSIONS SYSTEM
+# ============================================================================
+
+def get_effective_permissions(user: User, db: Session) -> list:
+    """
+    Calcola i permessi effettivi di un utente combinando ruolo + override.
+
+    Logica:
+    1. Se admin -> tutti i permessi
+    2. Parti dai permessi del ruolo
+    3. Applica override utente (granted=True aggiunge, granted=False rimuove)
+
+    Returns:
+        Lista di permission_code effettivi (es. ['train', 'thesis', 'generate'])
+    """
+    from credits import PERMISSION_CODES
+
+    # Admin ha tutti i permessi
+    if user.is_admin or (user.role and user.role.name == 'admin'):
+        return PERMISSION_CODES.copy()
+
+    # Permessi del ruolo
+    role_perms = set()
+    if user.role_id:
+        role_permissions = db.query(RolePermission).filter(
+            RolePermission.role_id == user.role_id
+        ).all()
+        role_perms = {rp.permission_code for rp in role_permissions}
+
+    # Override utente
+    user_overrides = db.query(UserPermission).filter(
+        UserPermission.user_id == user.id
+    ).all()
+
+    effective_perms = set(role_perms)
+    for override in user_overrides:
+        if override.granted:
+            effective_perms.add(override.permission_code)
+        else:
+            effective_perms.discard(override.permission_code)
+
+    return sorted(list(effective_perms))
+
+
+def build_user_response(user: User, db: Session) -> UserResponse:
+    """
+    Costruisce la risposta utente completa con ruolo, crediti e permessi.
+    """
+    permissions = get_effective_permissions(user, db)
+    role_name = user.role.name if user.role else None
+
+    return UserResponse(
+        id=str(user.id),
+        email=user.email,
+        username=user.username,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        is_admin=user.is_admin,
+        role=role_name,
+        credits=user.credits if not (user.is_admin or (user.role and user.role.name == 'admin')) else -1,  # -1 = infiniti
+        permissions=permissions,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        last_login=user.last_login
+    )
+
+
+def require_permission(permission_code: str):
+    """
+    FastAPI dependency factory che verifica che l'utente abbia un permesso specifico.
+
+    Uso:
+        @router.post("/generate")
+        async def generate(user: User = Depends(require_permission('generate'))):
+            ...
+    """
+    async def dependency(
+        current_user: User = Depends(get_current_active_user),
+        db: Session = Depends(get_db)
+    ) -> User:
+        # Admin ha sempre accesso
+        if current_user.is_admin or (current_user.role and current_user.role.name == 'admin'):
+            return current_user
+
+        # Controlla override utente (priorita' massima)
+        user_override = db.query(UserPermission).filter(
+            UserPermission.user_id == current_user.id,
+            UserPermission.permission_code == permission_code
+        ).first()
+
+        if user_override is not None:
+            if user_override.granted:
+                return current_user
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Non hai il permesso per questa funzionalita'"
+                )
+
+        # Nessun override -> controlla permessi del ruolo
+        if current_user.role_id:
+            role_perm = db.query(RolePermission).filter(
+                RolePermission.role_id == current_user.role_id,
+                RolePermission.permission_code == permission_code
+            ).first()
+
+            if role_perm:
+                return current_user
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Non hai il permesso per questa funzionalita'"
+        )
+
+    return dependency
 
 
 def update_user(db: Session, user: User, user_data: UserUpdate) -> User:
@@ -285,6 +413,7 @@ async def get_current_user(
 ) -> User:
     """
     Dependency per ottenere l'utente corrente dal token JWT.
+    Carica anche il ruolo (eager loading).
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -301,7 +430,8 @@ async def get_current_user(
     except ValueError:
         raise credentials_exception
 
-    user = get_user_by_id(db, user_id)
+    # Eager load del ruolo per evitare query N+1
+    user = db.query(User).options(joinedload(User.role)).filter(User.id == user_id).first()
     if user is None:
         raise credentials_exception
 

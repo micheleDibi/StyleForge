@@ -18,7 +18,7 @@ from auth import (
     authenticate_user, create_user, update_user, change_password, update_last_login,
     save_refresh_token, get_refresh_token, revoke_refresh_token, revoke_all_user_tokens,
     get_current_user, get_current_active_user,
-    verify_password,
+    verify_password, build_user_response,
     ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
 )
 from db_models import User
@@ -61,19 +61,10 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="La password deve essere di almeno 6 caratteri"
         )
 
-    # Crea l'utente
+    # Crea l'utente (con ruolo default 'user' assegnato automaticamente)
     user = create_user(db, user_data)
 
-    return UserResponse(
-        id=str(user.id),
-        email=user.email,
-        username=user.username,
-        full_name=user.full_name,
-        is_active=user.is_active,
-        is_admin=user.is_admin,
-        created_at=user.created_at,
-        last_login=user.last_login
-    )
+    return build_user_response(user, db)
 
 
 # ============================================================================
@@ -268,20 +259,14 @@ async def logout_all(
 # ============================================================================
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_profile(current_user: User = Depends(get_current_active_user)):
+async def get_current_user_profile(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
     """
-    Restituisce il profilo dell'utente corrente.
+    Restituisce il profilo dell'utente corrente con ruolo, crediti e permessi.
     """
-    return UserResponse(
-        id=str(current_user.id),
-        email=current_user.email,
-        username=current_user.username,
-        full_name=current_user.full_name,
-        is_active=current_user.is_active,
-        is_admin=current_user.is_admin,
-        created_at=current_user.created_at,
-        last_login=current_user.last_login
-    )
+    return build_user_response(current_user, db)
 
 
 @router.put("/me", response_model=UserResponse)
@@ -303,16 +288,7 @@ async def update_current_user_profile(
 
     updated_user = update_user(db, current_user, user_data)
 
-    return UserResponse(
-        id=str(updated_user.id),
-        email=updated_user.email,
-        username=updated_user.username,
-        full_name=updated_user.full_name,
-        is_active=updated_user.is_active,
-        is_admin=updated_user.is_admin,
-        created_at=updated_user.created_at,
-        last_login=updated_user.last_login
-    )
+    return build_user_response(updated_user, db)
 
 
 @router.post("/me/change-password")

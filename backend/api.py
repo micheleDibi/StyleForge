@@ -22,20 +22,24 @@ from models import (
     JobStatusResponse, SessionInfo, SessionListResponse,
     DetectionRequest, DetectionResponse,
     ErrorResponse, HealthResponse,
-    JobStatus, JobType
+    JobStatus, JobType,
+    CreditEstimateRequest, CreditEstimateResponse
 )
 from session_manager import session_manager
 from job_manager import job_manager
 from claude_client import lettura_pdf
 from helper_calcifer import calcifer, get_contextual_tip
-from auth import get_current_user, get_current_active_user
+from auth import get_current_user, get_current_active_user, require_permission
 from auth_routes import router as auth_router
 from thesis_routes import router as thesis_router
+from admin_routes import router as admin_router
 from db_models import User
-from database import init_db
+from database import init_db, get_db
 from ai_exceptions import InsufficientCreditsError
+from credits import estimate_credits, deduct_credits, is_admin_user
 import config
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 # Valida configurazione all'avvio
 config.validate_config()
@@ -63,6 +67,9 @@ app.include_router(auth_router)
 
 # Registra router tesi
 app.include_router(thesis_router)
+
+# Registra router admin
+app.include_router(admin_router)
 
 
 # ============================================================================
@@ -258,7 +265,8 @@ async def train_session(
     session_id: Optional[str] = Form(None),
     max_pages: int = Form(50),
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_permission('train')),
+    db: Session = Depends(get_db)
 ):
     """
     Addestra una sessione caricando un file PDF.
@@ -286,6 +294,16 @@ async def train_session(
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore nel salvataggio del file: {e}")
+
+    # Deduzione crediti
+    credit_estimate = estimate_credits('train', {'max_pages': max_pages})
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate['credits_needed'],
+        operation_type='train',
+        description=f"Addestramento modello ({max_pages} pagine)",
+        db=db
+    )
 
     # Crea o recupera sessione
     user_id = str(current_user.id)
@@ -358,7 +376,8 @@ def generate_content_task(
 async def generate_content(
     request: GenerationRequest,
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_permission('generate')),
+    db: Session = Depends(get_db)
 ):
     """
     Genera contenuto basato su una sessione addestrata.
@@ -388,6 +407,16 @@ async def generate_content(
             status_code=400,
             detail=f"Sessione {request.session_id} non ancora addestrata. Esegui prima il training."
         )
+
+    # Deduzione crediti
+    credit_estimate = estimate_credits('generate', {'numero_parole': request.numero_parole})
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate['credits_needed'],
+        operation_type='generate',
+        description=f"Generazione contenuto ({request.numero_parole} parole, tema: {request.argomento[:50]})",
+        db=db
+    )
 
     # Crea job
     job_id = job_manager.create_job(
@@ -446,7 +475,8 @@ def humanize_content_task(
 async def humanize_content(
     request: HumanizeRequest,
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_permission('humanize')),
+    db: Session = Depends(get_db)
 ):
     """
     Riscrive un testo generato da AI per renderlo non rilevabile dai detector AI.
@@ -483,6 +513,16 @@ async def humanize_content(
             detail=f"Sessione {request.session_id} non ancora addestrata. Esegui prima il training."
         )
 
+    # Deduzione crediti
+    credit_estimate = estimate_credits('humanize', {'text_length': len(request.testo)})
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate['credits_needed'],
+        operation_type='humanize',
+        description=f"Umanizzazione testo ({len(request.testo)} caratteri)",
+        db=db
+    )
+
     # Crea job
     job_id = job_manager.create_job(
         session_id=request.session_id,
@@ -504,6 +544,32 @@ async def humanize_content(
         status='pending',
         message=f"Umanizzazione avviata. Monitora lo stato con GET /jobs/{job_id}",
         created_at=datetime.now()
+    )
+
+
+# ============================================================================
+# CREDITS ENDPOINTS
+# ============================================================================
+
+@app.post("/credits/estimate", response_model=CreditEstimateResponse, tags=["Credits"])
+async def estimate_operation_credits(
+    request: CreditEstimateRequest,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Stima i crediti necessari per un'operazione PRIMA di eseguirla.
+    L'utente deve confermare prima di procedere.
+    """
+    result = estimate_credits(request.operation_type, request.params)
+
+    is_admin = is_admin_user(current_user)
+    current_balance = -1 if is_admin else current_user.credits  # -1 = infiniti
+
+    return CreditEstimateResponse(
+        credits_needed=result['credits_needed'],
+        breakdown=result['breakdown'],
+        current_balance=current_balance,
+        sufficient=is_admin or current_user.credits >= result['credits_needed']
     )
 
 

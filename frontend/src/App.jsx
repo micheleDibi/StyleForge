@@ -8,6 +8,7 @@ import Generate from './pages/Generate';
 import Humanize from './pages/Humanize';
 import SessionDetail from './pages/SessionDetail';
 import ThesisGenerator from './pages/ThesisGenerator';
+import Admin from './pages/Admin';
 import Helper from './components/Helper';
 import Footer from './components/Footer';
 
@@ -47,6 +48,44 @@ const PublicRoute = ({ children }) => {
   return isAuthenticated ? <Navigate to="/" replace /> : children;
 };
 
+const PermissionRoute = ({ children, permission }) => {
+  const { isAuthenticated, isLoading, hasPermission } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="loading-dots text-blue-600">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return hasPermission(permission) ? children : <Navigate to="/" replace />;
+};
+
+const AdminRoute = ({ children }) => {
+  const { isAuthenticated, isLoading, isAdmin } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="loading-dots text-blue-600">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return isAdmin ? children : <Navigate to="/" replace />;
+};
+
 // Helper visibile solo per utenti autenticati
 const AuthenticatedHelper = () => {
   const { isAuthenticated } = useAuth();
@@ -83,25 +122,25 @@ const AppRoutes = () => {
       <Route
         path="/train"
         element={
-          <ProtectedRoute>
+          <PermissionRoute permission="train">
             <Train />
-          </ProtectedRoute>
+          </PermissionRoute>
         }
       />
       <Route
         path="/generate"
         element={
-          <ProtectedRoute>
+          <PermissionRoute permission="generate">
             <Generate />
-          </ProtectedRoute>
+          </PermissionRoute>
         }
       />
       <Route
         path="/humanize"
         element={
-          <ProtectedRoute>
+          <PermissionRoute permission="humanize">
             <Humanize />
-          </ProtectedRoute>
+          </PermissionRoute>
         }
       />
       <Route
@@ -115,9 +154,17 @@ const AppRoutes = () => {
       <Route
         path="/thesis"
         element={
-          <ProtectedRoute>
+          <PermissionRoute permission="thesis">
             <ThesisGenerator />
-          </ProtectedRoute>
+          </PermissionRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <AdminRoute>
+            <Admin />
+          </AdminRoute>
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />

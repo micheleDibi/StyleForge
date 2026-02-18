@@ -430,3 +430,151 @@ class GenerationStatusResponse(BaseModel):
     completed_sections: int
     chapters: List[ChapterGenerationStatus]
     estimated_time_remaining: Optional[int] = None  # secondi
+
+
+# ============================================================================
+# CREDITS & PERMISSIONS MODELS
+# ============================================================================
+
+class CreditEstimateRequest(BaseModel):
+    """Request per stimare i crediti di un'operazione."""
+    operation_type: str = Field(..., description="Tipo operazione: train, generate, humanize, thesis_chapters, thesis_sections, thesis_content")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Parametri dell'operazione")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "operation_type": "generate",
+                "params": {"numero_parole": 2000}
+            }
+        }
+
+
+class CreditEstimateResponse(BaseModel):
+    """Response con stima crediti."""
+    credits_needed: int
+    breakdown: Dict[str, Any]
+    current_balance: int
+    sufficient: bool
+
+
+class CreditTransactionResponse(BaseModel):
+    """Response per una singola transazione crediti."""
+    id: str
+    user_id: str
+    amount: int
+    balance_after: int
+    transaction_type: str
+    description: Optional[str] = None
+    related_job_id: Optional[str] = None
+    operation_type: Optional[str] = None
+    created_at: datetime
+
+
+class CreditTransactionListResponse(BaseModel):
+    """Lista transazioni crediti."""
+    transactions: List[CreditTransactionResponse]
+    total: int
+
+
+# ============================================================================
+# ADMIN MODELS
+# ============================================================================
+
+class AdminUserResponse(BaseModel):
+    """Response utente dettagliata per admin panel."""
+    id: str
+    email: str
+    username: str
+    full_name: Optional[str] = None
+    is_active: bool
+    is_admin: bool
+    role_id: Optional[int] = None
+    role_name: Optional[str] = None
+    credits: int
+    permissions: List[str] = []
+    user_overrides: Dict[str, bool] = {}  # {permission_code: granted}
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
+
+
+class AdminUserListResponse(BaseModel):
+    """Lista utenti per admin."""
+    users: List[AdminUserResponse]
+    total: int
+
+
+class AdminUpdateUserRequest(BaseModel):
+    """Request per aggiornare un utente (admin)."""
+    is_active: Optional[bool] = None
+    full_name: Optional[str] = None
+
+
+class AdminChangeRoleRequest(BaseModel):
+    """Request per cambiare il ruolo di un utente."""
+    role_id: int
+
+
+class AdminSetPermissionsRequest(BaseModel):
+    """Request per impostare override permessi per un utente."""
+    permissions: Dict[str, Optional[bool]] = Field(
+        ...,
+        description="Dict {permission_code: granted}. null = rimuovi override (eredita dal ruolo)"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "permissions": {
+                    "train": True,
+                    "generate": True,
+                    "humanize": None,
+                    "thesis": True
+                }
+            }
+        }
+
+
+class AdminAdjustCreditsRequest(BaseModel):
+    """Request per aggiungere/rimuovere crediti."""
+    amount: int = Field(..., description="Crediti da aggiungere (positivo) o rimuovere (negativo)")
+    description: str = Field(..., min_length=1, description="Motivazione")
+
+
+class RoleResponse(BaseModel):
+    """Response per un ruolo."""
+    id: int
+    name: str
+    description: Optional[str] = None
+    is_default: bool
+    permissions: List[str] = []
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class RoleListResponse(BaseModel):
+    """Lista ruoli."""
+    roles: List[RoleResponse]
+
+
+class AdminUpdateRolePermissionsRequest(BaseModel):
+    """Request per aggiornare i permessi di un ruolo."""
+    permissions: List[str] = Field(..., description="Lista codici permesso da assegnare")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "permissions": ["train", "thesis"]
+            }
+        }
+
+
+class AdminStatsResponse(BaseModel):
+    """Statistiche per admin dashboard."""
+    total_users: int
+    active_users: int
+    total_credits_distributed: int
+    total_credits_consumed: int
+    operations_today: int
+    operations_this_week: int

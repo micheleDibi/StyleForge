@@ -1,16 +1,23 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, ArrowLeft, FileText, CheckCircle, AlertCircle } from 'lucide-react';
-import { trainSession } from '../services/api';
-import { pollJobStatus } from '../services/api';
+import { trainSession, pollJobStatus, estimateCredits } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import CreditConfirmDialog from '../components/CreditConfirmDialog';
 
 const Train = () => {
   const navigate = useNavigate();
+  const { user, isAdmin, credits, refreshUser } = useAuth();
   const [file, setFile] = useState(null);
   const [maxPages, setMaxPages] = useState(50);
   const [uploading, setUploading] = useState(false);
   const [jobStatus, setJobStatus] = useState(null);
   const [error, setError] = useState('');
+
+  // Credit confirmation state
+  const [showCreditDialog, setShowCreditDialog] = useState(false);
+  const [creditEstimate, setCreditEstimate] = useState(null);
+  const [creditLoading, setCreditLoading] = useState(false);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -32,6 +39,25 @@ const Train = () => {
     e.preventDefault();
     if (!file) return;
 
+    // Stima crediti e mostra dialog di conferma
+    setCreditLoading(true);
+    setShowCreditDialog(true);
+    setError('');
+
+    try {
+      const estimate = await estimateCredits('train', { max_pages: maxPages });
+      setCreditEstimate(estimate);
+    } catch (err) {
+      console.error('Errore stima crediti:', err);
+      // Se la stima fallisce, procedi comunque
+      setCreditEstimate({ credits_needed: 0, breakdown: {}, current_balance: credits, sufficient: true });
+    } finally {
+      setCreditLoading(false);
+    }
+  };
+
+  const handleConfirmedTraining = async () => {
+    setShowCreditDialog(false);
     setUploading(true);
     setError('');
 
@@ -47,8 +73,14 @@ const Train = () => {
         3000
       );
 
+      // Aggiorna saldo crediti utente
+      refreshUser();
     } catch (err) {
-      setError(err.message || 'Errore durante il training');
+      if (err.response?.status === 402) {
+        setError('Crediti insufficienti per questa operazione.');
+      } else {
+        setError(err.message || 'Errore durante il training');
+      }
       setUploading(false);
     }
   };
@@ -226,6 +258,18 @@ const Train = () => {
           </div>
         )}
       </div>
+
+      {/* Credit Confirmation Dialog */}
+      <CreditConfirmDialog
+        isOpen={showCreditDialog}
+        onConfirm={handleConfirmedTraining}
+        onCancel={() => setShowCreditDialog(false)}
+        operationName="Addestramento Modello"
+        estimatedCredits={creditEstimate?.credits_needed || 0}
+        breakdown={creditEstimate?.breakdown || {}}
+        currentBalance={isAdmin ? -1 : (creditEstimate?.current_balance ?? credits)}
+        loading={creditLoading}
+      />
     </div>
   );
 };

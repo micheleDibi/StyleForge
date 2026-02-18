@@ -23,8 +23,13 @@ import {
   confirmThesisSections,
   startThesisContentGeneration,
   pollThesisGenerationStatus,
-  getSessions
+  getSessions,
+  estimateCredits
 } from '../services/api';
+
+// Auth & Credits
+import { useAuth } from '../context/AuthContext';
+import CreditConfirmDialog from '../components/CreditConfirmDialog';
 
 const STEPS = [
   { id: 1, label: 'Parametri' },
@@ -38,6 +43,7 @@ const STEPS = [
 
 const ThesisGenerator = () => {
   const navigate = useNavigate();
+  const { isAdmin, credits, refreshUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -85,6 +91,13 @@ const ThesisGenerator = () => {
   // Generation states
   const [isGeneratingChapters, setIsGeneratingChapters] = useState(false);
   const [isGeneratingSections, setIsGeneratingSections] = useState(false);
+
+  // Credit confirmation state
+  const [showCreditDialog, setShowCreditDialog] = useState(false);
+  const [creditEstimate, setCreditEstimate] = useState(null);
+  const [creditLoading, setCreditLoading] = useState(false);
+  const [creditOperationName, setCreditOperationName] = useState('');
+  const [pendingCreditAction, setPendingCreditAction] = useState(null);
 
   // Helper: extract error message with credit error detection
   const handleApiError = (err, fallbackMessage) => {
@@ -136,109 +149,154 @@ const ThesisGenerator = () => {
     return newThesis.id;
   };
 
-  // Generate chapters when moving from step 3 to step 4
-  const generateChaptersForThesis = async () => {
-    setIsLoading(true);
-    setError(null);
-    setIsCreditError(false);
+  // Helper: mostra dialog crediti e poi esegui azione
+  const showCreditConfirmation = async (operationType, params, operationLabel, action) => {
+    setCreditLoading(true);
+    setCreditOperationName(operationLabel);
+    setPendingCreditAction(() => action);
+    setShowCreditDialog(true);
 
     try {
-      const currentThesisId = await ensureThesisCreated();
-
-      // Move to step 4 and generate chapters
-      setCurrentStep(4);
-      setIsGeneratingChapters(true);
-
-      const chaptersResponse = await generateThesisChapters(currentThesisId);
-      setChapters(chaptersResponse.chapters);
-      setIsGeneratingChapters(false);
-
-      // Update thesis
-      const updatedThesis = await getThesis(currentThesisId);
-      setThesis(updatedThesis);
+      const estimate = await estimateCredits(operationType, params);
+      setCreditEstimate(estimate);
     } catch (err) {
-      console.error('Errore creazione tesi:', err);
-      handleApiError(err, 'Errore nella creazione della tesi');
-      setIsGeneratingChapters(false);
+      console.error('Errore stima crediti:', err);
+      setCreditEstimate({ credits_needed: 0, breakdown: {}, current_balance: credits, sufficient: true });
     } finally {
-      setIsLoading(false);
+      setCreditLoading(false);
     }
+  };
+
+  const handleCreditConfirmed = async () => {
+    setShowCreditDialog(false);
+    if (pendingCreditAction) {
+      await pendingCreditAction();
+      refreshUser();
+    }
+    setPendingCreditAction(null);
+  };
+
+  // Generate chapters when moving from step 3 to step 4
+  const generateChaptersForThesis = async () => {
+    // Prima: stima crediti
+    await showCreditConfirmation(
+      'thesis_chapters',
+      {},
+      'Genera Struttura Capitoli',
+      async () => {
+        setIsLoading(true);
+        setError(null);
+        setIsCreditError(false);
+
+        try {
+          const currentThesisId = await ensureThesisCreated();
+
+          // Move to step 4 and generate chapters
+          setCurrentStep(4);
+          setIsGeneratingChapters(true);
+
+          const chaptersResponse = await generateThesisChapters(currentThesisId);
+          setChapters(chaptersResponse.chapters);
+          setIsGeneratingChapters(false);
+
+          // Update thesis
+          const updatedThesis = await getThesis(currentThesisId);
+          setThesis(updatedThesis);
+        } catch (err) {
+          console.error('Errore creazione tesi:', err);
+          handleApiError(err, 'Errore nella creazione della tesi');
+          setIsGeneratingChapters(false);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    );
   };
 
   // Confirm chapters and generate sections
   const confirmChaptersAndGenerateSections = async () => {
-    setIsLoading(true);
-    setError(null);
-    setIsCreditError(false);
+    // Prima: stima crediti per generazione sezioni
+    await showCreditConfirmation(
+      'thesis_sections',
+      {},
+      'Genera Struttura Sezioni',
+      async () => {
+        setIsLoading(true);
+        setError(null);
+        setIsCreditError(false);
 
-    try {
-      console.log('=== CONFERMA CAPITOLI - DEBUG ===');
-      console.log('thesisId:', thesisId);
-      console.log('chapters da inviare:', JSON.stringify(chapters, null, 2));
-      console.log('numero capitoli:', chapters?.length);
-      console.log('tipo chapters:', typeof chapters, Array.isArray(chapters));
+        try {
+          await confirmThesisChapters(thesisId, chapters);
 
-      await confirmThesisChapters(thesisId, chapters);
-      console.log('Conferma capitoli OK, genero sezioni...');
+          // Move to step 5 and generate sections
+          setCurrentStep(5);
+          setIsGeneratingSections(true);
 
-      // Move to step 5 and generate sections
-      setCurrentStep(5);
-      setIsGeneratingSections(true);
+          const sectionsResponse = await generateThesisSections(thesisId);
+          setSectionsData(sectionsResponse.chapters);
+          setIsGeneratingSections(false);
 
-      const sectionsResponse = await generateThesisSections(thesisId);
-      setSectionsData(sectionsResponse.chapters);
-      setIsGeneratingSections(false);
-
-      // Update thesis
-      const updatedThesis = await getThesis(thesisId);
-      setThesis(updatedThesis);
-    } catch (err) {
-      console.error('=== CONFERMA CAPITOLI - ERRORE ===');
-      console.error('Errore completo:', err);
-      console.error('Response status:', err.response?.status);
-      console.error('Response data:', JSON.stringify(err.response?.data, null, 2));
-      console.error('Request config:', err.config?.url, err.config?.method);
-      console.error('Request data inviata:', err.config?.data);
-      handleApiError(err, 'Errore nella conferma dei capitoli');
-      setIsGeneratingSections(false);
-    } finally {
-      setIsLoading(false);
-    }
+          // Update thesis
+          const updatedThesis = await getThesis(thesisId);
+          setThesis(updatedThesis);
+        } catch (err) {
+          console.error('Errore conferma capitoli/generazione sezioni:', err);
+          handleApiError(err, 'Errore nella conferma dei capitoli');
+          setIsGeneratingSections(false);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    );
   };
 
   // Confirm sections and start content generation
   const confirmSectionsAndGenerate = async () => {
-    setIsLoading(true);
-    setError(null);
-    setIsCreditError(false);
+    // Stima crediti per generazione contenuto completo
+    const thesisParams = {
+      num_chapters: parametersData.num_chapters || 5,
+      sections_per_chapter: parametersData.sections_per_chapter || 3,
+      words_per_section: parametersData.words_per_section || 5000
+    };
 
-    try {
-      await confirmThesisSections(thesisId, sectionsData);
+    await showCreditConfirmation(
+      'thesis_content',
+      thesisParams,
+      'Genera Contenuto Tesi',
+      async () => {
+        setIsLoading(true);
+        setError(null);
+        setIsCreditError(false);
 
-      // Move to step 6
-      setCurrentStep(6);
+        try {
+          await confirmThesisSections(thesisId, sectionsData);
 
-      // Start content generation
-      await startThesisContentGeneration(thesisId);
+          // Move to step 6
+          setCurrentStep(6);
 
-      // Start polling for status
-      pollThesisGenerationStatus(
-        thesisId,
-        (status) => {
-          setGenerationStatus(status);
-          if (status.status === 'completed') {
-            loadCompletedThesis();
-          }
-        },
-        3000,
-        1800000 // 30 minutes timeout
-      );
-    } catch (err) {
-      console.error('Errore avvio generazione:', err);
-      handleApiError(err, 'Errore nell\'avvio della generazione');
-    } finally {
-      setIsLoading(false);
-    }
+          // Start content generation
+          await startThesisContentGeneration(thesisId);
+
+          // Start polling for status
+          pollThesisGenerationStatus(
+            thesisId,
+            (status) => {
+              setGenerationStatus(status);
+              if (status.status === 'completed') {
+                loadCompletedThesis();
+              }
+            },
+            3000,
+            1800000 // 30 minutes timeout
+          );
+        } catch (err) {
+          console.error('Errore avvio generazione:', err);
+          handleApiError(err, 'Errore nell\'avvio della generazione');
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    );
   };
 
   // Load completed thesis
@@ -483,6 +541,21 @@ const ThesisGenerator = () => {
           </div>
         )}
       </div>
+
+      {/* Credit Confirmation Dialog */}
+      <CreditConfirmDialog
+        isOpen={showCreditDialog}
+        onConfirm={handleCreditConfirmed}
+        onCancel={() => {
+          setShowCreditDialog(false);
+          setPendingCreditAction(null);
+        }}
+        operationName={creditOperationName}
+        estimatedCredits={creditEstimate?.credits_needed || 0}
+        breakdown={creditEstimate?.breakdown || {}}
+        currentBalance={isAdmin ? -1 : (creditEstimate?.current_balance ?? credits)}
+        loading={creditLoading}
+      />
     </div>
   );
 };

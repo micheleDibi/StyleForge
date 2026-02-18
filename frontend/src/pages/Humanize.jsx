@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Wand2, Download, Copy, Check, AlertTriangle } from 'lucide-react';
-import { getSessions, humanizeContent, pollJobStatus } from '../services/api';
+import { getSessions, humanizeContent, pollJobStatus, estimateCredits } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import CreditConfirmDialog from '../components/CreditConfirmDialog';
 import { jsPDF } from 'jspdf';
 
 const Humanize = () => {
   const navigate = useNavigate();
+  const { isAdmin, credits, refreshUser } = useAuth();
   const [searchParams] = useSearchParams();
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(searchParams.get('session') || '');
@@ -14,6 +17,11 @@ const Humanize = () => {
   const [jobStatus, setJobStatus] = useState(null);
   const [result, setResult] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Credit confirmation state
+  const [showCreditDialog, setShowCreditDialog] = useState(false);
+  const [creditEstimate, setCreditEstimate] = useState(null);
+  const [creditLoading, setCreditLoading] = useState(false);
 
   useEffect(() => {
     loadSessions();
@@ -46,6 +54,23 @@ const Humanize = () => {
       return;
     }
 
+    // Stima crediti e mostra dialog di conferma
+    setCreditLoading(true);
+    setShowCreditDialog(true);
+
+    try {
+      const estimate = await estimateCredits('humanize', { text_length: testoOriginale.length });
+      setCreditEstimate(estimate);
+    } catch (err) {
+      console.error('Errore stima crediti:', err);
+      setCreditEstimate({ credits_needed: 0, breakdown: {}, current_balance: credits, sufficient: true });
+    } finally {
+      setCreditLoading(false);
+    }
+  };
+
+  const handleConfirmedHumanize = async () => {
+    setShowCreditDialog(false);
     setProcessing(true);
     setResult('');
 
@@ -64,9 +89,16 @@ const Humanize = () => {
       } else if (finalStatus.status === 'failed') {
         alert('Errore durante l\'umanizzazione: ' + (finalStatus.error || 'Errore sconosciuto'));
       }
+
+      // Aggiorna saldo crediti
+      refreshUser();
     } catch (error) {
       console.error('Errore nell\'umanizzazione:', error);
-      alert('Errore nell\'umanizzazione del testo');
+      if (error.response?.status === 402) {
+        alert('Crediti insufficienti per questa operazione.');
+      } else {
+        alert('Errore nell\'umanizzazione del testo');
+      }
     } finally {
       setProcessing(false);
     }
@@ -307,6 +339,18 @@ Il testo verra riscritto applicando lo stile dell'autore della sessione selezion
           </div>
         </div>
       </div>
+
+      {/* Credit Confirmation Dialog */}
+      <CreditConfirmDialog
+        isOpen={showCreditDialog}
+        onConfirm={handleConfirmedHumanize}
+        onCancel={() => setShowCreditDialog(false)}
+        operationName="Umanizza Testo"
+        estimatedCredits={creditEstimate?.credits_needed || 0}
+        breakdown={creditEstimate?.breakdown || {}}
+        currentBalance={isAdmin ? -1 : (creditEstimate?.current_balance ?? credits)}
+        loading={creditLoading}
+      />
     </div>
   );
 };

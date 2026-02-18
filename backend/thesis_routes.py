@@ -37,7 +37,8 @@ from db_models import (
     AudienceSize, Industry, TargetAudience, Session
 )
 from database import SessionLocal, get_db
-from auth import get_current_active_user
+from auth import get_current_active_user, require_permission
+from credits import estimate_credits, deduct_credits
 from attachment_processor import (
     process_attachment, save_uploaded_file, delete_attachment_file,
     build_attachments_context, cleanup_thesis_attachments
@@ -239,7 +240,7 @@ async def get_target_audiences(
 @router.post("", response_model=ThesisResponse)
 async def create_thesis(
     request: ThesisCreateRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission('thesis')),
     db: DBSession = Depends(get_db)
 ):
     """
@@ -538,7 +539,7 @@ def generate_chapters_task(thesis_id: str, user_id: str):
 @router.post("/{thesis_id}/generate-chapters")
 async def generate_chapters(
     thesis_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission('thesis')),
     db: DBSession = Depends(get_db)
 ):
     """
@@ -555,6 +556,16 @@ async def generate_chapters(
             status_code=400,
             detail=f"Impossibile generare capitoli: stato attuale '{thesis.status}'"
         )
+
+    # Deduzione crediti per generazione capitoli
+    credit_estimate = estimate_credits('thesis_chapters', {})
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate['credits_needed'],
+        operation_type='thesis_chapters',
+        description=f"Generazione struttura capitoli - {thesis.title[:50]}",
+        db=db
+    )
 
     try:
         # Costruisci i dati per il prompt
@@ -760,7 +771,7 @@ def generate_sections_task(thesis_id: str, user_id: str):
 @router.post("/{thesis_id}/generate-sections")
 async def generate_sections(
     thesis_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission('thesis')),
     db: DBSession = Depends(get_db)
 ):
     """
@@ -776,6 +787,16 @@ async def generate_sections(
             status_code=400,
             detail=f"Devi prima confermare i capitoli. Stato attuale: '{thesis.status}'"
         )
+
+    # Deduzione crediti per generazione sezioni
+    credit_estimate = estimate_credits('thesis_sections', {})
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate['credits_needed'],
+        operation_type='thesis_sections',
+        description=f"Generazione struttura sezioni - {thesis.title[:50]}",
+        db=db
+    )
 
     try:
         # Costruisci dati
@@ -1242,7 +1263,7 @@ def generate_content_task(thesis_id: str, user_id: str):
 async def start_content_generation(
     thesis_id: str,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_permission('thesis')),
     db: DBSession = Depends(get_db)
 ):
     """
@@ -1260,6 +1281,20 @@ async def start_content_generation(
 
     chapters = thesis.chapters_structure.get("chapters", [])
     total_sections = sum(len(c.get("sections", [])) for c in chapters)
+
+    # Deduzione crediti per generazione contenuto tesi
+    credit_estimate = estimate_credits('thesis_content', {
+        'num_chapters': thesis.num_chapters,
+        'sections_per_chapter': thesis.sections_per_chapter,
+        'words_per_section': thesis.words_per_section
+    })
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate['credits_needed'],
+        operation_type='thesis_content',
+        description=f"Generazione contenuto tesi - {thesis.title[:50]} ({thesis.num_chapters} cap, {thesis.sections_per_chapter} sez/cap)",
+        db=db
+    )
 
     # Aggiorna stato
     thesis.status = 'generating'

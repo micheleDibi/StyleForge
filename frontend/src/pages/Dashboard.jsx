@@ -5,7 +5,7 @@ import {
   Sparkles, RefreshCw, Trash2, ChevronRight, Wand2,
   Clock, CheckCircle2, AlertCircle, Zap, User, Settings,
   TrendingUp, Layers, Brain, BookOpen, Calendar, Download,
-  ChevronDown, Eye, List
+  ChevronDown, Eye, List, Coins, Shield
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSessions, deleteSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis } from '../services/api';
@@ -14,7 +14,7 @@ import Logo from '../components/Logo';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { logout, user } = useAuth();
+  const { logout, user, hasPermission, isAdmin, credits } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [theses, setTheses] = useState([]);
@@ -231,15 +231,48 @@ const Dashboard = () => {
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Credits Badge */}
+              <div className="hidden md:flex items-center gap-2 px-3 py-2 bg-orange-50 rounded-xl border border-orange-200">
+                <Coins className="w-4 h-4 text-orange-600" />
+                <span className="text-sm font-bold text-orange-600">
+                  {isAdmin ? '∞' : credits}
+                </span>
+                <span className="text-xs text-orange-500">crediti</span>
+              </div>
+
               {/* User Info */}
               <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-white/30">
-                <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-lg flex items-center justify-center">
-                  <User className="w-4 h-4 text-white" />
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                  isAdmin
+                    ? 'bg-gradient-to-br from-purple-400 to-purple-600'
+                    : 'bg-gradient-to-br from-orange-400 to-orange-600'
+                }`}>
+                  {isAdmin ? (
+                    <Shield className="w-4 h-4 text-white" />
+                  ) : (
+                    <User className="w-4 h-4 text-white" />
+                  )}
                 </div>
-                <span className="text-sm font-medium text-gray-700">
-                  {user?.username || 'Utente'}
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-gray-700">
+                    {user?.username || 'Utente'}
+                  </span>
+                  {isAdmin && (
+                    <span className="text-xs text-purple-600 font-medium">Admin</span>
+                  )}
+                </div>
               </div>
+
+              {/* Admin Panel Button */}
+              {isAdmin && (
+                <button
+                  onClick={() => navigate('/admin')}
+                  className="btn btn-secondary bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span className="hidden sm:inline">Admin</span>
+                </button>
+              )}
 
               <button
                 onClick={handleRefresh}
@@ -341,102 +374,135 @@ const Dashboard = () => {
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 animate-slide-up">
           {/* Train */}
-          <button
-            onClick={() => navigate('/train')}
-            className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-orange-200"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-orange-500/30">
-                <Upload className="w-7 h-7 text-white" />
+          {hasPermission('train') && (
+            <button
+              onClick={() => navigate('/train')}
+              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-orange-200"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-orange-500/30">
+                  <Upload className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg text-gray-900">Addestra Modello</h3>
+                  <p className="text-sm text-gray-500">Carica PDF e addestra</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-orange-600 group-hover:translate-x-1 transition-all" />
               </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-lg text-gray-900">Addestra Modello</h3>
-                <p className="text-sm text-gray-500">Carica PDF e addestra</p>
+              <div className="flex items-center gap-2">
+                <span className="badge badge-neutral">
+                  <Brain className="w-3 h-3" />
+                  AI Training
+                </span>
               </div>
-              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-orange-600 group-hover:translate-x-1 transition-all" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="badge badge-neutral">
-                <Brain className="w-3 h-3" />
-                AI Training
-              </span>
-            </div>
-          </button>
+            </button>
+          )}
 
           {/* Generate */}
-          <button
-            onClick={() => navigate('/generate')}
-            className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-blue-200"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-blue-500/30">
-                <FileText className="w-7 h-7 text-white" />
+          {hasPermission('generate') && (
+            <button
+              onClick={() => navigate('/generate')}
+              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-blue-200"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-blue-500/30">
+                  <FileText className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg text-gray-900">Genera Contenuto</h3>
+                  <p className="text-sm text-gray-500">Crea con il tuo stile</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
               </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-lg text-gray-900">Genera Contenuto</h3>
-                <p className="text-sm text-gray-500">Crea con il tuo stile</p>
+              <div className="flex items-center gap-2">
+                <span className="badge badge-info">
+                  <Sparkles className="w-3 h-3" />
+                  AI-Powered
+                </span>
               </div>
-              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="badge badge-info">
-                <Sparkles className="w-3 h-3" />
-                AI-Powered
-              </span>
-            </div>
-          </button>
+            </button>
+          )}
 
           {/* Humanize */}
-          <button
-            onClick={() => navigate('/humanize')}
-            className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-purple-200"
-          >
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-purple-500/30">
-                <Wand2 className="w-7 h-7 text-white" />
+          {hasPermission('humanize') && (
+            <button
+              onClick={() => navigate('/humanize')}
+              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-purple-200"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-purple-500/30">
+                  <Wand2 className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg text-gray-900">Umanizza Testo</h3>
+                  <p className="text-sm text-gray-500">Bypassa AI detection</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all" />
               </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-lg text-gray-900">Umanizza Testo</h3>
-                <p className="text-sm text-gray-500">Bypassa AI detection</p>
+              <div className="flex items-center gap-2">
+                <span className="badge badge-success">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Anti-Detection
+                </span>
               </div>
-              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="badge badge-success">
-                <CheckCircle2 className="w-3 h-3" />
-                Anti-Detection
-              </span>
-            </div>
-          </button>
+            </button>
+          )}
 
           {/* Thesis Generator */}
-          <button
-            onClick={() => navigate('/thesis')}
-            className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-emerald-200 relative overflow-hidden"
-          >
-            {/* New Badge */}
-            <div className="absolute top-3 right-3">
-              <span className="px-2 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-xs font-bold rounded-full shadow-lg">
-                NUOVO
-              </span>
-            </div>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-emerald-500/30">
-                <BookOpen className="w-7 h-7 text-white" />
+          {hasPermission('thesis') && (
+            <button
+              onClick={() => navigate('/thesis')}
+              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-emerald-200 relative overflow-hidden"
+            >
+              {/* New Badge */}
+              <div className="absolute top-3 right-3">
+                <span className="px-2 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-xs font-bold rounded-full shadow-lg">
+                  NUOVO
+                </span>
               </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-lg text-gray-900">Tesi / Relazione</h3>
-                <p className="text-sm text-gray-500">Genera documenti completi</p>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-emerald-500/30">
+                  <BookOpen className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg text-gray-900">Tesi / Relazione</h3>
+                  <p className="text-sm text-gray-500">Genera documenti completi</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all" />
               </div>
-              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="badge" style={{ backgroundColor: '#d1fae5', color: '#065f46' }}>
-                <Sparkles className="w-3 h-3" />
-                AI Avanzata
-              </span>
-            </div>
-          </button>
+              <div className="flex items-center gap-2">
+                <span className="badge" style={{ backgroundColor: '#d1fae5', color: '#065f46' }}>
+                  <Sparkles className="w-3 h-3" />
+                  AI Avanzata
+                </span>
+              </div>
+            </button>
+          )}
+
+          {/* Admin Panel - Solo per admin */}
+          {isAdmin && (
+            <button
+              onClick={() => navigate('/admin')}
+              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-purple-200"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-purple-500/30">
+                  <Shield className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg text-gray-900">Pannello Admin</h3>
+                  <p className="text-sm text-gray-500">Gestisci utenti e ruoli</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="badge" style={{ backgroundColor: '#ede9fe', color: '#5b21b6' }}>
+                  <Settings className="w-3 h-3" />
+                  Amministrazione
+                </span>
+              </div>
+            </button>
+          )}
         </div>
 
         {/* Theses Section */}
