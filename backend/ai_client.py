@@ -11,6 +11,7 @@ import re
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv, find_dotenv
+from ai_exceptions import InsufficientCreditsError, check_openai_error, check_claude_error
 
 load_dotenv(find_dotenv())
 
@@ -261,7 +262,10 @@ class OpenAIClient(BaseAIClient):
                 max_completion_tokens=max_tokens or self.max_tokens
             )
             return response.choices[0].message.content
+        except InsufficientCreditsError:
+            raise  # Rilancia direttamente senza wrapping
         except Exception as e:
+            check_openai_error(e)  # Controlla se e' errore di crediti/quota
             raise RuntimeError(f"Errore nella generazione OpenAI: {str(e)}")
 
 
@@ -292,7 +296,10 @@ class ClaudeClient(BaseAIClient):
                 messages=[{"role": "user", "content": prompt}]
             )
             return message.content[0].text
+        except InsufficientCreditsError:
+            raise  # Rilancia direttamente senza wrapping
         except Exception as e:
+            check_claude_error(e)  # Controlla se e' errore di crediti/quota
             raise RuntimeError(f"Errore nella generazione Claude: {str(e)}")
 
 
@@ -454,6 +461,8 @@ REGOLE FINALI:
         # Applica anche l'algoritmo anti-AI post-processing
         from anti_ai_processor import humanize_text_post_processing
         return humanize_text_post_processing(rewritten)
+    except InsufficientCreditsError:
+        raise  # Non fare fallback per errori di crediti — l'utente deve saperlo
     except Exception as e:
         # Fallback: solo algoritmo anti-AI
         from anti_ai_processor import humanize_text_post_processing

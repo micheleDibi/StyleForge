@@ -58,11 +58,20 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor - handle token refresh
+// Response interceptor - handle token refresh and credit errors
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    // Handle 402 - Insufficient Credits
+    if (error.response?.status === 402) {
+      const detail = error.response?.data?.detail || 'Crediti AI insufficienti. Verifica il tuo piano.';
+      // Enrich the error with a specific flag for the frontend
+      error.isInsufficientCredits = true;
+      error.creditErrorMessage = detail;
+      return Promise.reject(error);
+    }
 
     // If error is 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {

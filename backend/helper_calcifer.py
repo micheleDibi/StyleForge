@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 import os
 from dotenv import load_dotenv
+from ai_exceptions import InsufficientCreditsError, check_claude_error
 
 load_dotenv()
 
@@ -146,7 +147,17 @@ class CalciferHelper:
 
             return assistant_message
 
+        except InsufficientCreditsError:
+            # Rimuovi il messaggio dell'utente dalla cronologia
+            self.conversations[conversation_id].pop()
+            raise  # Rilancia per essere gestito dal router
         except Exception as e:
+            # Controlla se e' errore di crediti prima del fallback
+            try:
+                check_claude_error(e)
+            except InsufficientCreditsError:
+                self.conversations[conversation_id].pop()
+                raise
             return f"Ops! Le mie fiamme si sono un po' spente... 🔥 Errore: {str(e)}"
 
     def clear_conversation(self, conversation_id: str = "default"):
@@ -189,7 +200,14 @@ def get_contextual_tip(page: str, context: Optional[Dict] = None) -> str:
 
         return response.content[0].text
 
+    except InsufficientCreditsError:
+        raise  # Rilancia per essere gestito dal router
     except Exception as e:
+        # Controlla se e' errore di crediti prima del fallback
+        try:
+            check_claude_error(e)
+        except InsufficientCreditsError:
+            raise
         # Fallback ai suggerimenti predefiniti
         default_tips = {
             "dashboard": "Ciao! 🔥 Dalla dashboard puoi gestire sessioni, job e tesi. Usa i pulsanti rapidi per iniziare!",

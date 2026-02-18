@@ -80,10 +80,23 @@ const ThesisGenerator = () => {
   const [sectionsData, setSectionsData] = useState([]);
   const [generationStatus, setGenerationStatus] = useState(null);
   const [generatedContent, setGeneratedContent] = useState('');
+  const [isCreditError, setIsCreditError] = useState(false);
 
   // Generation states
   const [isGeneratingChapters, setIsGeneratingChapters] = useState(false);
   const [isGeneratingSections, setIsGeneratingSections] = useState(false);
+
+  // Helper: extract error message with credit error detection
+  const handleApiError = (err, fallbackMessage) => {
+    if (err.isInsufficientCredits || err.response?.status === 402) {
+      const msg = err.creditErrorMessage || err.response?.data?.detail || 'Crediti AI insufficienti.';
+      setError(msg);
+      setIsCreditError(true);
+    } else {
+      setError(err.response?.data?.detail || fallbackMessage);
+      setIsCreditError(false);
+    }
+  };
 
   // Load lookup data on mount
   useEffect(() => {
@@ -127,6 +140,7 @@ const ThesisGenerator = () => {
   const generateChaptersForThesis = async () => {
     setIsLoading(true);
     setError(null);
+    setIsCreditError(false);
 
     try {
       const currentThesisId = await ensureThesisCreated();
@@ -144,7 +158,7 @@ const ThesisGenerator = () => {
       setThesis(updatedThesis);
     } catch (err) {
       console.error('Errore creazione tesi:', err);
-      setError(err.response?.data?.detail || 'Errore nella creazione della tesi');
+      handleApiError(err, 'Errore nella creazione della tesi');
       setIsGeneratingChapters(false);
     } finally {
       setIsLoading(false);
@@ -155,6 +169,7 @@ const ThesisGenerator = () => {
   const confirmChaptersAndGenerateSections = async () => {
     setIsLoading(true);
     setError(null);
+    setIsCreditError(false);
 
     try {
       console.log('=== CONFERMA CAPITOLI - DEBUG ===');
@@ -184,7 +199,7 @@ const ThesisGenerator = () => {
       console.error('Response data:', JSON.stringify(err.response?.data, null, 2));
       console.error('Request config:', err.config?.url, err.config?.method);
       console.error('Request data inviata:', err.config?.data);
-      setError(err.response?.data?.detail || 'Errore nella conferma dei capitoli');
+      handleApiError(err, 'Errore nella conferma dei capitoli');
       setIsGeneratingSections(false);
     } finally {
       setIsLoading(false);
@@ -195,6 +210,7 @@ const ThesisGenerator = () => {
   const confirmSectionsAndGenerate = async () => {
     setIsLoading(true);
     setError(null);
+    setIsCreditError(false);
 
     try {
       await confirmThesisSections(thesisId, sectionsData);
@@ -219,7 +235,7 @@ const ThesisGenerator = () => {
       );
     } catch (err) {
       console.error('Errore avvio generazione:', err);
-      setError(err.response?.data?.detail || 'Errore nell\'avvio della generazione');
+      handleApiError(err, 'Errore nell\'avvio della generazione');
     } finally {
       setIsLoading(false);
     }
@@ -243,12 +259,13 @@ const ThesisGenerator = () => {
       // Create thesis before entering step 3 so thesisId is available for uploads
       setIsLoading(true);
       setError(null);
+    setIsCreditError(false);
       try {
         await ensureThesisCreated();
         setCurrentStep(3);
       } catch (err) {
         console.error('Errore creazione tesi:', err);
-        setError(err.response?.data?.detail || 'Errore nella creazione della tesi');
+        handleApiError(err, 'Errore nella creazione della tesi');
       } finally {
         setIsLoading(false);
       }
@@ -322,11 +339,24 @@ const ThesisGenerator = () => {
 
         {/* Error Message */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 flex items-start gap-3">
-            <span className="text-red-500 text-xl">⚠️</span>
+          <div className={`mb-6 p-4 rounded-xl flex items-start gap-3 ${
+            isCreditError
+              ? 'bg-amber-50 border border-amber-300 text-amber-800'
+              : 'bg-red-50 border border-red-200 text-red-700'
+          }`}>
+            <span className={`text-xl ${isCreditError ? 'text-amber-500' : 'text-red-500'}`}>
+              {isCreditError ? '💳' : '⚠️'}
+            </span>
             <div>
-              <p className="font-medium">Errore</p>
+              <p className="font-medium">
+                {isCreditError ? 'Crediti AI Insufficienti' : 'Errore'}
+              </p>
               <p className="text-sm">{error}</p>
+              {isCreditError && (
+                <p className="text-xs mt-2 opacity-75">
+                  Verifica il saldo del tuo account AI e ricarica i crediti per continuare.
+                </p>
+              )}
             </div>
           </div>
         )}

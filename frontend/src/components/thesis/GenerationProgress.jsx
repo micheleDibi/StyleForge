@@ -271,9 +271,22 @@ const GenerationProgress = ({ status, onComplete }) => {
 
         {/* Error Message */}
         {errorMessage && (
-          <div className="mt-4 p-4 bg-red-100 border border-red-300 rounded-lg text-red-700 text-sm">
-            <p className="font-medium">Errore:</p>
-            <p>{errorMessage}</p>
+          <div className={`mt-4 p-4 rounded-lg text-sm ${
+            errorMessage.includes('CREDITI_INSUFFICIENTI') || errorMessage.toLowerCase().includes('crediti')
+              ? 'bg-amber-100 border border-amber-300 text-amber-800'
+              : 'bg-red-100 border border-red-300 text-red-700'
+          }`}>
+            <p className="font-medium">
+              {errorMessage.includes('CREDITI_INSUFFICIENTI') || errorMessage.toLowerCase().includes('crediti')
+                ? '💳 Crediti AI Insufficienti:'
+                : 'Errore:'}
+            </p>
+            <p>{errorMessage.replace('CREDITI_INSUFFICIENTI: ', '')}</p>
+            {(errorMessage.includes('CREDITI_INSUFFICIENTI') || errorMessage.toLowerCase().includes('crediti')) && (
+              <p className="text-xs mt-2 opacity-75">
+                Verifica il saldo del tuo account AI e ricarica i crediti per continuare.
+              </p>
+            )}
           </div>
         )}
       </div>

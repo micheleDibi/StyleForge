@@ -33,6 +33,7 @@ from auth_routes import router as auth_router
 from thesis_routes import router as thesis_router
 from db_models import User
 from database import init_db
+from ai_exceptions import InsufficientCreditsError
 import config
 from pydantic import BaseModel
 
@@ -773,6 +774,8 @@ async def chat_with_calcifer(
             conversation_id=request.conversation_id,
             timestamp=datetime.now()
         )
+    except InsufficientCreditsError as e:
+        raise HTTPException(status_code=402, detail=e.user_message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -794,6 +797,8 @@ async def get_tip(
         )
 
         return {"tip": tip}
+    except InsufficientCreditsError as e:
+        raise HTTPException(status_code=402, detail=e.user_message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -811,6 +816,19 @@ async def clear_conversation(
 # ============================================================================
 # ERROR HANDLERS
 # ============================================================================
+
+@app.exception_handler(InsufficientCreditsError)
+async def insufficient_credits_handler(request, exc: InsufficientCreditsError):
+    """Handler per errori di crediti/quota AI insufficienti."""
+    error_response = ErrorResponse(
+        error="Crediti AI Insufficienti",
+        detail=exc.user_message
+    )
+    return JSONResponse(
+        status_code=402,
+        content=error_response.model_dump(mode='json')
+    )
+
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):

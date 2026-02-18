@@ -18,6 +18,7 @@ from pathlib import Path
 from anthropic import Anthropic
 from dotenv import load_dotenv, find_dotenv
 from tqdm import tqdm
+from ai_exceptions import InsufficientCreditsError, check_claude_error
 
 load_dotenv(find_dotenv())
 
@@ -104,12 +105,21 @@ class ClaudeClient:
         })
 
         # Invia la richiesta a Claude
-        response = self.client.messages.create(
-            model=self.MODEL_ID,
-            max_tokens=MAX_TOKENS_TRAIN,
-            system=self.system_prompt,
-            messages=self.conversation_history
-        )
+        try:
+            response = self.client.messages.create(
+                model=self.MODEL_ID,
+                max_tokens=MAX_TOKENS_TRAIN,
+                system=self.system_prompt,
+                messages=self.conversation_history
+            )
+        except InsufficientCreditsError:
+            # Rimuovi il messaggio dalla cronologia se la chiamata fallisce
+            self.conversation_history.pop()
+            raise
+        except Exception as e:
+            self.conversation_history.pop()
+            check_claude_error(e)
+            raise
 
         # Estrai la risposta
         assistant_message = response.content[0].text
@@ -169,12 +179,20 @@ class ClaudeClient:
         })
 
         # Invia la richiesta a Claude (stessa sessione, mantiene il contesto)
-        response = self.client.messages.create(
-            model=self.MODEL_ID,
-            max_tokens=MAX_TOKENS_TEST,
-            system=self.system_prompt,
-            messages=self.conversation_history
-        )
+        try:
+            response = self.client.messages.create(
+                model=self.MODEL_ID,
+                max_tokens=MAX_TOKENS_TEST,
+                system=self.system_prompt,
+                messages=self.conversation_history
+            )
+        except InsufficientCreditsError:
+            self.conversation_history.pop()
+            raise
+        except Exception as e:
+            self.conversation_history.pop()
+            check_claude_error(e)
+            raise
 
         # Estrai la risposta
         assistant_message = response.content[0].text
@@ -303,12 +321,20 @@ REGOLE:
         dynamic_max_tokens = max(estimated_tokens, MAX_TOKENS_TEST)
 
         # Invia la richiesta a Claude (stessa sessione, mantiene il contesto dell'addestramento)
-        response = self.client.messages.create(
-            model=self.MODEL_ID,
-            max_tokens=dynamic_max_tokens,
-            system=self.system_prompt,
-            messages=self.conversation_history
-        )
+        try:
+            response = self.client.messages.create(
+                model=self.MODEL_ID,
+                max_tokens=dynamic_max_tokens,
+                system=self.system_prompt,
+                messages=self.conversation_history
+            )
+        except InsufficientCreditsError:
+            self.conversation_history.pop()
+            raise
+        except Exception as e:
+            self.conversation_history.pop()
+            check_claude_error(e)
+            raise
 
         # Estrai la risposta
         assistant_message = response.content[0].text

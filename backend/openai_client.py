@@ -10,6 +10,7 @@ import json
 from typing import Optional, Dict, Any
 from openai import OpenAI
 from dotenv import load_dotenv, find_dotenv
+from ai_exceptions import InsufficientCreditsError, check_openai_error
 
 load_dotenv(find_dotenv())
 
@@ -80,7 +81,10 @@ class OpenAIThinkingClient:
 
             return response.choices[0].message.content
 
+        except InsufficientCreditsError:
+            raise  # Rilancia direttamente senza wrapping
         except Exception as e:
+            check_openai_error(e)  # Controlla se e' errore di crediti/quota
             raise RuntimeError(f"Errore nella generazione OpenAI: {str(e)}")
 
     def generate_json(

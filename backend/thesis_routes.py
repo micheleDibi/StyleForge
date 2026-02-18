@@ -43,6 +43,7 @@ from attachment_processor import (
     build_attachments_context, cleanup_thesis_attachments
 )
 from ai_client import get_ai_client, humanize_text_with_claude
+from ai_exceptions import InsufficientCreditsError
 from session_manager import session_manager
 import config
 
@@ -497,6 +498,21 @@ def generate_chapters_task(thesis_id: str, user_id: str):
 
         db.commit()
 
+    except InsufficientCreditsError as e:
+        logger.error(f"Crediti insufficienti durante generazione capitoli: {e.user_message}")
+        job = db.query(ThesisGenerationJob).filter(
+            ThesisGenerationJob.thesis_id == thesis_id,
+            ThesisGenerationJob.phase == 'chapters'
+        ).order_by(ThesisGenerationJob.created_at.desc()).first()
+        if job:
+            job.status = 'failed'
+            job.error = f"CREDITI_INSUFFICIENTI: {e.user_message}"
+            db.commit()
+        thesis = db.query(Thesis).get(thesis_id)
+        if thesis:
+            thesis.status = 'failed'
+            db.commit()
+
     except Exception as e:
         # Aggiorna job con errore
         job = db.query(ThesisGenerationJob).filter(
@@ -573,6 +589,13 @@ async def generate_chapters(
             "message": "Capitoli generati con successo. Puoi modificarli prima di confermare."
         }
 
+    except InsufficientCreditsError as e:
+        thesis.status = 'failed'
+        db.commit()
+        raise HTTPException(
+            status_code=402,
+            detail=e.user_message
+        )
     except Exception as e:
         thesis.status = 'failed'
         db.commit()
@@ -699,6 +722,21 @@ def generate_sections_task(thesis_id: str, user_id: str):
 
         db.commit()
 
+    except InsufficientCreditsError as e:
+        logger.error(f"Crediti insufficienti durante generazione sezioni: {e.user_message}")
+        job = db.query(ThesisGenerationJob).filter(
+            ThesisGenerationJob.thesis_id == thesis_id,
+            ThesisGenerationJob.phase == 'sections'
+        ).order_by(ThesisGenerationJob.created_at.desc()).first()
+        if job:
+            job.status = 'failed'
+            job.error = f"CREDITI_INSUFFICIENTI: {e.user_message}"
+            db.commit()
+        thesis = db.query(Thesis).get(thesis_id)
+        if thesis:
+            thesis.status = 'failed'
+            db.commit()
+
     except Exception as e:
         job = db.query(ThesisGenerationJob).filter(
             ThesisGenerationJob.thesis_id == thesis_id,
@@ -773,6 +811,13 @@ async def generate_sections(
             "message": "Sezioni generate con successo. Puoi modificarle prima di confermare."
         }
 
+    except InsufficientCreditsError as e:
+        thesis.status = 'failed'
+        db.commit()
+        raise HTTPException(
+            status_code=402,
+            detail=e.user_message
+        )
     except Exception as e:
         thesis.status = 'failed'
         db.commit()
@@ -820,6 +865,8 @@ def _humanize_content(content: str, trained_session_client, section_name: str = 
         else:
             logger.info(f"Umanizzazione con Claude per: {section_name}")
             return humanize_text_with_claude(content)
+    except InsufficientCreditsError:
+        raise  # Non fare fallback per errori di crediti — l'utente deve saperlo
     except Exception as e:
         logger.warning(f"Errore umanizzazione Claude: {e}, uso fallback algoritmico")
         try:
@@ -1153,6 +1200,23 @@ def generate_content_task(thesis_id: str, user_id: str):
             job.completed_at = datetime.utcnow()
 
         db.commit()
+
+    except InsufficientCreditsError as e:
+        logger.error(f"Crediti insufficienti durante generazione contenuto: {e.user_message}")
+        job = db.query(ThesisGenerationJob).filter(
+            ThesisGenerationJob.thesis_id == thesis_id,
+            ThesisGenerationJob.phase == 'content'
+        ).order_by(ThesisGenerationJob.created_at.desc()).first()
+
+        if job:
+            job.status = 'failed'
+            job.error = f"CREDITI_INSUFFICIENTI: {e.user_message}"
+            db.commit()
+
+        thesis = db.query(Thesis).get(thesis_id)
+        if thesis:
+            thesis.status = 'failed'
+            db.commit()
 
     except Exception as e:
         job = db.query(ThesisGenerationJob).filter(
