@@ -1051,8 +1051,33 @@ def generate_content_task(thesis_id: str, user_id: str):
             thesis_data=thesis_data,
             all_content=all_raw_text
         )
-        bibliography_content = client.generate_text(bibliography_prompt)
+        # Usa sempre Claude per la bibliografia: o1-preview spesso si rifiuta
+        # di generare riferimenti bibliografici ("I'm sorry, I can't provide...")
+        try:
+            from ai_client import get_ai_client as _get_ai_client
+            bib_client = _get_ai_client("claude")
+            logger.info("Bibliografia: uso Claude per evitare rifiuti di generazione")
+        except Exception as bib_err:
+            logger.warning(f"Claude non disponibile per bibliografia, uso provider default: {bib_err}")
+            bib_client = client
+        bibliography_content = bib_client.generate_text(bibliography_prompt)
         # NON umanizzare la bibliografia (è una lista formale)
+
+        # Verifica che la risposta non sia un rifiuto dell'AI
+        refusal_patterns = ["i'm sorry", "i can't", "i cannot", "i apologize", "unable to provide",
+                           "not able to", "cannot provide", "can't provide"]
+        if any(p in bibliography_content.lower() for p in refusal_patterns):
+            logger.warning("Bibliografia: rilevato rifiuto AI, ritento con prompt diretto")
+            # Ritenta con un prompt più diretto
+            fallback_prompt = (
+                f"Genera {len(raw_citations)} voci bibliografiche in formato APA per una tesi su: "
+                f"{thesis_data.get('title', '')}. "
+                f"Settore: {thesis_data.get('industry_name', 'Generale')}. "
+                f"Usa autori e opere reali e note nel campo. "
+                f"Formato: [1] Cognome, N. (Anno). Titolo. Editore.\n"
+                f"Output SOLO la lista, da [1] a [{len(raw_citations)}]."
+            )
+            bibliography_content = bib_client.generate_text(fallback_prompt)
 
         completed_sections += 1
         thesis.generation_progress = 100

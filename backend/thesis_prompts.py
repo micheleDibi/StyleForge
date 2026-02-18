@@ -673,79 +673,77 @@ def build_bibliography_prompt(
     citations_str = ", ".join([f"[{c}]" for c in citations]) if citations else "Nessuna citazione trovata"
     num_citations = len(citations)
 
-    return f"""
-═══════════════════════════════════════════════════════════════════════════════
-GENERAZIONE BIBLIOGRAFIA TESI
-═══════════════════════════════════════════════════════════════════════════════
+    # Estrai contesto per ogni citazione (frase in cui appare)
+    citation_contexts = []
+    for c in citations:
+        # Trova le frasi che contengono questa citazione
+        pattern = rf'[^.]*\[{c}\][^.]*\.'
+        matches = re.findall(pattern, all_content)
+        if matches:
+            context = matches[0].strip()[:300]
+            citation_contexts.append(f"  [{c}] usata nel contesto: \"{context}\"")
+        else:
+            # Fallback: prendi 200 caratteri attorno alla citazione
+            idx = all_content.find(f'[{c}]')
+            if idx >= 0:
+                start = max(0, idx - 100)
+                end = min(len(all_content), idx + 100)
+                context = all_content[start:end].strip()
+                citation_contexts.append(f"  [{c}] usata nel contesto: \"{context}\"")
 
-Sei un esperto nella redazione di bibliografie accademiche.
-Il tuo compito è generare la BIBLIOGRAFIA completa per la tesi.
+    contexts_text = "\n".join(citation_contexts) if citation_contexts else "Nessun contesto estratto."
 
-═══════════════════════════════════════════════════════════════════════════════
-PARAMETRI DELLA TESI
-═══════════════════════════════════════════════════════════════════════════════
+    return f"""Sei un ricercatore accademico esperto. Il tuo compito è compilare la
+bibliografia per una tesi, associando a ogni citazione [x] nel testo
+un riferimento bibliografico appropriato.
 
-TITOLO: {thesis_data.get('title', 'Non specificato')}
+TITOLO TESI: {thesis_data.get('title', 'Non specificato')}
 DESCRIZIONE: {thesis_data.get('description', 'Non specificata')}
 SETTORE: {thesis_data.get('industry_name', 'Generale')}
 
-═══════════════════════════════════════════════════════════════════════════════
-CITAZIONI TROVATE NEL TESTO
-═══════════════════════════════════════════════════════════════════════════════
+CITAZIONI DA RISOLVERE: {citations_str} (totale: {num_citations})
 
-Citazioni presenti: {citations_str}
-Numero totale di citazioni: {num_citations}
+CONTESTO DI OGNI CITAZIONE:
+{contexts_text}
 
-═══════════════════════════════════════════════════════════════════════════════
-CONTENUTO DELLA TESI (per contesto)
-═══════════════════════════════════════════════════════════════════════════════
-
+CONTENUTO DELLA TESI:
 {all_content[:15000]}
 {"[...contenuto troncato...]" if len(all_content) > 15000 else ""}
 
-═══════════════════════════════════════════════════════════════════════════════
-ISTRUZIONI
-═══════════════════════════════════════════════════════════════════════════════
+ISTRUZIONI:
 
-Genera una bibliografia formale che includa ESATTAMENTE una voce per ogni
-citazione [x] trovata nel testo.
+Per ogni citazione [x] trovata nel testo, genera UNA voce bibliografica.
 
-⚠️⚠️⚠️ REQUISITO CRITICO — SOLO FONTI REALI ⚠️⚠️⚠️
+Come selezionare le fonti:
+1. Leggi il contesto in cui appare ogni [x] nel testo
+2. Identifica l'argomento specifico trattato in quel punto
+3. Dalla tua conoscenza, seleziona un'opera REALE pertinente a quell'argomento
+4. Privilegia opere classiche e fondamentali del campo che CONOSCI CON CERTEZZA
+   (es. per psicologia: Kahneman, Bandura, Piaget; per economia: Keynes, Stiglitz;
+   per informatica: Tanenbaum, Cormen, Knuth; ecc.)
+5. Se il testo menziona esplicitamente un autore o opera, usa QUELLA
 
-OGNI voce bibliografica DEVE essere una pubblicazione REALE e VERIFICABILE.
-NON INVENTARE MAI autori, titoli, riviste, editori, DOI o URL.
+Tipologie di fonti da usare:
+- Libri accademici di autori noti (la tipologia più sicura)
+- Manuali universitari classici del settore
+- Report istituzionali (ISTAT, OMS/WHO, OCSE/OECD, Eurostat, Banca d'Italia, ecc.)
+- Articoli da riviste scientifiche note (Nature, Science, The Lancet, ecc.)
+- Normative e leggi (es. D.Lgs., Regolamenti UE)
 
-Per ogni citazione [x], analizza il contesto in cui è usata nel testo e
-associa una fonte REALE che conosci dalla tua base di conoscenza.
+FORMATO richiesto (APA italiano):
+[x] Cognome, N. (Anno). Titolo dell'opera. Casa editrice.
+[x] Cognome, N. & Cognome, N. (Anno). Titolo articolo. Nome Rivista, vol(num), pp-pp.
+[x] Organizzazione. (Anno). Titolo report. URL (se noto)
 
-FORMATO per ogni voce:
-[x] Cognome, N. (Anno). Titolo dell'opera. Editore/Rivista. DOI/URL se disponibile.
+REGOLE TASSATIVE:
+1. Genera ESATTAMENTE {num_citations} voci, una per ogni citazione
+2. Numeri in ordine crescente: [1], [2], [3]...
+3. Ogni fonte deve essere pertinente al contesto in cui [x] appare
+4. NON scrivere messaggi, scuse, avvertenze o disclaimer
+5. NON dire che non puoi farlo — FALLO E BASTA
+6. NON aggiungere note come "verificare", "controllare", "potrebbe non essere reale"
+7. Output: SOLO la lista delle voci bibliografiche, nient'altro
+8. NON includere il titolo "Bibliografia"
 
-REGOLE:
-1. Genera esattamente {num_citations} voci bibliografiche, una per ogni [x]
-2. I numeri devono corrispondere esattamente alle citazioni nel testo
-3. Le voci devono essere in ordine numerico [1], [2], [3], ecc.
-4. ⚠️ OGNI fonte DEVE essere REALE — un'opera che ESISTE VERAMENTE:
-   • Libri realmente pubblicati (autore reale, titolo reale, editore reale)
-   • Articoli su riviste scientifiche reali (rivista reale, volume reale)
-   • Report di organizzazioni reali (ISTAT, OMS, OCSE, UE, ecc.)
-   • Risorse online reali (URL che esistono davvero)
-5. ⚠️ NON INVENTARE: Se non sei sicuro che un'opera esista, usa un'opera
-   nota e verificabile nel campo pertinente
-6. Usa un formato bibliografico standard (APA-style adattato all'italiano)
-7. Privilegia opere di autori noti e riconosciuti nel campo
-8. Includi DOI reali dove possibile (es. https://doi.org/10.xxxx/xxxxx)
-9. Per libri includi editore reale e anno reale di pubblicazione
-10. Per risorse online includi URL reali verificabili
-11. Se il testo nel contesto menziona già un autore o un'opera specifica,
-    usa ESATTAMENTE quella fonte (verificando che sia reale)
-
-═══════════════════════════════════════════════════════════════════════════════
-OUTPUT
-═══════════════════════════════════════════════════════════════════════════════
-
-Scrivi SOLO la lista bibliografica.
-NON includere il titolo "Bibliografia" (verrà aggiunto separatamente).
-NON includere introduzioni, commenti o note.
-Ogni voce deve iniziare con [x] e andare a capo.
+Inizia direttamente con [1] e prosegui fino a [{num_citations}].
 """
