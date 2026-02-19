@@ -1558,9 +1558,9 @@ async def export_thesis(
         )
 
     elif format == "docx":
-        # Export DOCX con indice — usa template
+        # Export DOCX con indice — usa template (23 parametri)
         from docx import Document as DocxDocument
-        from docx.shared import Pt, Inches, Cm
+        from docx.shared import Pt, Inches, Cm, Emu
         from docx.enum.text import WD_ALIGN_PARAGRAPH
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
@@ -1568,27 +1568,54 @@ async def export_thesis(
         template = get_template_by_id(template_id, db)
         ds = template.get("docx", {})
 
+        # Parametri base
         font_name = ds.get("font_name", "Times New Roman")
         font_sz = ds.get("font_size", 12)
+        font_title_sz = ds.get("font_title_size", 26)
         title_align_str = ds.get("title_alignment", "center")
+        body_align_str = ds.get("body_alignment", "left")
         line_sp = ds.get("line_spacing", 1.5)
         para_sp_after = ds.get("paragraph_spacing_after", 6)
+        chapter_sp_before = ds.get("chapter_spacing_before", 18)
+        section_sp_before = ds.get("section_spacing_before", 12)
         include_toc_docx = ds.get("include_toc", True)
         include_page_nums = ds.get("include_page_numbers", True)
+        page_num_pos = ds.get("page_number_position", "bottom_center")
         toc_indent_val = ds.get("toc_indent", 0.5)
         h1_size = ds.get("heading1_size", 16)
         h2_size = ds.get("heading2_size", 14)
+
+        # Margini
+        margin_top = ds.get("margin_top", 72)
+        margin_bottom = ds.get("margin_bottom", 72)
+        margin_left = ds.get("margin_left", 72)
+        margin_right = ds.get("margin_right", 72)
+
+        # Header/Footer
+        include_header = ds.get("include_header", False)
+        header_text = ds.get("header_text", "")
+        include_footer = ds.get("include_footer", False)
+        footer_text = ds.get("footer_text", "")
 
         align_map = {
             "left": WD_ALIGN_PARAGRAPH.LEFT,
             "center": WD_ALIGN_PARAGRAPH.CENTER,
             "right": WD_ALIGN_PARAGRAPH.RIGHT,
+            "justify": WD_ALIGN_PARAGRAPH.JUSTIFY,
         }
         title_alignment = align_map.get(title_align_str, WD_ALIGN_PARAGRAPH.CENTER)
+        body_alignment = align_map.get(body_align_str, WD_ALIGN_PARAGRAPH.LEFT)
 
         file_path = config.RESULTS_DIR / f"thesis_{safe_title}_{timestamp}.docx"
 
         doc = DocxDocument()
+
+        # ── Margini pagina ──
+        section_doc = doc.sections[0]
+        section_doc.top_margin = Pt(margin_top)
+        section_doc.bottom_margin = Pt(margin_bottom)
+        section_doc.left_margin = Pt(margin_left)
+        section_doc.right_margin = Pt(margin_right)
 
         # Imposta stile Normal
         style = doc.styles['Normal']
@@ -1602,6 +1629,7 @@ async def export_thesis(
             h1_style = doc.styles['Heading 1']
             h1_style.font.name = font_name
             h1_style.font.size = Pt(h1_size)
+            h1_style.paragraph_format.space_before = Pt(chapter_sp_before)
         except Exception:
             pass
 
@@ -1610,39 +1638,87 @@ async def export_thesis(
             h2_style = doc.styles['Heading 2']
             h2_style.font.name = font_name
             h2_style.font.size = Pt(h2_size)
+            h2_style.paragraph_format.space_before = Pt(section_sp_before)
         except Exception:
             pass
 
-        # Numeri di pagina
+        # ── Helper: inserisce campo PAGE in un paragrafo ──
+        def _add_page_field(paragraph, pg_font_name, pg_font_size=9):
+            run = paragraph.add_run()
+            fld_begin = OxmlElement('w:fldChar')
+            fld_begin.set(qn('w:fldCharType'), 'begin')
+            run._r.append(fld_begin)
+            instr = OxmlElement('w:instrText')
+            instr.set(qn('xml:space'), 'preserve')
+            instr.text = ' PAGE '
+            run._r.append(instr)
+            fld_end = OxmlElement('w:fldChar')
+            fld_end.set(qn('w:fldCharType'), 'end')
+            run._r.append(fld_end)
+            for r in paragraph.runs:
+                r.font.name = pg_font_name
+                r.font.size = Pt(pg_font_size)
+
+        # ── Numeri di pagina (con posizione configurabile) ──
         if include_page_nums:
             try:
-                section = doc.sections[0]
-                footer = section.footer
-                footer.is_linked_to_previous = False
-                footer_para = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
-                footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = footer_para.add_run()
-                fld_char_begin = OxmlElement('w:fldChar')
-                fld_char_begin.set(qn('w:fldCharType'), 'begin')
-                run._r.append(fld_char_begin)
-                instr_text = OxmlElement('w:instrText')
-                instr_text.set(qn('xml:space'), 'preserve')
-                instr_text.text = ' PAGE '
-                run._r.append(instr_text)
-                fld_char_end = OxmlElement('w:fldChar')
-                fld_char_end.set(qn('w:fldCharType'), 'end')
-                run._r.append(fld_char_end)
-                for r in footer_para.runs:
-                    r.font.name = font_name
-                    r.font.size = Pt(9)
+                is_top = page_num_pos.startswith("top")
+                is_right = page_num_pos.endswith("right")
+                pg_align = WD_ALIGN_PARAGRAPH.RIGHT if is_right else WD_ALIGN_PARAGRAPH.CENTER
+
+                if is_top:
+                    target = section_doc.header
+                    target.is_linked_to_previous = False
+                    pg_para = target.paragraphs[0] if target.paragraphs else target.add_paragraph()
+                    pg_para.alignment = pg_align
+                    _add_page_field(pg_para, font_name)
+                else:
+                    target = section_doc.footer
+                    target.is_linked_to_previous = False
+                    pg_para = target.paragraphs[0] if target.paragraphs else target.add_paragraph()
+                    pg_para.alignment = pg_align
+                    _add_page_field(pg_para, font_name)
             except Exception:
                 pass
 
-        # Titolo principale
+        # ── Intestazione (header text) ──
+        if include_header and header_text:
+            try:
+                section_doc.header.is_linked_to_previous = False
+                # Se numeri pagina sono in alto, aggiungi testo su una riga separata
+                if include_page_nums and page_num_pos.startswith("top"):
+                    h_para = section_doc.header.add_paragraph()
+                else:
+                    h_para = section_doc.header.paragraphs[0] if section_doc.header.paragraphs else section_doc.header.add_paragraph()
+                h_run = h_para.add_run(header_text)
+                h_run.font.name = font_name
+                h_run.font.size = Pt(9)
+                h_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except Exception:
+                pass
+
+        # ── Pie' di pagina (footer text) ──
+        if include_footer and footer_text:
+            try:
+                section_doc.footer.is_linked_to_previous = False
+                # Se numeri pagina sono in basso, aggiungi testo su una riga separata
+                if include_page_nums and page_num_pos.startswith("bottom"):
+                    f_para = section_doc.footer.add_paragraph()
+                else:
+                    f_para = section_doc.footer.paragraphs[0] if section_doc.footer.paragraphs else section_doc.footer.add_paragraph()
+                f_run = f_para.add_run(footer_text)
+                f_run.font.name = font_name
+                f_run.font.size = Pt(9)
+                f_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            except Exception:
+                pass
+
+        # ── Titolo principale ──
         title_para = doc.add_heading(thesis.title, level=0)
         title_para.alignment = title_alignment
         for run in title_para.runs:
             run.font.name = font_name
+            run.font.size = Pt(font_title_sz)
 
         # Descrizione
         if thesis.description:
@@ -1679,9 +1755,9 @@ async def export_thesis(
                     toc_run.font.name = font_name
 
                     sections = chapter.get("sections", [])
-                    for sec_idx, section in enumerate(sections):
-                        sec_num = section.get("index", sec_idx + 1)
-                        sec_title = section.get("title", f"Sezione {sec_num}")
+                    for sec_idx, section_item in enumerate(sections):
+                        sec_num = section_item.get("index", sec_idx + 1)
+                        sec_title = section_item.get("title", f"Sezione {sec_num}")
                         sec_para = doc.add_paragraph(
                             f"    {ch_num}.{sec_num}: {sec_title}",
                             style='List Bullet'
@@ -1693,18 +1769,21 @@ async def export_thesis(
 
             doc.add_page_break()
 
-        # Contenuto
+        # ── Contenuto con body_alignment ──
         for line in content.split('\n'):
             if line.startswith('# '):
                 h = doc.add_heading(line[2:], level=1)
+                h.paragraph_format.space_before = Pt(chapter_sp_before)
                 for run in h.runs:
                     run.font.name = font_name
             elif line.startswith('## '):
                 h = doc.add_heading(line[3:], level=2)
+                h.paragraph_format.space_before = Pt(section_sp_before)
                 for run in h.runs:
                     run.font.name = font_name
             elif line.strip():
                 para = doc.add_paragraph(line)
+                para.alignment = body_alignment
                 para.paragraph_format.space_after = Pt(para_sp_after)
                 para.paragraph_format.line_spacing = line_sp
                 for run in para.runs:

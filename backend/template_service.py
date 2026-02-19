@@ -50,14 +50,27 @@ DEFAULT_PDF_SETTINGS = {
 DEFAULT_DOCX_SETTINGS = {
     "font_name": "Times New Roman",
     "font_size": 12,
+    "font_title_size": 26,
     "title_alignment": "center",
+    "body_alignment": "left",
     "line_spacing": 1.5,
     "paragraph_spacing_after": 6,
+    "chapter_spacing_before": 18,
+    "section_spacing_before": 12,
     "include_toc": True,
     "include_page_numbers": True,
+    "page_number_position": "bottom_center",
     "toc_indent": 0.5,
     "heading1_size": 16,
     "heading2_size": 14,
+    "margin_top": 72,
+    "margin_bottom": 72,
+    "margin_left": 72,
+    "margin_right": 72,
+    "include_header": False,
+    "header_text": "",
+    "include_footer": False,
+    "footer_text": "",
 }
 
 DEFAULT_EXPORT_TEMPLATES = {
@@ -256,11 +269,18 @@ TEMPLATE_PARAM_HELP = {
             "example": "Times New Roman = serif classico, standard accademico. Arial = sans-serif, moderno. Calibri = default Word, leggibile. Garamond = serif elegante."
         },
         "font_size": {
-            "label": "Dimensione font",
+            "label": "Dimensione font corpo",
             "description": "La grandezza del testo principale nel documento Word.",
             "type": "number",
             "min": 8, "max": 16, "default": 12, "unit": "pt",
             "example": "12pt e' lo standard accademico per Times New Roman. 11pt per Arial o Calibri."
+        },
+        "font_title_size": {
+            "label": "Dimensione font titolo",
+            "description": "La grandezza del titolo principale della tesi sulla prima pagina del documento Word.",
+            "type": "number",
+            "min": 14, "max": 36, "default": 26, "unit": "pt",
+            "example": "26pt per un titolo ben visibile. 20pt per un look sobrio. 30pt per massimo impatto."
         },
         "title_alignment": {
             "label": "Allineamento titolo",
@@ -269,6 +289,14 @@ TEMPLATE_PARAM_HELP = {
             "options": ["left", "center", "right"],
             "default": "center",
             "example": "center = centrato (standard per tesi). left = allineato a sinistra."
+        },
+        "body_alignment": {
+            "label": "Allineamento testo corpo",
+            "description": "Come viene allineato il testo del corpo del documento Word.",
+            "type": "select",
+            "options": ["left", "center", "right", "justify"],
+            "default": "left",
+            "example": "left = allineato a sinistra (piu' leggibile). justify = giustificato (aspetto professionale, standard nelle tesi). center = centrato (solo per testi brevi)."
         },
         "line_spacing": {
             "label": "Interlinea",
@@ -284,6 +312,20 @@ TEMPLATE_PARAM_HELP = {
             "min": 0, "max": 24, "default": 6, "unit": "pt",
             "example": "6pt = leggera separazione (standard). 12pt = separazione marcata tra paragrafi."
         },
+        "chapter_spacing_before": {
+            "label": "Spazio prima capitolo",
+            "description": "Spazio verticale aggiunto prima di ogni titolo di capitolo (Heading 1) nel documento Word.",
+            "type": "number",
+            "min": 0, "max": 60, "default": 18, "unit": "pt",
+            "example": "18pt aggiunge una pausa visiva tra capitoli. 36pt crea una separazione piu' marcata. 0 = nessuno spazio extra."
+        },
+        "section_spacing_before": {
+            "label": "Spazio prima sezione",
+            "description": "Spazio verticale aggiunto prima di ogni titolo di sezione (Heading 2) nel documento Word.",
+            "type": "number",
+            "min": 0, "max": 40, "default": 12, "unit": "pt",
+            "example": "12pt e' sufficiente per distinguere le sezioni. Deve essere minore dello spazio prima capitolo."
+        },
         "include_toc": {
             "label": "Includere indice",
             "description": "Se attivo, inserisce un indice automatico all'inizio del documento Word.",
@@ -296,7 +338,15 @@ TEMPLATE_PARAM_HELP = {
             "description": "Se attivo, aggiunge numeri di pagina nel documento Word.",
             "type": "boolean",
             "default": True,
-            "example": "I numeri di pagina vengono inseriti nel pie' di pagina del documento Word."
+            "example": "I numeri di pagina vengono inseriti nella posizione configurata (intestazione o pie' di pagina)."
+        },
+        "page_number_position": {
+            "label": "Posizione numeri pagina",
+            "description": "Dove posizionare il numero di pagina nel documento Word.",
+            "type": "select",
+            "options": ["bottom_center", "bottom_right", "top_center", "top_right"],
+            "default": "bottom_center",
+            "example": "bottom_center = centrato in basso (standard). bottom_right = in basso a destra. top_right = in alto a destra (stile articolo)."
         },
         "toc_indent": {
             "label": "Indentazione indice",
@@ -318,6 +368,62 @@ TEMPLATE_PARAM_HELP = {
             "type": "number",
             "min": 10, "max": 24, "default": 14, "unit": "pt",
             "example": "14pt distingue le sezioni dal corpo testo. Deve essere piu' piccolo di Heading 1."
+        },
+        "margin_top": {
+            "label": "Margine superiore",
+            "description": "Spazio vuoto tra il bordo superiore della pagina e l'inizio del contenuto nel documento Word.",
+            "type": "number",
+            "min": 20, "max": 200, "default": 72, "unit": "pt",
+            "example": "72pt = 1 inch = 2.54cm (standard Word). Per tesi accademiche si consiglia 72pt. Margini piu' ampi danno un aspetto piu' pulito."
+        },
+        "margin_bottom": {
+            "label": "Margine inferiore",
+            "description": "Spazio vuoto tra la fine del contenuto e il bordo inferiore della pagina nel documento Word.",
+            "type": "number",
+            "min": 20, "max": 200, "default": 72, "unit": "pt",
+            "example": "72pt = 1 inch = 2.54cm. Aumentare se si usano numeri di pagina o pie' di pagina."
+        },
+        "margin_left": {
+            "label": "Margine sinistro",
+            "description": "Spazio vuoto sul lato sinistro della pagina nel documento Word.",
+            "type": "number",
+            "min": 20, "max": 200, "default": 72, "unit": "pt",
+            "example": "72pt = 1 inch. Per documenti rilegati, usare 90-100pt (circa 3cm) per lasciare spazio alla rilegatura."
+        },
+        "margin_right": {
+            "label": "Margine destro",
+            "description": "Spazio vuoto sul lato destro della pagina nel documento Word.",
+            "type": "number",
+            "min": 20, "max": 200, "default": 72, "unit": "pt",
+            "example": "72pt = 1 inch. Di solito uguale o leggermente piu' piccolo del margine sinistro."
+        },
+        "include_header": {
+            "label": "Intestazione pagina",
+            "description": "Se attivo, aggiunge un testo fisso nell'intestazione (parte superiore) di ogni pagina del documento Word.",
+            "type": "boolean",
+            "default": False,
+            "example": "L'intestazione puo' contenere il titolo della tesi abbreviato o il nome dell'autore."
+        },
+        "header_text": {
+            "label": "Testo intestazione",
+            "description": "Il testo che appare nell'intestazione di ogni pagina. Visibile solo se 'Intestazione pagina' e' attivo.",
+            "type": "text",
+            "default": "",
+            "example": "Esempio: 'Tesi di Laurea - Nome Autore' oppure 'Capitolo corrente'."
+        },
+        "include_footer": {
+            "label": "Pie' di pagina",
+            "description": "Se attivo, aggiunge un testo fisso nel pie' di pagina (parte inferiore) di ogni pagina del documento Word.",
+            "type": "boolean",
+            "default": False,
+            "example": "Il pie' di pagina puo' contenere informazioni come l'universita', il dipartimento o la data."
+        },
+        "footer_text": {
+            "label": "Testo pie' di pagina",
+            "description": "Il testo che appare nel pie' di pagina di ogni pagina. Visibile solo se 'Pie' di pagina' e' attivo.",
+            "type": "text",
+            "default": "",
+            "example": "Esempio: 'Universita' degli Studi di Roma - A.A. 2024/2025'."
         },
     }
 }

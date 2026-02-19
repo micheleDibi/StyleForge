@@ -665,14 +665,27 @@ class DocxTemplateSettings(BaseModel):
     """Impostazioni template DOCX."""
     font_name: str = Field("Times New Roman", description="Nome font")
     font_size: int = Field(12, ge=8, le=16, description="Dimensione font corpo (pt)")
+    font_title_size: int = Field(26, ge=14, le=36, description="Dimensione font titolo (pt)")
     title_alignment: str = Field("center", description="Allineamento titolo")
+    body_alignment: str = Field("left", description="Allineamento corpo: left, center, right, justify")
     line_spacing: float = Field(1.5, ge=1.0, le=3.0, description="Interlinea")
     paragraph_spacing_after: int = Field(6, ge=0, le=24, description="Spazio dopo paragrafo (pt)")
+    chapter_spacing_before: int = Field(18, ge=0, le=60, description="Spazio prima capitolo (pt)")
+    section_spacing_before: int = Field(12, ge=0, le=40, description="Spazio prima sezione (pt)")
     include_toc: bool = Field(True, description="Includere indice")
     include_page_numbers: bool = Field(True, description="Includere numeri pagina")
+    page_number_position: str = Field("bottom_center", description="Posizione numeri pagina")
     toc_indent: float = Field(0.5, ge=0.0, le=2.0, description="Indentazione indice (inches)")
     heading1_size: int = Field(16, ge=12, le=28, description="Dimensione heading 1 (pt)")
     heading2_size: int = Field(14, ge=10, le=24, description="Dimensione heading 2 (pt)")
+    margin_top: int = Field(72, ge=20, le=200, description="Margine superiore (pt)")
+    margin_bottom: int = Field(72, ge=20, le=200, description="Margine inferiore (pt)")
+    margin_left: int = Field(72, ge=20, le=200, description="Margine sinistro (pt)")
+    margin_right: int = Field(72, ge=20, le=200, description="Margine destro (pt)")
+    include_header: bool = Field(False, description="Includere intestazione")
+    header_text: str = Field("", description="Testo intestazione")
+    include_footer: bool = Field(False, description="Includere pie' di pagina")
+    footer_text: str = Field("", description="Testo pie' di pagina")
 
     class Config:
         extra = "allow"
