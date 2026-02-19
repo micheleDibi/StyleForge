@@ -352,6 +352,40 @@ export const detectAI = async (text, modelName = 'qwen2-1.5b', threshold = 0.9) 
 };
 
 // ============================================================================
+// AI DETECTION - COPYLEAKS
+// ============================================================================
+
+export const detectAICopyleaks = async (text) => {
+  const response = await api.post('/detect/copyleaks', { text }, {
+    timeout: 60000 // 1 minuto per scan Copyleaks
+  });
+  return response.data;
+};
+
+export const downloadAIDetectionReport = async (text, segments, aiPercentage, humanPercentage) => {
+  const response = await api.post('/detect/copyleaks/report', {
+    text,
+    segments,
+    ai_percentage: aiPercentage,
+    human_percentage: humanPercentage,
+  }, {
+    responseType: 'blob',
+    timeout: 30000
+  });
+
+  const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `ai_detection_report_${Date.now()}.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+
+  return response.data;
+};
+
+// ============================================================================
 // HEALTH
 // ============================================================================
 

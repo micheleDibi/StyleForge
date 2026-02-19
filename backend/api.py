@@ -23,7 +23,9 @@ from models import (
     DetectionRequest, DetectionResponse,
     ErrorResponse, HealthResponse,
     JobStatus, JobType,
-    CreditEstimateRequest, CreditEstimateResponse
+    CreditEstimateRequest, CreditEstimateResponse,
+    CopyleaksDetectionRequest, CopyleaksDetectionResponse,
+    CopyleaksReportRequest, CopyleaksSegment
 )
 from session_manager import session_manager
 from job_manager import job_manager
@@ -669,6 +671,88 @@ async def detect_ai_text(
             status_code=500,
             detail=f"Errore nel rilevamento: {str(e)}"
         )
+
+
+# ============================================================================
+# AI DETECTION - COPYLEAKS
+# ============================================================================
+
+@app.post("/detect/copyleaks", response_model=CopyleaksDetectionResponse, tags=["AI Detection"])
+async def detect_ai_copyleaks(
+    request: CopyleaksDetectionRequest,
+    current_user: User = Depends(require_permission("detect")),
+    db: Session = Depends(get_db)
+):
+    """
+    Rileva testo AI usando Copyleaks Writer Detector API.
+
+    Analizza il testo (255-25000 caratteri) e restituisce la percentuale
+    di contenuto AI con evidenziazione dei segmenti.
+    """
+    from copyleaks_service import copyleaks_service
+
+    # Stima e verifica crediti
+    credit_estimate = estimate_credits('ai_detection', {'text_length': len(request.text)}, db=db)
+    credits_needed = credit_estimate['credits_needed']
+
+    # Deduce crediti (lancia 402 se insufficienti)
+    deduct_credits(
+        user=current_user,
+        amount=credits_needed,
+        operation_type='ai_detection',
+        description=f"AI Detection Copyleaks ({len(request.text)} caratteri)",
+        db=db
+    )
+
+    try:
+        result = copyleaks_service.detect(text=request.text)
+        return CopyleaksDetectionResponse(
+            ai_percentage=result["ai_percentage"],
+            human_percentage=result["human_percentage"],
+            total_words=result["total_words"],
+            segments=[CopyleaksSegment(**s) for s in result["segments"]],
+            model_version=result["model_version"],
+            scan_id=result["scan_id"],
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore rilevamento AI: {str(e)}")
+
+
+@app.post("/detect/copyleaks/report", tags=["AI Detection"])
+async def generate_copyleaks_report(
+    request: CopyleaksReportRequest,
+    current_user: User = Depends(require_permission("detect")),
+):
+    """
+    Genera un report PDF con il testo analizzato e le parti AI evidenziate.
+
+    Non consuma crediti aggiuntivi (il report si basa su un'analisi gia' eseguita).
+    """
+    from copyleaks_service import generate_detection_report_pdf
+    from fastapi.responses import StreamingResponse
+    import io
+
+    try:
+        segments_dicts = [s.model_dump() for s in request.segments]
+
+        pdf_bytes = generate_detection_report_pdf(
+            text=request.text,
+            segments=segments_dicts,
+            ai_percentage=request.ai_percentage,
+            human_percentage=request.human_percentage,
+        )
+
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=ai_detection_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore generazione report: {str(e)}")
 
 
 # ============================================================================
