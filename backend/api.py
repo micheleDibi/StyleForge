@@ -296,7 +296,7 @@ async def train_session(
         raise HTTPException(status_code=500, detail=f"Errore nel salvataggio del file: {e}")
 
     # Deduzione crediti
-    credit_estimate = estimate_credits('train', {'max_pages': max_pages})
+    credit_estimate = estimate_credits('train', {'max_pages': max_pages}, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],
@@ -409,7 +409,7 @@ async def generate_content(
         )
 
     # Deduzione crediti
-    credit_estimate = estimate_credits('generate', {'numero_parole': request.numero_parole})
+    credit_estimate = estimate_credits('generate', {'numero_parole': request.numero_parole}, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],
@@ -514,7 +514,7 @@ async def humanize_content(
         )
 
     # Deduzione crediti
-    credit_estimate = estimate_credits('humanize', {'text_length': len(request.testo)})
+    credit_estimate = estimate_credits('humanize', {'text_length': len(request.testo)}, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],
@@ -554,13 +554,14 @@ async def humanize_content(
 @app.post("/credits/estimate", response_model=CreditEstimateResponse, tags=["Credits"])
 async def estimate_operation_credits(
     request: CreditEstimateRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     """
     Stima i crediti necessari per un'operazione PRIMA di eseguirla.
     L'utente deve confermare prima di procedere.
     """
-    result = estimate_credits(request.operation_type, request.params)
+    result = estimate_credits(request.operation_type, request.params, db=db)
 
     is_admin = is_admin_user(current_user)
     current_balance = -1 if is_admin else current_user.credits  # -1 = infiniti

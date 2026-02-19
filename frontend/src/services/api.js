@@ -653,4 +653,32 @@ export const getAdminStats = async () => {
   return response.data;
 };
 
+// ============================================================================
+// ADMIN - CREAZIONE UTENTI
+// ============================================================================
+
+export const adminCreateUser = async (userData) => {
+  const response = await api.post('/admin/users', userData);
+  return response.data;
+};
+
+// ============================================================================
+// ADMIN - CONFIGURAZIONE COSTI CREDITI
+// ============================================================================
+
+export const getAdminCreditCosts = async () => {
+  const response = await api.get('/admin/settings/credit-costs');
+  return response.data;
+};
+
+export const updateAdminCreditCosts = async (costs) => {
+  const response = await api.put('/admin/settings/credit-costs', { costs });
+  return response.data;
+};
+
+export const resetAdminCreditCosts = async () => {
+  const response = await api.delete('/admin/settings/credit-costs');
+  return response.data;
+};
+
 export default api;

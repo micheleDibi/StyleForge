@@ -558,7 +558,7 @@ async def generate_chapters(
         )
 
     # Deduzione crediti per generazione capitoli
-    credit_estimate = estimate_credits('thesis_chapters', {})
+    credit_estimate = estimate_credits('thesis_chapters', {}, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],
@@ -789,7 +789,7 @@ async def generate_sections(
         )
 
     # Deduzione crediti per generazione sezioni
-    credit_estimate = estimate_credits('thesis_sections', {})
+    credit_estimate = estimate_credits('thesis_sections', {}, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],
@@ -1287,7 +1287,7 @@ async def start_content_generation(
         'num_chapters': thesis.num_chapters,
         'sections_per_chapter': thesis.sections_per_chapter,
         'words_per_section': thesis.words_per_section
-    })
+    }, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],

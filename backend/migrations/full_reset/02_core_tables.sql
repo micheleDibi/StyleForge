@@ -66,3 +66,11 @@ CREATE TABLE refresh_tokens (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     revoked BOOLEAN DEFAULT FALSE
 );
+
+-- SYSTEM_SETTINGS (configurazioni dinamiche admin)
+CREATE TABLE system_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL
+);

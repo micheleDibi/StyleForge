@@ -578,3 +578,33 @@ class AdminStatsResponse(BaseModel):
     total_credits_consumed: int
     operations_today: int
     operations_this_week: int
+
+
+# ============================================================================
+# ADMIN - CREAZIONE UTENTI
+# ============================================================================
+
+class AdminCreateUserRequest(BaseModel):
+    """Request per creare un utente dal pannello admin."""
+    email: str = Field(..., description="Email dell'utente")
+    username: str = Field(..., min_length=3, max_length=50, description="Username")
+    password: str = Field(..., min_length=6, description="Password")
+    full_name: Optional[str] = Field(None, description="Nome completo")
+    role_id: Optional[int] = Field(None, description="ID ruolo (default: ruolo 'user')")
+    credits: int = Field(0, ge=0, description="Crediti iniziali")
+    is_active: bool = Field(True, description="Utente attivo")
+
+
+# ============================================================================
+# ADMIN - CONFIGURAZIONE COSTI CREDITI
+# ============================================================================
+
+class CreditCostsUpdateRequest(BaseModel):
+    """Request per aggiornare i costi dei crediti."""
+    costs: dict = Field(..., description="Dizionario costi crediti per operazione")
+
+
+class CreditCostsResponse(BaseModel):
+    """Response con i costi dei crediti correnti."""
+    costs: dict
+    is_default: bool = Field(..., description="True se sono i costi default (non personalizzati)")

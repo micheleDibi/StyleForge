@@ -1,21 +1,27 @@
 """
 Sistema di gestione crediti interni per StyleForge.
 Gestisce la stima dei costi, la verifica del saldo e la deduzione dei crediti.
+I costi sono configurabili dall'admin tramite la tabella system_settings.
 """
 
 import math
+import copy
+import logging
+from datetime import datetime
 from typing import Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from db_models import User, CreditTransaction, Role
+from db_models import User, CreditTransaction, Role, SystemSetting
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# TABELLA COSTI IN CREDITI
+# TABELLA COSTI IN CREDITI (DEFAULT - fallback se non personalizzati)
 # ============================================================================
 
-CREDIT_COSTS = {
+DEFAULT_CREDIT_COSTS = {
     'train': {
         'base': 5,          # costo base per addestramento
         'per_page': 1,      # per pagina PDF
@@ -42,15 +48,135 @@ CREDIT_COSTS = {
     },
 }
 
+# Alias per compatibilita' con import esistenti
+CREDIT_COSTS = DEFAULT_CREDIT_COSTS
+
 # Lista codici permesso disponibili
 PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis']
+
+
+# ============================================================================
+# GESTIONE COSTI DINAMICI (DB-backed)
+# ============================================================================
+
+def get_credit_costs(db: Optional[Session] = None) -> dict:
+    """
+    Recupera i costi dei crediti. Se personalizzati dall'admin, li legge dal DB.
+    Altrimenti ritorna i default hardcoded.
+
+    Args:
+        db: Sessione database (opzionale per compatibilita' backward)
+
+    Returns:
+        dict con i costi per ogni operazione
+    """
+    if db is None:
+        return copy.deepcopy(DEFAULT_CREDIT_COSTS)
+
+    try:
+        setting = db.query(SystemSetting).filter(
+            SystemSetting.key == 'credit_costs'
+        ).first()
+
+        if setting and setting.value:
+            # Merge: parti dai default e sovrascrivi con i valori personalizzati
+            # Cosi' se l'admin ha personalizzato solo alcune operazioni,
+            # le altre mantengono i default
+            merged = copy.deepcopy(DEFAULT_CREDIT_COSTS)
+            for op_type, op_costs in setting.value.items():
+                if op_type in merged:
+                    merged[op_type].update(op_costs)
+                else:
+                    merged[op_type] = op_costs
+            return merged
+    except Exception as e:
+        logger.warning(f"Errore lettura costi da DB, uso default: {e}")
+
+    return copy.deepcopy(DEFAULT_CREDIT_COSTS)
+
+
+def is_credit_costs_default(db: Session) -> bool:
+    """Controlla se i costi sono quelli default (non personalizzati)."""
+    try:
+        setting = db.query(SystemSetting).filter(
+            SystemSetting.key == 'credit_costs'
+        ).first()
+        return setting is None
+    except Exception:
+        return True
+
+
+def save_credit_costs(costs: dict, admin_user_id, db: Session) -> dict:
+    """
+    Salva i costi personalizzati nel database.
+
+    Args:
+        costs: Dizionario costi (stessa struttura di DEFAULT_CREDIT_COSTS)
+        admin_user_id: ID dell'admin che effettua la modifica
+        db: Sessione database
+
+    Returns:
+        I costi salvati (merged con default)
+    """
+    # Valida: tutti i valori devono essere numeri >= 0
+    for op_type, op_costs in costs.items():
+        if not isinstance(op_costs, dict):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Costi per '{op_type}' devono essere un dizionario"
+            )
+        for key, value in op_costs.items():
+            if not isinstance(value, (int, float)) or value < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Il valore '{key}' per '{op_type}' deve essere un numero >= 0"
+                )
+
+    # Salva o aggiorna
+    setting = db.query(SystemSetting).filter(
+        SystemSetting.key == 'credit_costs'
+    ).first()
+
+    if setting:
+        setting.value = costs
+        setting.updated_at = datetime.utcnow()
+        setting.updated_by = admin_user_id
+    else:
+        setting = SystemSetting(
+            key='credit_costs',
+            value=costs,
+            updated_at=datetime.utcnow(),
+            updated_by=admin_user_id
+        )
+        db.add(setting)
+
+    db.commit()
+    return get_credit_costs(db)
+
+
+def reset_credit_costs(admin_user_id, db: Session) -> dict:
+    """
+    Ripristina i costi default cancellando la personalizzazione.
+
+    Returns:
+        I costi default
+    """
+    setting = db.query(SystemSetting).filter(
+        SystemSetting.key == 'credit_costs'
+    ).first()
+
+    if setting:
+        db.delete(setting)
+        db.commit()
+
+    return copy.deepcopy(DEFAULT_CREDIT_COSTS)
 
 
 # ============================================================================
 # FUNZIONI DI STIMA CREDITI
 # ============================================================================
 
-def estimate_credits(operation_type: str, params: dict) -> dict:
+def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = None) -> dict:
     """
     Stima i crediti necessari per un'operazione.
 
@@ -58,11 +184,13 @@ def estimate_credits(operation_type: str, params: dict) -> dict:
         operation_type: Tipo di operazione ('train', 'generate', 'humanize',
                        'thesis_chapters', 'thesis_sections', 'thesis_content')
         params: Parametri dell'operazione (es. num_pages, num_words, etc.)
+        db: Sessione database (opzionale, se fornito usa costi dinamici)
 
     Returns:
         dict con 'credits_needed' (int) e 'breakdown' (dict con dettagli)
     """
-    costs = CREDIT_COSTS.get(operation_type)
+    all_costs = get_credit_costs(db)
+    costs = all_costs.get(operation_type)
     if not costs:
         return {"credits_needed": 0, "breakdown": {"error": f"Tipo operazione sconosciuto: {operation_type}"}}
 

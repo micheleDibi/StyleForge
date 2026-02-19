@@ -4,13 +4,16 @@ import {
   ArrowLeft, Users, Shield, BarChart3, Search, RefreshCw,
   ChevronDown, ChevronUp, Edit3, Save, X, Plus, Minus,
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
-  Sparkles, Settings
+  Sparkles, Settings, Eye, EyeOff, UserPlus, RotateCcw,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   getAdminUsers, updateAdminUser, updateUserRole,
   updateUserPermissions, adjustUserCredits, getUserTransactions,
-  getAdminRoles, updateRolePermissions, getAdminStats
+  getAdminRoles, updateRolePermissions, getAdminStats,
+  adminCreateUser, getAdminCreditCosts, updateAdminCreditCosts,
+  resetAdminCreditCosts
 } from '../services/api';
 import Logo from '../components/Logo';
 
@@ -22,6 +25,16 @@ const PERMISSION_LABELS = {
 };
 
 const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis'];
+
+// Labels per le operazioni dei costi crediti
+const COST_OPERATION_LABELS = {
+  train: { label: 'Training', icon: '🎓', fields: { base: 'Costo base', per_page: 'Per pagina PDF' } },
+  generate: { label: 'Generazione Contenuto', icon: '✍️', fields: { base: 'Costo base', per_1000_words: 'Per 1000 parole' } },
+  humanize: { label: 'Umanizzazione', icon: '🤖', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
+  thesis_chapters: { label: 'Tesi - Capitoli', icon: '📚', fields: { base: 'Costo base' } },
+  thesis_sections: { label: 'Tesi - Sezioni', icon: '📄', fields: { base: 'Costo base' } },
+  thesis_content: { label: 'Tesi - Contenuto', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } }
+};
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -49,9 +62,35 @@ const Admin = () => {
   // Transactions state
   const [transactions, setTransactions] = useState({});
 
+  // Create user state
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [newUser, setNewUser] = useState({
+    email: '', username: '', password: '', full_name: '',
+    role_id: '', credits: 0, is_active: true
+  });
+
+  // Settings state
+  const [creditCosts, setCreditCosts] = useState(null);
+  const [editedCosts, setEditedCosts] = useState(null);
+  const [isDefaultCosts, setIsDefaultCosts] = useState(true);
+  const [costsSaving, setCostsSaving] = useState(false);
+  const [costsError, setCostsError] = useState('');
+  const [costsSuccess, setCostsSuccess] = useState('');
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
   useEffect(() => {
     loadData();
   }, [activeTab]);
+
+  // Carica i ruoli una volta per il form di creazione utente
+  useEffect(() => {
+    if (roles.length === 0) {
+      getAdminRoles().then(data => setRoles(data.roles)).catch(() => {});
+    }
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -65,6 +104,11 @@ const Admin = () => {
       } else if (activeTab === 'stats') {
         const data = await getAdminStats();
         setStats(data);
+      } else if (activeTab === 'settings') {
+        const data = await getAdminCreditCosts();
+        setCreditCosts(data.costs);
+        setEditedCosts(JSON.parse(JSON.stringify(data.costs)));
+        setIsDefaultCosts(data.is_default);
       }
     } catch (error) {
       console.error('Errore caricamento dati:', error);
@@ -97,7 +141,7 @@ const Admin = () => {
 
   const handleRoleChange = async (userId, roleId) => {
     try {
-      const updated = await updateUserRole(userId, roleId);
+      const updated = await updateUserRole(userId, parseInt(roleId));
       setUsers(users.map(u => u.id === userId ? updated : u));
     } catch (error) {
       console.error('Errore cambio ruolo:', error);
@@ -105,12 +149,11 @@ const Admin = () => {
   };
 
   const handlePermissionToggle = async (userId, permCode, currentOverrides) => {
-    // Ciclo: undefined (eredita) -> true (forza si) -> false (forza no) -> null (rimuovi) -> ...
     const current = currentOverrides[permCode];
     let newValue;
     if (current === undefined) newValue = true;
     else if (current === true) newValue = false;
-    else newValue = null; // rimuovi override
+    else newValue = null;
 
     try {
       const updated = await updateUserPermissions(userId, { [permCode]: newValue });
@@ -153,6 +196,93 @@ const Admin = () => {
     }
   };
 
+  // ========== CREATE USER ==========
+
+  const handleCreateUser = async () => {
+    setCreateError('');
+    if (!newUser.email || !newUser.username || !newUser.password) {
+      setCreateError('Email, username e password sono obbligatori.');
+      return;
+    }
+
+    setCreateLoading(true);
+    try {
+      const userData = {
+        ...newUser,
+        role_id: newUser.role_id ? parseInt(newUser.role_id) : null,
+        credits: parseInt(newUser.credits) || 0
+      };
+      await adminCreateUser(userData);
+
+      // Reset form e aggiorna lista
+      setNewUser({ email: '', username: '', password: '', full_name: '', role_id: '', credits: 0, is_active: true });
+      setShowCreateForm(false);
+      const data = await getAdminUsers(searchTerm || null);
+      setUsers(data.users);
+    } catch (error) {
+      const detail = error.response?.data?.detail || 'Errore durante la creazione dell\'utente.';
+      setCreateError(detail);
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  // ========== CREDIT COSTS SETTINGS ==========
+
+  const handleCostChange = (opType, field, value) => {
+    const numValue = parseFloat(value) || 0;
+    setEditedCosts(prev => ({
+      ...prev,
+      [opType]: {
+        ...prev[opType],
+        [field]: numValue
+      }
+    }));
+  };
+
+  const handleSaveCosts = async () => {
+    setCostsSaving(true);
+    setCostsError('');
+    setCostsSuccess('');
+    try {
+      const data = await updateAdminCreditCosts(editedCosts);
+      setCreditCosts(data.costs);
+      setEditedCosts(JSON.parse(JSON.stringify(data.costs)));
+      setIsDefaultCosts(data.is_default);
+      setCostsSuccess('Costi aggiornati con successo!');
+      setTimeout(() => setCostsSuccess(''), 3000);
+    } catch (error) {
+      const detail = error.response?.data?.detail || 'Errore nel salvataggio dei costi.';
+      setCostsError(detail);
+    } finally {
+      setCostsSaving(false);
+    }
+  };
+
+  const handleResetCosts = async () => {
+    setCostsSaving(true);
+    setCostsError('');
+    setCostsSuccess('');
+    try {
+      const data = await resetAdminCreditCosts();
+      setCreditCosts(data.costs);
+      setEditedCosts(JSON.parse(JSON.stringify(data.costs)));
+      setIsDefaultCosts(data.is_default);
+      setShowResetConfirm(false);
+      setCostsSuccess('Costi ripristinati ai valori default!');
+      setTimeout(() => setCostsSuccess(''), 3000);
+    } catch (error) {
+      setCostsError('Errore nel ripristino dei costi.');
+    } finally {
+      setCostsSaving(false);
+    }
+  };
+
+  const hasUnsavedCostChanges = () => {
+    if (!creditCosts || !editedCosts) return false;
+    return JSON.stringify(creditCosts) !== JSON.stringify(editedCosts);
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'Mai';
     return new Date(dateString).toLocaleDateString('it-IT', {
@@ -164,7 +294,8 @@ const Admin = () => {
   const tabs = [
     { id: 'users', label: 'Utenti', icon: Users },
     { id: 'roles', label: 'Ruoli', icon: Shield },
-    { id: 'stats', label: 'Statistiche', icon: BarChart3 }
+    { id: 'stats', label: 'Statistiche', icon: BarChart3 },
+    { id: 'settings', label: 'Impostazioni', icon: Settings }
   ];
 
   return (
@@ -193,7 +324,7 @@ const Admin = () => {
                   <h1 className="text-2xl font-bold text-gray-900">
                     Pannello <span className="gradient-text">Admin</span>
                   </h1>
-                  <p className="text-gray-500 text-sm">Gestione utenti, ruoli e crediti</p>
+                  <p className="text-gray-500 text-sm">Gestione utenti, ruoli, crediti e impostazioni</p>
                 </div>
               </div>
             </div>
@@ -213,7 +344,7 @@ const Admin = () => {
       {/* Main */}
       <main className="relative z-10 max-w-7xl mx-auto px-6 py-8">
         {/* Tabs */}
-        <div className="flex gap-2 mb-8">
+        <div className="flex gap-2 mb-8 flex-wrap">
           {tabs.map(tab => (
             <button
               key={tab.id}
@@ -241,7 +372,7 @@ const Admin = () => {
             {/* ===================== TAB UTENTI ===================== */}
             {activeTab === 'users' && (
               <div className="space-y-4">
-                {/* Search */}
+                {/* Search + Create Button */}
                 <div className="glass rounded-2xl p-4">
                   <div className="flex gap-3">
                     <div className="flex-1 relative">
@@ -255,12 +386,146 @@ const Admin = () => {
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                       />
                     </div>
-                    <button onClick={handleSearch} className="btn btn-primary">
+                    <button onClick={handleSearch} className="btn btn-secondary">
                       <Search className="w-4 h-4" />
                       Cerca
                     </button>
+                    <button
+                      onClick={() => { setShowCreateForm(!showCreateForm); setCreateError(''); }}
+                      className={`btn ${showCreateForm ? 'btn-ghost' : 'btn-primary'}`}
+                    >
+                      {showCreateForm ? (
+                        <><X className="w-4 h-4" /> Chiudi</>
+                      ) : (
+                        <><UserPlus className="w-4 h-4" /> Crea Utente</>
+                      )}
+                    </button>
                   </div>
                 </div>
+
+                {/* Create User Form */}
+                {showCreateForm && (
+                  <div className="glass rounded-2xl p-6 border-2 border-orange-200 bg-orange-50/30">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <UserPlus className="w-5 h-5 text-orange-500" />
+                      Crea Nuovo Utente
+                    </h3>
+
+                    {createError && (
+                      <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        {createError}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                        <input
+                          type="email"
+                          className="input w-full"
+                          placeholder="email@esempio.com"
+                          value={newUser.email}
+                          onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+                        <input
+                          type="text"
+                          className="input w-full"
+                          placeholder="username"
+                          value={newUser.username}
+                          onChange={(e) => setNewUser(prev => ({ ...prev, username: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            className="input w-full pr-10"
+                            placeholder="Minimo 6 caratteri"
+                            value={newUser.password}
+                            onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
+                        <input
+                          type="text"
+                          className="input w-full"
+                          placeholder="Nome e cognome"
+                          value={newUser.full_name}
+                          onChange={(e) => setNewUser(prev => ({ ...prev, full_name: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Ruolo</label>
+                        <select
+                          className="input w-full"
+                          value={newUser.role_id}
+                          onChange={(e) => setNewUser(prev => ({ ...prev, role_id: e.target.value }))}
+                        >
+                          <option value="">Ruolo Default (user)</option>
+                          {roles.map(r => (
+                            <option key={r.id} value={r.id}>{r.name} {r.is_default ? '(default)' : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Crediti Iniziali</label>
+                        <input
+                          type="number"
+                          className="input w-full"
+                          min="0"
+                          value={newUser.credits}
+                          onChange={(e) => setNewUser(prev => ({ ...prev, credits: parseInt(e.target.value) || 0 }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 mt-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newUser.is_active}
+                          onChange={(e) => setNewUser(prev => ({ ...prev, is_active: e.target.checked }))}
+                          className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700">Utente attivo</span>
+                      </label>
+                    </div>
+
+                    <div className="flex justify-end gap-3 mt-6">
+                      <button
+                        onClick={() => { setShowCreateForm(false); setCreateError(''); }}
+                        className="btn btn-ghost"
+                      >
+                        Annulla
+                      </button>
+                      <button
+                        onClick={handleCreateUser}
+                        disabled={createLoading}
+                        className="btn btn-primary"
+                      >
+                        {createLoading ? (
+                          <><RefreshCw className="w-4 h-4 animate-spin" /> Creazione...</>
+                        ) : (
+                          <><UserPlus className="w-4 h-4" /> Crea Utente</>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Users list */}
                 <div className="space-y-3">
@@ -353,7 +618,7 @@ const Admin = () => {
                               <select
                                 className="input py-1 px-2 text-sm"
                                 value={u.role_id || ''}
-                                onChange={(e) => handleRoleChange(u.id, parseInt(e.target.value))}
+                                onChange={(e) => handleRoleChange(u.id, e.target.value)}
                               >
                                 {roles.length > 0 ? roles.map(r => (
                                   <option key={r.id} value={r.id}>{r.name}</option>
@@ -622,6 +887,155 @@ const Admin = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* ===================== TAB IMPOSTAZIONI ===================== */}
+            {activeTab === 'settings' && editedCosts && (
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="glass rounded-2xl p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        <Coins className="w-6 h-6 text-orange-500" />
+                        Configurazione Costi Crediti
+                      </h2>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Personalizza i costi in crediti per ogni operazione della piattaforma.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isDefaultCosts ? (
+                        <span className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium">
+                          Valori Default
+                        </span>
+                      ) : (
+                        <span className="px-3 py-1.5 bg-orange-50 text-orange-700 rounded-lg text-sm font-medium">
+                          Personalizzati
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Feedback messages */}
+                {costsError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {costsError}
+                  </div>
+                )}
+                {costsSuccess && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    {costsSuccess}
+                  </div>
+                )}
+
+                {/* Cost cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {Object.entries(COST_OPERATION_LABELS).map(([opType, opConfig]) => (
+                    <div key={opType} className="glass rounded-2xl p-5">
+                      <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                        <span className="text-xl">{opConfig.icon}</span>
+                        {opConfig.label}
+                      </h3>
+                      <div className="space-y-3">
+                        {Object.entries(opConfig.fields).map(([field, fieldLabel]) => (
+                          <div key={field} className="flex items-center justify-between gap-4">
+                            <label className="text-sm text-gray-600 flex-1">{fieldLabel}</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                className="input w-24 text-center text-sm py-1.5"
+                                value={editedCosts[opType]?.[field] ?? 0}
+                                onChange={(e) => handleCostChange(opType, field, e.target.value)}
+                              />
+                              <span className="text-xs text-gray-400 w-12">crediti</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Actions */}
+                <div className="glass rounded-2xl p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {!isDefaultCosts && (
+                        <button
+                          onClick={() => setShowResetConfirm(true)}
+                          disabled={costsSaving}
+                          className="btn btn-ghost text-orange-600 hover:bg-orange-50"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          Ripristina Default
+                        </button>
+                      )}
+                      {hasUnsavedCostChanges() && (
+                        <span className="text-sm text-amber-600 flex items-center gap-1">
+                          <AlertTriangle className="w-4 h-4" />
+                          Modifiche non salvate
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleSaveCosts}
+                      disabled={costsSaving || !hasUnsavedCostChanges()}
+                      className="btn btn-primary"
+                    >
+                      {costsSaving ? (
+                        <><RefreshCw className="w-4 h-4 animate-spin" /> Salvataggio...</>
+                      ) : (
+                        <><Save className="w-4 h-4" /> Salva Modifiche</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Reset confirmation modal */}
+                {showResetConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-2xl">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                          <AlertTriangle className="w-6 h-6 text-amber-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-900">Ripristina Valori Default</h3>
+                          <p className="text-sm text-gray-500">Questa azione non e' reversibile</p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-6">
+                        Tutti i costi personalizzati verranno cancellati e ripristinati ai valori predefiniti del sistema. Sei sicuro?
+                      </p>
+                      <div className="flex justify-end gap-3">
+                        <button
+                          onClick={() => setShowResetConfirm(false)}
+                          className="btn btn-ghost"
+                        >
+                          Annulla
+                        </button>
+                        <button
+                          onClick={handleResetCosts}
+                          disabled={costsSaving}
+                          className="btn bg-amber-500 hover:bg-amber-600 text-white"
+                        >
+                          {costsSaving ? (
+                            <><RefreshCw className="w-4 h-4 animate-spin" /> Ripristino...</>
+                          ) : (
+                            <><RotateCcw className="w-4 h-4" /> Ripristina</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>

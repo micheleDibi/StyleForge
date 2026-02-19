@@ -12,15 +12,20 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
 from database import get_db
-from auth import get_current_admin_user, get_effective_permissions
-from db_models import User, Role, RolePermission, UserPermission, CreditTransaction
-from credits import add_credits, get_user_transactions, PERMISSION_CODES
+from auth import get_current_admin_user, get_effective_permissions, get_password_hash
+from db_models import User, Role, RolePermission, UserPermission, CreditTransaction, SystemSetting
+from credits import (
+    add_credits, get_user_transactions, PERMISSION_CODES,
+    get_credit_costs, save_credit_costs, reset_credit_costs,
+    is_credit_costs_default, DEFAULT_CREDIT_COSTS
+)
 from models import (
     AdminUserResponse, AdminUserListResponse,
     AdminUpdateUserRequest, AdminChangeRoleRequest,
     AdminSetPermissionsRequest, AdminAdjustCreditsRequest,
     RoleResponse, RoleListResponse, AdminUpdateRolePermissionsRequest,
-    AdminStatsResponse, CreditTransactionResponse, CreditTransactionListResponse
+    AdminStatsResponse, CreditTransactionResponse, CreditTransactionListResponse,
+    AdminCreateUserRequest, CreditCostsResponse, CreditCostsUpdateRequest
 )
 
 router = APIRouter(prefix="/admin", tags=["Administration"])
@@ -422,4 +427,130 @@ async def get_admin_stats(
         total_credits_consumed=total_consumed,
         operations_today=operations_today,
         operations_this_week=operations_week
+    )
+
+
+# ============================================================================
+# USER CREATION
+# ============================================================================
+
+@router.post("/users", response_model=AdminUserResponse)
+async def create_user(
+    request: AdminCreateUserRequest,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Crea un nuovo utente dal pannello admin."""
+    # Verifica email duplicata
+    existing_email = db.query(User).filter(User.email == request.email).first()
+    if existing_email:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Email '{request.email}' gia' in uso"
+        )
+
+    # Verifica username duplicato
+    existing_username = db.query(User).filter(User.username == request.username).first()
+    if existing_username:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Username '{request.username}' gia' in uso"
+        )
+
+    # Determina il ruolo
+    if request.role_id:
+        role = db.query(Role).filter(Role.id == request.role_id).first()
+        if not role:
+            raise HTTPException(status_code=404, detail="Ruolo non trovato")
+        role_id = role.id
+        is_admin = (role.name == 'admin')
+    else:
+        # Ruolo default
+        default_role = db.query(Role).filter(Role.is_default == True).first()
+        role_id = default_role.id if default_role else None
+        is_admin = False
+
+    # Crea utente
+    hashed_password = get_password_hash(request.password)
+    new_user = User(
+        email=request.email,
+        username=request.username,
+        hashed_password=hashed_password,
+        full_name=request.full_name,
+        role_id=role_id,
+        is_admin=is_admin,
+        credits=request.credits,
+        is_active=request.is_active
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    # Se crediti > 0, registra transazione
+    if request.credits > 0:
+        from credits import add_credits as _add_credits
+        _add_credits(
+            user=new_user,
+            amount=0,  # gia' assegnati in fase di creazione, registra solo la transazione
+            description=f"Crediti iniziali alla creazione utente ({request.credits})",
+            db=db,
+            transaction_type='admin_adjustment',
+            admin_user=admin_user
+        )
+
+    return build_admin_user_response(new_user, db)
+
+
+# ============================================================================
+# SYSTEM SETTINGS - CREDIT COSTS
+# ============================================================================
+
+@router.get("/settings/credit-costs", response_model=CreditCostsResponse)
+async def get_credit_costs_settings(
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Recupera i costi dei crediti correnti (personalizzati o default)."""
+    costs = get_credit_costs(db)
+    is_default = is_credit_costs_default(db)
+
+    return CreditCostsResponse(
+        costs=costs,
+        is_default=is_default
+    )
+
+
+@router.put("/settings/credit-costs", response_model=CreditCostsResponse)
+async def update_credit_costs_settings(
+    request: CreditCostsUpdateRequest,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Aggiorna i costi dei crediti (personalizzazione admin)."""
+    updated_costs = save_credit_costs(
+        costs=request.costs,
+        admin_user_id=admin_user.id,
+        db=db
+    )
+
+    return CreditCostsResponse(
+        costs=updated_costs,
+        is_default=False
+    )
+
+
+@router.delete("/settings/credit-costs", response_model=CreditCostsResponse)
+async def reset_credit_costs_settings(
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Ripristina i costi dei crediti ai valori default."""
+    default_costs = reset_credit_costs(
+        admin_user_id=admin_user.id,
+        db=db
+    )
+
+    return CreditCostsResponse(
+        costs=default_costs,
+        is_default=True
     )

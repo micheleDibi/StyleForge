@@ -556,3 +556,24 @@ class ThesisGenerationJob(Base):
             "created_at": self.created_at,
             "completed_at": self.completed_at
         }
+
+
+class SystemSetting(Base):
+    """Impostazioni di sistema configurabili dall'admin."""
+    __tablename__ = "system_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(JSONB, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    def __repr__(self):
+        return f"<SystemSetting(key={self.key})>"
+
+    def to_dict(self) -> dict:
+        return {
+            "key": self.key,
+            "value": self.value,
+            "updated_at": self.updated_at,
+            "updated_by": str(self.updated_by) if self.updated_by else None
+        }
