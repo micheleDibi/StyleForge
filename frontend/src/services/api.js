@@ -339,19 +339,6 @@ export const getResultText = async (jobId) => {
 };
 
 // ============================================================================
-// AI DETECTION
-// ============================================================================
-
-export const detectAI = async (text, modelName = 'qwen2-1.5b', threshold = 0.9) => {
-  const response = await api.post('/detect', {
-    text,
-    model_name: modelName,
-    threshold,
-  });
-  return response.data;
-};
-
-// ============================================================================
 // AI DETECTION - COPYLEAKS
 // ============================================================================
 

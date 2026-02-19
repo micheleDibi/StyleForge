@@ -20,7 +20,6 @@ from models import (
     GenerationRequest, GenerationResponse,
     HumanizeRequest, HumanizeResponse,
     JobStatusResponse, SessionInfo, SessionListResponse,
-    DetectionRequest, DetectionResponse,
     ErrorResponse, HealthResponse,
     JobStatus, JobType,
     CreditEstimateRequest, CreditEstimateResponse,
@@ -632,45 +631,6 @@ async def delete_job(
 
     job_manager.delete_job(job_id, str(current_user.id))
     return {"message": f"Job {job_id} eliminato con successo"}
-
-
-# ============================================================================
-# AI DETECTION ENDPOINTS
-# ============================================================================
-
-@app.post("/detect", response_model=DetectionResponse, tags=["AI Detection"])
-async def detect_ai_text(
-    request: DetectionRequest,
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Rileva se un testo è stato generato da AI.
-
-    Utilizza il metodo Binoculars per analizzare il testo e determinare
-    se è stato generato da un'intelligenza artificiale.
-
-    **Nota:** Questa operazione può richiedere tempo, specialmente al primo utilizzo
-    quando i modelli devono essere caricati.
-    """
-    try:
-        from detector import BinocularsDetector
-
-        # Inizializza detector (potrebbe essere cachato in futuro)
-        detector = BinocularsDetector(
-            model_name=request.model_name,
-            threshold=request.threshold
-        )
-
-        # Esegui rilevamento
-        result = detector.detect(request.text)
-
-        return DetectionResponse(**result)
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Errore nel rilevamento: {str(e)}"
-        )
 
 
 # ============================================================================

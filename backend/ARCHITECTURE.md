@@ -91,7 +91,7 @@ Modelli Pydantic per validazione e serializzazione.
 - `GenerationRequest/Response`
 - `JobStatusResponse`
 - `SessionInfo`
-- `DetectionRequest/Response`
+- `CopyleaksDetectionRequest/Response`
 
 ### 6. Configuration (`config.py`)
 

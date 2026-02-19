@@ -412,27 +412,4 @@ if __name__ == "__main__":
 
     print(f"Contenuto generato salvato in {nome_file}")
     print()
-   
-    # ============================================
-    # FASE 4: CONTROLLO AI DETECTION
-    # ============================================
-    from detector import BinocularsDetector, format_detection_result
-
-    print("=== CONTROLLO AI DETECTION ===")
-    print("Inizializzazione del detector...")
-
-    detector = BinocularsDetector(
-        model_name="qwen2-1.5b",  # Consigliato per Mac (~6GB totali)
-        threshold=0.9
-    )
-
-    risultato_detection = detector.detect(Path("/Users/micheledibisceglia/Developer/StyleForge/backend/results/contenuto_generato_20251220_181937.txt").read_text("utf-8"))
-    print(format_detection_result(risultato_detection))
-
-    if risultato_detection["is_ai_generated"]:
-        print("ATTENZIONE: Il testo potrebbe essere rilevato come generato da AI.")
-        print(f"Score: {risultato_detection['score']} (soglia: {risultato_detection['threshold']})")
-    else:
-        print("OK: Il testo sembra sufficientemente 'umano'.")
-        print(f"Score: {risultato_detection['score']} (soglia: {risultato_detection['threshold']})")
 

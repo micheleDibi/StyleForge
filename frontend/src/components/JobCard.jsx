@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Loader, Clock, Download, Trash2, Shield, FileText, Sparkles, Wand2 } from 'lucide-react';
-import { getJobStatus, downloadResult, deleteJob, detectAI } from '../services/api';
+import { CheckCircle, XCircle, Loader, Clock, Download, Trash2, FileText, Sparkles, Wand2 } from 'lucide-react';
+import { getJobStatus, downloadResult, deleteJob } from '../services/api';
 
 const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
   const [currentJob, setCurrentJob] = useState(job);
   const [polling, setPolling] = useState(false);
   const [estimatedTime, setEstimatedTime] = useState(null);
-  const [aiDetection, setAiDetection] = useState(null);
-  const [detectingAI, setDetectingAI] = useState(false);
 
   useEffect(() => {
     setCurrentJob(job);
@@ -117,21 +115,6 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
         console.error('Errore nell\'eliminazione:', error);
         alert('Errore nell\'eliminazione del job');
       }
-    }
-  };
-
-  const handleDetectAI = async () => {
-    if (!currentJob.result) return;
-
-    setDetectingAI(true);
-    try {
-      const result = await detectAI(currentJob.result);
-      setAiDetection(result);
-    } catch (error) {
-      console.error('Errore nel rilevamento AI:', error);
-      alert('Errore nel rilevamento AI');
-    } finally {
-      setDetectingAI(false);
     }
   };
 
@@ -294,60 +277,16 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
         </div>
       )}
 
-      {/* AI Detection Results */}
-      {aiDetection && (
-        <div className={`mb-4 p-5 rounded-xl border-2 shadow-md ${aiDetection.is_ai_generated ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-400' : 'bg-gradient-to-br from-green-50 to-green-100 border-green-400'}`}>
-          <div className="flex items-start gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${aiDetection.is_ai_generated ? 'bg-red-200' : 'bg-green-200'}`}>
-              <Shield className={`w-6 h-6 ${aiDetection.is_ai_generated ? 'text-red-700' : 'text-green-700'}`} />
-            </div>
-            <div className="flex-1">
-              <p className={`font-bold text-base mb-3 ${aiDetection.is_ai_generated ? 'text-red-900' : 'text-green-900'}`}>
-                {aiDetection.verdict}
-              </p>
-              <div className="grid grid-cols-2 gap-3 text-xs bg-white p-3 rounded-lg shadow-sm">
-                <div className="flex flex-col">
-                  <span className="text-slate-500 font-medium">Score</span>
-                  <span className="font-bold text-slate-900 text-sm mt-1">{(aiDetection.score * 100).toFixed(1)}%</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-slate-500 font-medium">Confidenza</span>
-                  <span className="font-bold text-slate-900 text-sm mt-1">{(aiDetection.confidence * 100).toFixed(1)}%</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-slate-500 font-medium">Perplexity Observer</span>
-                  <span className="font-bold text-slate-900 text-sm mt-1">{aiDetection.perplexity_observer.toFixed(2)}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-slate-500 font-medium">Perplexity Performer</span>
-                  <span className="font-bold text-slate-900 text-sm mt-1">{aiDetection.perplexity_performer.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Actions */}
       <div className="flex gap-3">
         {currentJob.status === 'completed' && (currentJob.job_type === 'generation' || currentJob.job_type === 'humanization') && (
-          <>
-            <button
-              onClick={handleDownload}
-              className={`btn flex-1 gap-2 shadow-md hover:shadow-lg transition-all ${currentJob.job_type === 'humanization' ? 'bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white' : 'btn-primary'}`}
-            >
-              <Download className="w-5 h-5" />
-              <span className="font-semibold">Scarica</span>
-            </button>
-            <button
-              onClick={handleDetectAI}
-              className="btn btn-secondary gap-2 shadow-md hover:shadow-lg transition-all"
-              disabled={detectingAI}
-            >
-              <Shield className={`w-5 h-5 ${detectingAI ? 'animate-spin' : ''}`} />
-              <span className="font-semibold">{detectingAI ? 'Analisi...' : 'Rileva AI'}</span>
-            </button>
-          </>
+          <button
+            onClick={handleDownload}
+            className={`btn flex-1 gap-2 shadow-md hover:shadow-lg transition-all ${currentJob.job_type === 'humanization' ? 'bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white' : 'btn-primary'}`}
+          >
+            <Download className="w-5 h-5" />
+            <span className="font-semibold">Scarica</span>
+          </button>
         )}
         {currentJob.status === 'completed' && currentJob.job_type === 'training' && (
           <button

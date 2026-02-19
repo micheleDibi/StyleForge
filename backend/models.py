@@ -142,31 +142,6 @@ class HumanizeResponse(BaseModel):
     created_at: datetime
 
 
-class DetectionRequest(BaseModel):
-    """Request per il rilevamento AI."""
-    text: str = Field(..., min_length=10, description="Testo da analizzare")
-    model_name: str = Field("qwen2-1.5b", description="Modello da usare per il rilevamento")
-    threshold: float = Field(0.9, ge=0.1, le=1.0, description="Soglia per la classificazione")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "text": "Il testo da analizzare...",
-                "model_name": "qwen2-1.5b",
-                "threshold": 0.9
-            }
-        }
-
-
-class DetectionResponse(BaseModel):
-    """Response del rilevamento AI."""
-    score: float
-    is_ai_generated: bool
-    confidence: float
-    perplexity_observer: float
-    perplexity_performer: float
-    threshold: float
-    verdict: str
 
 
 class ErrorResponse(BaseModel):

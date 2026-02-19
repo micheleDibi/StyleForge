@@ -175,18 +175,6 @@ Response:
 curl "http://localhost:8000/results/job_def456" -O
 ```
 
-### 6. (Opzionale) Rileva AI nel Testo
-
-```bash
-curl -X POST "http://localhost:8000/detect" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Il testo da analizzare...",
-    "model_name": "qwen2-1.5b",
-    "threshold": 0.9
-  }'
-```
-
 ## Endpoints Principali
 
 ### Sessions
@@ -210,9 +198,10 @@ curl -X POST "http://localhost:8000/detect" \
 - `GET /jobs` - Elenca tutti i job (opzionalmente filtrati per sessione)
 - `DELETE /jobs/{job_id}` - Elimina un job
 
-### AI Detection
+### AI Detection (Copyleaks)
 
-- `POST /detect` - Rileva se un testo è generato da AI
+- `POST /detect/copyleaks` - Rileva testo AI con Copyleaks
+- `POST /detect/copyleaks/report` - Genera report PDF AI detection
 
 ### Results
 
