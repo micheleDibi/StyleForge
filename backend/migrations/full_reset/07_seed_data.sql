@@ -10,7 +10,7 @@ INSERT INTO roles (name, description, is_default) VALUES
 -- Permessi admin: tutti
 INSERT INTO role_permissions (role_id, permission_code)
 SELECT r.id, p.code
-FROM roles r, (VALUES ('train'), ('generate'), ('humanize'), ('thesis')) AS p(code)
+FROM roles r, (VALUES ('train'), ('generate'), ('humanize'), ('thesis'), ('detect'), ('manage_templates')) AS p(code)
 WHERE r.name = 'admin';
 
 -- Permessi user: solo train e thesis
