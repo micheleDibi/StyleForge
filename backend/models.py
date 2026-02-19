@@ -650,3 +650,74 @@ class CopyleaksReportRequest(BaseModel):
     segments: List[CopyleaksSegment] = Field(..., description="Segmenti classificati")
     ai_percentage: float = Field(..., description="Percentuale AI")
     human_percentage: float = Field(..., description="Percentuale umano")
+
+
+# ============================================================================
+# EXPORT TEMPLATES
+# ============================================================================
+
+class PdfTemplateSettings(BaseModel):
+    """Impostazioni template PDF."""
+    page_size: str = Field("A4", description="Formato pagina: A4, Letter, A5")
+    margin_top: int = Field(50, ge=20, le=150, description="Margine superiore (pt)")
+    margin_bottom: int = Field(50, ge=20, le=150, description="Margine inferiore (pt)")
+    margin_left: int = Field(50, ge=20, le=150, description="Margine sinistro (pt)")
+    margin_right: int = Field(50, ge=20, le=150, description="Margine destro (pt)")
+    font_body: str = Field("helv", description="Font corpo testo")
+    font_body_size: int = Field(11, ge=8, le=16, description="Dimensione font corpo (pt)")
+    font_title_size: int = Field(24, ge=14, le=36, description="Dimensione font titolo (pt)")
+    font_chapter_size: int = Field(18, ge=12, le=28, description="Dimensione font capitoli (pt)")
+    font_section_size: int = Field(14, ge=10, le=22, description="Dimensione font sezioni (pt)")
+    line_height_multiplier: float = Field(1.5, ge=1.0, le=3.0, description="Moltiplicatore interlinea")
+    include_toc: bool = Field(True, description="Includere indice")
+    include_page_numbers: bool = Field(True, description="Includere numeri pagina")
+    page_number_position: str = Field("bottom_center", description="Posizione numeri pagina")
+    include_header: bool = Field(False, description="Includere intestazione")
+    header_text: str = Field("", description="Testo intestazione")
+    include_footer: bool = Field(False, description="Includere pie' di pagina")
+    footer_text: str = Field("", description="Testo pie' di pagina")
+    title_alignment: str = Field("center", description="Allineamento titolo: left, center, right")
+    body_alignment: str = Field("left", description="Allineamento corpo: left, center, right, justify")
+    chapter_spacing_before: int = Field(20, ge=0, le=60, description="Spazio prima capitolo (pt)")
+    section_spacing_before: int = Field(15, ge=0, le=40, description="Spazio prima sezione (pt)")
+    paragraph_spacing: int = Field(0, ge=0, le=20, description="Spazio tra paragrafi (pt)")
+
+    class Config:
+        extra = "allow"
+
+
+class DocxTemplateSettings(BaseModel):
+    """Impostazioni template DOCX."""
+    font_name: str = Field("Times New Roman", description="Nome font")
+    font_size: int = Field(12, ge=8, le=16, description="Dimensione font corpo (pt)")
+    title_alignment: str = Field("center", description="Allineamento titolo")
+    line_spacing: float = Field(1.5, ge=1.0, le=3.0, description="Interlinea")
+    paragraph_spacing_after: int = Field(6, ge=0, le=24, description="Spazio dopo paragrafo (pt)")
+    include_toc: bool = Field(True, description="Includere indice")
+    include_page_numbers: bool = Field(True, description="Includere numeri pagina")
+    toc_indent: float = Field(0.5, ge=0.0, le=2.0, description="Indentazione indice (inches)")
+    heading1_size: int = Field(16, ge=12, le=28, description="Dimensione heading 1 (pt)")
+    heading2_size: int = Field(14, ge=10, le=24, description="Dimensione heading 2 (pt)")
+
+    class Config:
+        extra = "allow"
+
+
+class ExportTemplate(BaseModel):
+    """Template di esportazione completo."""
+    id: str = Field(..., description="ID univoco template")
+    name: str = Field(..., min_length=1, max_length=100, description="Nome template")
+    is_default: bool = Field(False, description="Se questo e' il template predefinito")
+    pdf: PdfTemplateSettings = Field(default_factory=PdfTemplateSettings)
+    docx: DocxTemplateSettings = Field(default_factory=DocxTemplateSettings)
+
+
+class ExportTemplateListResponse(BaseModel):
+    """Response con lista template."""
+    templates: List[ExportTemplate]
+    help: Dict[str, Any] = Field(default_factory=dict, description="Descrizioni parametri per tooltip")
+
+
+class ExportTemplateUpdateRequest(BaseModel):
+    """Request per aggiornare i template."""
+    templates: List[ExportTemplate] = Field(..., description="Lista completa template")

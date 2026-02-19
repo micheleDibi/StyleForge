@@ -1,17 +1,37 @@
-import { useState, useMemo } from 'react';
-import { Download, FileText, Eye, Copy, Check, Loader, FileType, FileCode, BookOpen, List, Calendar, User, Settings } from 'lucide-react';
-import { exportThesis } from '../../services/api';
+import { useState, useMemo, useEffect } from 'react';
+import { Download, FileText, Eye, Copy, Check, Loader, FileType, FileCode, BookOpen, List, Calendar, User, Settings, ChevronDown } from 'lucide-react';
+import { exportThesis, getExportTemplates } from '../../services/api';
 
 const ThesisPreview = ({ thesis, content }) => {
   const [activeTab, setActiveTab] = useState('preview');
   const [exportFormat, setExportFormat] = useState('pdf');
   const [isExporting, setIsExporting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+
+  // Carica i template disponibili
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        const data = await getExportTemplates();
+        const tpls = data.templates || [];
+        setTemplates(tpls);
+        // Imposta il default
+        const defaultTpl = tpls.find(t => t.is_default);
+        if (defaultTpl) setSelectedTemplate(defaultTpl.id);
+        else if (tpls.length > 0) setSelectedTemplate(tpls[0].id);
+      } catch (err) {
+        console.error('Errore caricamento template:', err);
+      }
+    };
+    loadTemplates();
+  }, []);
 
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      await exportThesis(thesis.id, exportFormat);
+      await exportThesis(thesis.id, exportFormat, selectedTemplate);
     } catch (err) {
       console.error('Errore export:', err);
     } finally {
@@ -274,6 +294,32 @@ const ThesisPreview = ({ thesis, content }) => {
                   })}
                 </div>
               </div>
+
+              {/* Template Selector (only for PDF/DOCX) */}
+              {(exportFormat === 'pdf' || exportFormat === 'docx') && templates.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Template di esportazione
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedTemplate || ''}
+                      onChange={(e) => setSelectedTemplate(e.target.value)}
+                      className="w-full p-3 pr-10 rounded-lg border-2 border-slate-200 bg-white text-slate-700 font-medium appearance-none cursor-pointer hover:border-orange-300 focus:border-orange-500 focus:outline-none transition-colors"
+                    >
+                      {templates.map(tpl => (
+                        <option key={tpl.id} value={tpl.id}>
+                          {tpl.name} {tpl.is_default ? '(Default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Seleziona il template con le impostazioni di formattazione desiderate.
+                  </p>
+                </div>
+              )}
 
               {/* Export Button */}
               <button

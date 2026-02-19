@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronUp, Edit3, Save, X, Plus, Minus,
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
   Sparkles, Settings, Eye, EyeOff, UserPlus, RotateCcw,
-  AlertTriangle
+  AlertTriangle, FileText, HelpCircle, Copy, Trash2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -13,7 +13,8 @@ import {
   updateUserPermissions, adjustUserCredits, getUserTransactions,
   getAdminRoles, updateRolePermissions, getAdminStats,
   adminCreateUser, getAdminCreditCosts, updateAdminCreditCosts,
-  resetAdminCreditCosts
+  resetAdminCreditCosts, getAdminTemplates, updateAdminTemplates,
+  deleteAdminTemplate
 } from '../services/api';
 import Logo from '../components/Logo';
 
@@ -21,10 +22,12 @@ const PERMISSION_LABELS = {
   train: 'Addestra Modello',
   generate: 'Genera Contenuto',
   humanize: 'Umanizza Testo',
-  thesis: 'Tesi / Relazione'
+  thesis: 'Tesi / Relazione',
+  detect: 'AI Detection',
+  manage_templates: 'Gestione Template'
 };
 
-const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis'];
+const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis', 'detect', 'manage_templates'];
 
 // Labels per le operazioni dei costi crediti
 const COST_OPERATION_LABELS = {
@@ -33,7 +36,8 @@ const COST_OPERATION_LABELS = {
   humanize: { label: 'Umanizzazione', icon: '🤖', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
   thesis_chapters: { label: 'Tesi - Capitoli', icon: '📚', fields: { base: 'Costo base' } },
   thesis_sections: { label: 'Tesi - Sezioni', icon: '📄', fields: { base: 'Costo base' } },
-  thesis_content: { label: 'Tesi - Contenuto', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } }
+  thesis_content: { label: 'Tesi - Contenuto', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
+  ai_detection: { label: 'AI Detection', icon: '🛡️', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } }
 };
 
 const Admin = () => {
@@ -81,6 +85,18 @@ const Admin = () => {
   const [costsSuccess, setCostsSuccess] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  // Template state
+  const [templates, setTemplates] = useState([]);
+  const [templateHelp, setTemplateHelp] = useState(null);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [editedTemplate, setEditedTemplate] = useState(null);
+  const [templateSection, setTemplateSection] = useState('pdf');
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateError, setTemplateError] = useState('');
+  const [templateSuccess, setTemplateSuccess] = useState('');
+  const [showDeleteTemplate, setShowDeleteTemplate] = useState(null);
+  const [activeTooltip, setActiveTooltip] = useState(null);
+
   useEffect(() => {
     loadData();
   }, [activeTab]);
@@ -109,6 +125,10 @@ const Admin = () => {
         setCreditCosts(data.costs);
         setEditedCosts(JSON.parse(JSON.stringify(data.costs)));
         setIsDefaultCosts(data.is_default);
+      } else if (activeTab === 'templates') {
+        const data = await getAdminTemplates();
+        setTemplates(data.templates || []);
+        if (data.help) setTemplateHelp(data.help);
       }
     } catch (error) {
       console.error('Errore caricamento dati:', error);
@@ -283,6 +303,202 @@ const Admin = () => {
     return JSON.stringify(creditCosts) !== JSON.stringify(editedCosts);
   };
 
+  // ========== TEMPLATE HANDLERS ==========
+
+  const handleEditTemplate = (template) => {
+    setEditingTemplate(template.id);
+    setEditedTemplate(JSON.parse(JSON.stringify(template)));
+    setTemplateSection('pdf');
+    setTemplateError('');
+    setTemplateSuccess('');
+  };
+
+  const handleCancelEditTemplate = () => {
+    setEditingTemplate(null);
+    setEditedTemplate(null);
+    setTemplateError('');
+  };
+
+  const handleTemplateFieldChange = (section, field, value) => {
+    setEditedTemplate(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleSaveTemplate = async () => {
+    setTemplateSaving(true);
+    setTemplateError('');
+    setTemplateSuccess('');
+    try {
+      const updatedTemplates = templates.map(t =>
+        t.id === editedTemplate.id ? editedTemplate : t
+      );
+      const data = await updateAdminTemplates(updatedTemplates);
+      setTemplates(data.templates || []);
+      setEditingTemplate(null);
+      setEditedTemplate(null);
+      setTemplateSuccess('Template salvato con successo!');
+      setTimeout(() => setTemplateSuccess(''), 3000);
+    } catch (error) {
+      const detail = error.response?.data?.detail || 'Errore nel salvataggio del template.';
+      setTemplateError(detail);
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const handleCreateTemplate = async () => {
+    setTemplateSaving(true);
+    setTemplateError('');
+    try {
+      // Crea una copia del template default
+      const defaultTpl = templates.find(t => t.is_default) || templates[0];
+      const newTemplate = {
+        ...JSON.parse(JSON.stringify(defaultTpl)),
+        id: `tpl-${Date.now().toString(36)}`,
+        name: `Nuovo Template ${templates.length + 1}`,
+        is_default: false
+      };
+      const updatedTemplates = [...templates, newTemplate];
+      const data = await updateAdminTemplates(updatedTemplates);
+      setTemplates(data.templates || []);
+      handleEditTemplate(newTemplate);
+      setTemplateSuccess('Nuovo template creato!');
+      setTimeout(() => setTemplateSuccess(''), 3000);
+    } catch (error) {
+      const detail = error.response?.data?.detail || 'Errore nella creazione del template.';
+      setTemplateError(detail);
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId) => {
+    setTemplateSaving(true);
+    setTemplateError('');
+    try {
+      const data = await deleteAdminTemplate(templateId);
+      setTemplates(data.templates || []);
+      setShowDeleteTemplate(null);
+      if (editingTemplate === templateId) {
+        setEditingTemplate(null);
+        setEditedTemplate(null);
+      }
+      setTemplateSuccess('Template eliminato!');
+      setTimeout(() => setTemplateSuccess(''), 3000);
+    } catch (error) {
+      const detail = error.response?.data?.detail || 'Errore nell\'eliminazione del template.';
+      setTemplateError(detail);
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const handleSetDefaultTemplate = async (templateId) => {
+    setTemplateSaving(true);
+    setTemplateError('');
+    try {
+      const updatedTemplates = templates.map(t => ({
+        ...t,
+        is_default: t.id === templateId
+      }));
+      const data = await updateAdminTemplates(updatedTemplates);
+      setTemplates(data.templates || []);
+      setTemplateSuccess('Template impostato come default!');
+      setTimeout(() => setTemplateSuccess(''), 3000);
+    } catch (error) {
+      setTemplateError('Errore nell\'impostazione del template default.');
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const renderTemplateField = (section, fieldKey, helpData) => {
+    if (!editedTemplate || !helpData) return null;
+    const value = editedTemplate[section]?.[fieldKey];
+    const help = helpData;
+    const tooltipId = `${section}-${fieldKey}`;
+
+    return (
+      <div key={fieldKey} className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <label className="text-sm font-medium text-gray-700">{help.label}</label>
+            <button
+              type="button"
+              onClick={() => setActiveTooltip(activeTooltip === tooltipId ? null : tooltipId)}
+              className="text-gray-400 hover:text-orange-500 transition-colors"
+              title="Mostra info"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          </div>
+          {activeTooltip === tooltipId && (
+            <div className="mt-1.5 p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+              <p className="font-medium mb-1">{help.description}</p>
+              <p className="text-blue-600 italic">{help.example}</p>
+            </div>
+          )}
+        </div>
+        <div className="flex-shrink-0 w-40">
+          {help.type === 'select' ? (
+            <select
+              className="input w-full text-sm py-1.5"
+              value={value ?? help.default}
+              onChange={(e) => handleTemplateFieldChange(section, fieldKey, e.target.value)}
+            >
+              {help.options?.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          ) : help.type === 'boolean' ? (
+            <button
+              type="button"
+              onClick={() => handleTemplateFieldChange(section, fieldKey, !value)}
+              className={`w-full px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                value
+                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              {value ? 'Attivo' : 'Disattivo'}
+            </button>
+          ) : help.type === 'text' ? (
+            <input
+              type="text"
+              className="input w-full text-sm py-1.5"
+              value={value ?? help.default ?? ''}
+              onChange={(e) => handleTemplateFieldChange(section, fieldKey, e.target.value)}
+              placeholder={help.default || ''}
+            />
+          ) : (
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                className="input w-full text-sm py-1.5 text-center"
+                min={help.min}
+                max={help.max}
+                step={help.step || 1}
+                value={value ?? help.default ?? 0}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  handleTemplateFieldChange(section, fieldKey, isNaN(v) ? 0 : v);
+                }}
+              />
+              {help.unit && (
+                <span className="text-xs text-gray-400 w-8">{help.unit}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'Mai';
     return new Date(dateString).toLocaleDateString('it-IT', {
@@ -295,7 +511,8 @@ const Admin = () => {
     { id: 'users', label: 'Utenti', icon: Users },
     { id: 'roles', label: 'Ruoli', icon: Shield },
     { id: 'stats', label: 'Statistiche', icon: BarChart3 },
-    { id: 'settings', label: 'Impostazioni', icon: Settings }
+    { id: 'settings', label: 'Impostazioni', icon: Settings },
+    { id: 'templates', label: 'Template Export', icon: FileText }
   ];
 
   return (
@@ -1030,6 +1247,242 @@ const Admin = () => {
                             <><RefreshCw className="w-4 h-4 animate-spin" /> Ripristino...</>
                           ) : (
                             <><RotateCcw className="w-4 h-4" /> Ripristina</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ===================== TAB TEMPLATE EXPORT ===================== */}
+            {activeTab === 'templates' && (
+              <div className="space-y-6">
+                {/* Header */}
+                <div className="glass rounded-2xl p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        <FileText className="w-6 h-6 text-orange-500" />
+                        Template di Esportazione
+                      </h2>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Crea e personalizza template per l'esportazione delle tesi in PDF e DOCX.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleCreateTemplate}
+                      disabled={templateSaving}
+                      className="btn btn-primary"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Nuovo Template
+                    </button>
+                  </div>
+                </div>
+
+                {/* Feedback messages */}
+                {templateError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {templateError}
+                  </div>
+                )}
+                {templateSuccess && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    {templateSuccess}
+                  </div>
+                )}
+
+                {/* Template List */}
+                {!editingTemplate && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {templates.map(tpl => (
+                      <div key={tpl.id} className="glass rounded-2xl p-5 relative">
+                        {tpl.is_default && (
+                          <span className="absolute top-3 right-3 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+                            Default
+                          </span>
+                        )}
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center">
+                            <FileText className="w-6 h-6 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-gray-900">{tpl.name}</h3>
+                            <p className="text-xs text-gray-500">ID: {tpl.id}</p>
+                          </div>
+                        </div>
+
+                        {/* Mini info */}
+                        <div className="grid grid-cols-2 gap-2 mb-4 text-xs text-gray-600">
+                          <div className="bg-gray-50 rounded-lg p-2">
+                            <p className="font-medium">PDF</p>
+                            <p>{tpl.pdf?.page_size || 'A4'} — {tpl.pdf?.font_body || 'helv'} {tpl.pdf?.font_body_size || 11}pt</p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-2">
+                            <p className="font-medium">DOCX</p>
+                            <p>{tpl.docx?.font_name || 'Times New Roman'} {tpl.docx?.font_size || 12}pt</p>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEditTemplate(tpl)}
+                            className="btn btn-secondary flex-1 text-sm py-2"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            Modifica
+                          </button>
+                          {!tpl.is_default && (
+                            <>
+                              <button
+                                onClick={() => handleSetDefaultTemplate(tpl.id)}
+                                className="btn btn-ghost text-sm py-2"
+                                title="Imposta come default"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setShowDeleteTemplate(tpl.id)}
+                                className="btn btn-ghost text-red-500 hover:bg-red-50 text-sm py-2"
+                                title="Elimina"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {templates.length === 0 && (
+                      <div className="col-span-full glass rounded-2xl p-8 text-center">
+                        <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                        <p className="text-gray-500">Nessun template trovato. Crea il primo!</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Template Editor */}
+                {editingTemplate && editedTemplate && (
+                  <div className="glass rounded-2xl p-6 border-2 border-orange-200">
+                    {/* Editor header */}
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center">
+                          <Edit3 className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <input
+                            type="text"
+                            className="input text-lg font-bold py-1"
+                            value={editedTemplate.name}
+                            onChange={(e) => setEditedTemplate(prev => ({ ...prev, name: e.target.value }))}
+                            placeholder="Nome template"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleCancelEditTemplate}
+                          className="btn btn-ghost"
+                        >
+                          <X className="w-4 h-4" />
+                          Annulla
+                        </button>
+                        <button
+                          onClick={handleSaveTemplate}
+                          disabled={templateSaving}
+                          className="btn btn-primary"
+                        >
+                          {templateSaving ? (
+                            <><RefreshCw className="w-4 h-4 animate-spin" /> Salvataggio...</>
+                          ) : (
+                            <><Save className="w-4 h-4" /> Salva Template</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* PDF / DOCX tabs */}
+                    <div className="flex gap-2 mb-6">
+                      <button
+                        onClick={() => setTemplateSection('pdf')}
+                        className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                          templateSection === 'pdf'
+                            ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg'
+                            : 'bg-white/70 text-gray-600 hover:bg-white hover:shadow-md'
+                        }`}
+                      >
+                        <FileText className="w-4 h-4 inline-block mr-1.5" />
+                        Impostazioni PDF
+                      </button>
+                      <button
+                        onClick={() => setTemplateSection('docx')}
+                        className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                          templateSection === 'docx'
+                            ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg'
+                            : 'bg-white/70 text-gray-600 hover:bg-white hover:shadow-md'
+                        }`}
+                      >
+                        <FileText className="w-4 h-4 inline-block mr-1.5" />
+                        Impostazioni DOCX
+                      </button>
+                    </div>
+
+                    {/* Fields */}
+                    <div className="bg-white rounded-xl p-4 max-h-[600px] overflow-y-auto">
+                      {templateHelp && templateHelp[templateSection] ? (
+                        Object.entries(templateHelp[templateSection]).map(([fieldKey, helpData]) =>
+                          renderTemplateField(templateSection, fieldKey, helpData)
+                        )
+                      ) : (
+                        <div className="text-center py-8 text-gray-400">
+                          <HelpCircle className="w-8 h-8 mx-auto mb-2" />
+                          <p>Caricamento parametri...</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Delete confirmation modal */}
+                {showDeleteTemplate && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-2xl">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+                          <Trash2 className="w-6 h-6 text-red-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-900">Elimina Template</h3>
+                          <p className="text-sm text-gray-500">Questa azione non e' reversibile</p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-6">
+                        Il template verra' eliminato definitivamente. Gli utenti che lo utilizzavano passeranno al template default. Sei sicuro?
+                      </p>
+                      <div className="flex justify-end gap-3">
+                        <button
+                          onClick={() => setShowDeleteTemplate(null)}
+                          className="btn btn-ghost"
+                        >
+                          Annulla
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTemplate(showDeleteTemplate)}
+                          disabled={templateSaving}
+                          className="btn bg-red-500 hover:bg-red-600 text-white"
+                        >
+                          {templateSaving ? (
+                            <><RefreshCw className="w-4 h-4 animate-spin" /> Eliminazione...</>
+                          ) : (
+                            <><Trash2 className="w-4 h-4" /> Elimina</>
                           )}
                         </button>
                       </div>

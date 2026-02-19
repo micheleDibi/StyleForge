@@ -519,9 +519,12 @@ export const getThesisGenerationStatus = async (thesisId) => {
 };
 
 // Export
-export const exportThesis = async (thesisId, format = 'pdf') => {
+export const exportThesis = async (thesisId, format = 'pdf', templateId = null) => {
+  const params = { format };
+  if (templateId) params.template_id = templateId;
+
   const response = await api.get(`/api/thesis/${thesisId}/export`, {
-    params: { format },
+    params,
     responseType: 'blob'
   });
 
@@ -712,6 +715,39 @@ export const updateAdminCreditCosts = async (costs) => {
 
 export const resetAdminCreditCosts = async () => {
   const response = await api.delete('/admin/settings/credit-costs');
+  return response.data;
+};
+
+// ============================================================================
+// ADMIN - TEMPLATE ESPORTAZIONE
+// ============================================================================
+
+export const getAdminTemplates = async () => {
+  const response = await api.get('/admin/templates');
+  return response.data;
+};
+
+export const updateAdminTemplates = async (templates) => {
+  const response = await api.put('/admin/templates', { templates });
+  return response.data;
+};
+
+export const deleteAdminTemplate = async (templateId) => {
+  const response = await api.delete(`/admin/templates/${templateId}`);
+  return response.data;
+};
+
+export const getTemplateHelp = async () => {
+  const response = await api.get('/admin/templates/help');
+  return response.data;
+};
+
+// ============================================================================
+// TEMPLATE ESPORTAZIONE - PUBBLICO (per selezione utente)
+// ============================================================================
+
+export const getExportTemplates = async () => {
+  const response = await api.get('/admin/templates');
   return response.data;
 };
 

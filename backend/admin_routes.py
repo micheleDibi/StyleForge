@@ -25,7 +25,12 @@ from models import (
     AdminSetPermissionsRequest, AdminAdjustCreditsRequest,
     RoleResponse, RoleListResponse, AdminUpdateRolePermissionsRequest,
     AdminStatsResponse, CreditTransactionResponse, CreditTransactionListResponse,
-    AdminCreateUserRequest, CreditCostsResponse, CreditCostsUpdateRequest
+    AdminCreateUserRequest, CreditCostsResponse, CreditCostsUpdateRequest,
+    ExportTemplateListResponse, ExportTemplateUpdateRequest
+)
+from template_service import (
+    get_export_templates, save_export_templates, delete_template,
+    TEMPLATE_PARAM_HELP, generate_template_id
 )
 
 router = APIRouter(prefix="/admin", tags=["Administration"])
@@ -554,3 +559,58 @@ async def reset_credit_costs_settings(
         costs=default_costs,
         is_default=True
     )
+
+
+# ============================================================================
+# TEMPLATE ESPORTAZIONE
+# ============================================================================
+
+@router.get("/templates", response_model=ExportTemplateListResponse)
+async def get_templates(
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Restituisce tutti i template di esportazione + parametri help."""
+    data = get_export_templates(db)
+    return ExportTemplateListResponse(
+        templates=data.get("templates", []),
+        help=TEMPLATE_PARAM_HELP
+    )
+
+
+@router.put("/templates")
+async def update_templates(
+    request: ExportTemplateUpdateRequest,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Salva/aggiorna la lista completa dei template."""
+    templates_dicts = [t.model_dump() for t in request.templates]
+    data = {"templates": templates_dicts}
+    result = save_export_templates(data, admin_user.id, db)
+    return ExportTemplateListResponse(
+        templates=result.get("templates", []),
+        help=TEMPLATE_PARAM_HELP
+    )
+
+
+@router.delete("/templates/{template_id}")
+async def remove_template(
+    template_id: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Elimina un template (non quello default/standard)."""
+    result = delete_template(template_id, admin_user.id, db)
+    return ExportTemplateListResponse(
+        templates=result.get("templates", []),
+        help=TEMPLATE_PARAM_HELP
+    )
+
+
+@router.get("/templates/help")
+async def get_template_help(
+    admin_user: User = Depends(get_current_admin_user),
+):
+    """Restituisce le descrizioni di tutti i parametri dei template per i tooltip."""
+    return TEMPLATE_PARAM_HELP

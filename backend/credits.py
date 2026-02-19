@@ -56,7 +56,7 @@ DEFAULT_CREDIT_COSTS = {
 CREDIT_COSTS = DEFAULT_CREDIT_COSTS
 
 # Lista codici permesso disponibili
-PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'detect']
+PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'detect', 'manage_templates']
 
 
 # ============================================================================

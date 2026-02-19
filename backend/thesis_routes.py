@@ -46,6 +46,7 @@ from attachment_processor import (
 from ai_client import get_ai_client, humanize_text_with_claude
 from ai_exceptions import InsufficientCreditsError
 from session_manager import session_manager
+from template_service import get_template_by_id, get_page_dimensions, get_export_templates
 import config
 
 # Router
@@ -1494,6 +1495,7 @@ def generate_table_of_contents(chapters_structure: dict, format_type: str = "txt
 async def export_thesis(
     thesis_id: str,
     format: str = "pdf",
+    template_id: str = None,
     current_user: User = Depends(get_current_active_user),
     db: DBSession = Depends(get_db)
 ):
@@ -1556,54 +1558,125 @@ async def export_thesis(
         )
 
     elif format == "docx":
-        # Export DOCX con indice
+        # Export DOCX con indice — usa template
         from docx import Document as DocxDocument
-        from docx.shared import Pt, Inches
+        from docx.shared import Pt, Inches, Cm
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+
+        template = get_template_by_id(template_id, db)
+        ds = template.get("docx", {})
+
+        font_name = ds.get("font_name", "Times New Roman")
+        font_sz = ds.get("font_size", 12)
+        title_align_str = ds.get("title_alignment", "center")
+        line_sp = ds.get("line_spacing", 1.5)
+        para_sp_after = ds.get("paragraph_spacing_after", 6)
+        include_toc_docx = ds.get("include_toc", True)
+        include_page_nums = ds.get("include_page_numbers", True)
+        toc_indent_val = ds.get("toc_indent", 0.5)
+        h1_size = ds.get("heading1_size", 16)
+        h2_size = ds.get("heading2_size", 14)
+
+        align_map = {
+            "left": WD_ALIGN_PARAGRAPH.LEFT,
+            "center": WD_ALIGN_PARAGRAPH.CENTER,
+            "right": WD_ALIGN_PARAGRAPH.RIGHT,
+        }
+        title_alignment = align_map.get(title_align_str, WD_ALIGN_PARAGRAPH.CENTER)
 
         file_path = config.RESULTS_DIR / f"thesis_{safe_title}_{timestamp}.docx"
 
         doc = DocxDocument()
 
-        # Imposta stile del documento
+        # Imposta stile Normal
         style = doc.styles['Normal']
-        font = style.font
-        font.name = 'Times New Roman'
-        font.size = Pt(12)
+        style_font = style.font
+        style_font.name = font_name
+        style_font.size = Pt(font_sz)
+        style.paragraph_format.line_spacing = line_sp
+
+        # Imposta font Heading 1
+        try:
+            h1_style = doc.styles['Heading 1']
+            h1_style.font.name = font_name
+            h1_style.font.size = Pt(h1_size)
+        except Exception:
+            pass
+
+        # Imposta font Heading 2
+        try:
+            h2_style = doc.styles['Heading 2']
+            h2_style.font.name = font_name
+            h2_style.font.size = Pt(h2_size)
+        except Exception:
+            pass
+
+        # Numeri di pagina
+        if include_page_nums:
+            try:
+                section = doc.sections[0]
+                footer = section.footer
+                footer.is_linked_to_previous = False
+                footer_para = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+                footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = footer_para.add_run()
+                fld_char_begin = OxmlElement('w:fldChar')
+                fld_char_begin.set(qn('w:fldCharType'), 'begin')
+                run._r.append(fld_char_begin)
+                instr_text = OxmlElement('w:instrText')
+                instr_text.set(qn('xml:space'), 'preserve')
+                instr_text.text = ' PAGE '
+                run._r.append(instr_text)
+                fld_char_end = OxmlElement('w:fldChar')
+                fld_char_end.set(qn('w:fldCharType'), 'end')
+                run._r.append(fld_char_end)
+                for r in footer_para.runs:
+                    r.font.name = font_name
+                    r.font.size = Pt(9)
+            except Exception:
+                pass
 
         # Titolo principale
         title_para = doc.add_heading(thesis.title, level=0)
-        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title_para.alignment = title_alignment
+        for run in title_para.runs:
+            run.font.name = font_name
 
         # Descrizione
         if thesis.description:
             desc_para = doc.add_paragraph()
             desc_run = desc_para.add_run(thesis.description)
             desc_run.italic = True
-            desc_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            desc_run.font.name = font_name
+            desc_para.alignment = title_alignment
             doc.add_paragraph()  # Spazio
 
         # Indice
         chapters_for_toc = thesis.chapters_structure.get("chapters", []) if thesis.chapters_structure else []
-        if chapters_for_toc:
-            doc.add_heading('Indice', level=1)
+        if chapters_for_toc and include_toc_docx:
+            toc_heading = doc.add_heading('Indice', level=1)
+            for run in toc_heading.runs:
+                run.font.name = font_name
 
             for ch_idx, chapter in enumerate(chapters_for_toc):
                 ch_title = chapter.get("chapter_title") or chapter.get("title", f"Capitolo {ch_idx + 1}")
                 is_special = chapter.get("is_special", False)
 
                 if is_special:
-                    # Capitoli speciali (Introduzione, Conclusione, Bibliografia)
                     toc_para = doc.add_paragraph()
                     toc_run = toc_para.add_run(ch_title)
                     toc_run.bold = True
-                    toc_run.font.size = Pt(11)
+                    toc_run.font.size = Pt(font_sz - 1)
+                    toc_run.font.name = font_name
                 else:
                     ch_num = chapter.get("chapter_index", ch_idx + 1)
                     toc_para = doc.add_paragraph()
                     toc_run = toc_para.add_run(f"Capitolo {ch_num}: {ch_title}")
                     toc_run.bold = True
-                    toc_run.font.size = Pt(11)
+                    toc_run.font.size = Pt(font_sz - 1)
+                    toc_run.font.name = font_name
 
                     sections = chapter.get("sections", [])
                     for sec_idx, section in enumerate(sections):
@@ -1613,21 +1686,30 @@ async def export_thesis(
                             f"    {ch_num}.{sec_num}: {sec_title}",
                             style='List Bullet'
                         )
-                        sec_para.paragraph_format.left_indent = Inches(0.5)
+                        sec_para.paragraph_format.left_indent = Inches(toc_indent_val)
                         for run in sec_para.runs:
-                            run.font.size = Pt(10)
+                            run.font.size = Pt(font_sz - 2)
+                            run.font.name = font_name
 
             doc.add_page_break()
 
         # Contenuto
         for line in content.split('\n'):
             if line.startswith('# '):
-                doc.add_heading(line[2:], level=1)
+                h = doc.add_heading(line[2:], level=1)
+                for run in h.runs:
+                    run.font.name = font_name
             elif line.startswith('## '):
-                doc.add_heading(line[3:], level=2)
+                h = doc.add_heading(line[3:], level=2)
+                for run in h.runs:
+                    run.font.name = font_name
             elif line.strip():
                 para = doc.add_paragraph(line)
-                para.paragraph_format.space_after = Pt(6)
+                para.paragraph_format.space_after = Pt(para_sp_after)
+                para.paragraph_format.line_spacing = line_sp
+                for run in para.runs:
+                    run.font.name = font_name
+                    run.font.size = Pt(font_sz)
             # Righe vuote: non aggiungere nulla (spazio naturale)
 
         doc.save(str(file_path))
@@ -1639,58 +1721,107 @@ async def export_thesis(
         )
 
     else:
-        # Export PDF (default) con indice
+        # Export PDF (default) con indice — usa template
         import fitz
+
+        template = get_template_by_id(template_id, db)
+        ps = template.get("pdf", {})
+
+        page_width, page_height = get_page_dimensions(ps.get("page_size", "A4"))
+        margin_top = ps.get("margin_top", 50)
+        margin_bottom = ps.get("margin_bottom", 50)
+        margin_left = ps.get("margin_left", 50)
+        margin_right = ps.get("margin_right", 50)
+        font_body = ps.get("font_body", "helv")
+        font_size = ps.get("font_body_size", 11)
+        font_title_size = ps.get("font_title_size", 24)
+        font_chapter_size = ps.get("font_chapter_size", 18)
+        font_section_size = ps.get("font_section_size", 14)
+        line_height_mult = ps.get("line_height_multiplier", 1.5)
+        include_toc_pdf = ps.get("include_toc", True)
+        include_page_numbers = ps.get("include_page_numbers", True)
+        page_number_position = ps.get("page_number_position", "bottom_center")
+        include_header = ps.get("include_header", False)
+        header_text = ps.get("header_text", "")
+        include_footer = ps.get("include_footer", False)
+        footer_text = ps.get("footer_text", "")
+        title_align = ps.get("title_alignment", "center")
+        body_align = ps.get("body_alignment", "left")
+        chapter_spacing = ps.get("chapter_spacing_before", 20)
+        section_spacing = ps.get("section_spacing_before", 15)
+        paragraph_spacing = ps.get("paragraph_spacing", 0)
+        toc_separator_color = ps.get("toc_separator_color", [0.7, 0.7, 0.7])
+
+        line_height = font_size * line_height_mult
+        content_width = page_width - margin_left - margin_right
+
+        # Calcolo posizione x per allineamenti
+        def calc_text_x(text, fontsize, fontname, alignment):
+            """Calcola la posizione x basata sull'allineamento."""
+            if alignment == "center":
+                text_width = fitz.get_text_length(text, fontname=fontname, fontsize=fontsize)
+                return margin_left + (content_width - text_width) / 2
+            elif alignment == "right":
+                text_width = fitz.get_text_length(text, fontname=fontname, fontsize=fontsize)
+                return page_width - margin_right - text_width
+            return margin_left  # left (default)
 
         file_path = config.RESULTS_DIR / f"thesis_{safe_title}_{timestamp}.pdf"
 
-        doc = fitz.open()
-        page_width = 595
-        page_height = 842
-        margin = 50
-        font_size = 11
-        line_height = font_size * 1.5
+        pdf_doc = fitz.open()
+        page_count = [0]  # Mutable per contare le pagine
 
-        current_page = doc.new_page(width=page_width, height=page_height)
-        y = margin
+        def new_pdf_page():
+            """Crea una nuova pagina e incrementa il contatore."""
+            p = pdf_doc.new_page(width=page_width, height=page_height)
+            page_count[0] += 1
+            return p
+
+        current_page = new_pdf_page()
+        y = margin_top
 
         # Titolo principale
+        title_x = calc_text_x(thesis.title, font_title_size, font_body, title_align)
         current_page.insert_text(
-            (margin, y + 30),
+            (title_x, y + font_title_size),
             thesis.title,
-            fontsize=20,
-            fontname="helv"
+            fontsize=font_title_size,
+            fontname=font_body
         )
-        y += 50
+        y += font_title_size + 20
 
         # Descrizione (se presente)
         if thesis.description:
+            desc_size = font_size + 1
+            desc_x = calc_text_x(thesis.description, desc_size, font_body, title_align)
             current_page.insert_text(
-                (margin, y + 10),
+                (desc_x, y + desc_size),
                 thesis.description,
-                fontsize=12,
-                fontname="helv"
+                fontsize=desc_size,
+                fontname=font_body
             )
-            y += 40
+            y += desc_size + 25
 
         # Separatore
         y += 20
 
         # Indice
-        if toc:
+        if toc and include_toc_pdf:
+            toc_title_size = font_section_size
             current_page.insert_text(
-                (margin, y),
+                (margin_left, y),
                 "INDICE",
-                fontsize=14,
-                fontname="helv"
+                fontsize=toc_title_size,
+                fontname=font_body
             )
-            y += 25
+            y += toc_title_size + 10
 
             # Linea separatrice
+            sep_color = tuple(toc_separator_color) if isinstance(toc_separator_color, list) else (0.7, 0.7, 0.7)
             current_page.draw_line(
-                fitz.Point(margin, y),
-                fitz.Point(page_width - margin, y),
-                color=(0.7, 0.7, 0.7),
+                fitz.Point(margin_left, y),
+                fitz.Point(page_width - margin_right, y),
+                color=sep_color,
                 width=1
             )
             y += 15
@@ -1698,47 +1829,46 @@ async def export_thesis(
             # Contenuto indice
             chapters = thesis.chapters_structure.get("chapters", []) if thesis.chapters_structure else []
             for ch_idx, chapter in enumerate(chapters):
-                if y + line_height * 2 > page_height - margin:
-                    current_page = doc.new_page(width=page_width, height=page_height)
-                    y = margin
+                if y + line_height * 2 > page_height - margin_bottom:
+                    current_page = new_pdf_page()
+                    y = margin_top
 
                 ch_title = chapter.get("chapter_title") or chapter.get("title", f"Capitolo {ch_idx + 1}")
                 is_special = chapter.get("is_special", False)
 
                 if is_special:
-                    # Capitoli speciali senza sezioni
                     current_page.insert_text(
-                        (margin, y),
+                        (margin_left, y),
                         ch_title,
-                        fontsize=11,
-                        fontname="helv"
+                        fontsize=font_size,
+                        fontname=font_body
                     )
                     y += line_height
                 else:
                     ch_num = chapter.get("chapter_index", ch_idx + 1)
 
                     current_page.insert_text(
-                        (margin, y),
+                        (margin_left, y),
                         f"Capitolo {ch_num}: {ch_title}",
-                        fontsize=11,
-                        fontname="helv"
+                        fontsize=font_size,
+                        fontname=font_body
                     )
                     y += line_height
 
                     sections = chapter.get("sections", [])
                     for sec_idx, section in enumerate(sections):
-                        if y + line_height > page_height - margin:
-                            current_page = doc.new_page(width=page_width, height=page_height)
-                            y = margin
+                        if y + line_height > page_height - margin_bottom:
+                            current_page = new_pdf_page()
+                            y = margin_top
 
                         sec_num = section.get("index", sec_idx + 1)
                         sec_title = section.get("title", f"Sezione {sec_num}")
 
                         current_page.insert_text(
-                            (margin + 20, y),
+                            (margin_left + 20, y),
                             f"{ch_num}.{sec_num}: {sec_title}",
-                            fontsize=10,
-                            fontname="helv"
+                            fontsize=font_size - 1,
+                            fontname=font_body
                         )
                         y += line_height * 0.9
 
@@ -1747,80 +1877,159 @@ async def export_thesis(
             # Separatore dopo indice
             y += 15
             current_page.draw_line(
-                fitz.Point(margin, y),
-                fitz.Point(page_width - margin, y),
-                color=(0.7, 0.7, 0.7),
+                fitz.Point(margin_left, y),
+                fitz.Point(page_width - margin_right, y),
+                color=sep_color,
                 width=1
             )
             y += 30
 
         # Nuova pagina per il contenuto
-        current_page = doc.new_page(width=page_width, height=page_height)
-        y = margin
+        current_page = new_pdf_page()
+        y = margin_top
 
         # Contenuto
         for line in content.split('\n'):
-            if y + line_height > page_height - margin:
-                current_page = doc.new_page(width=page_width, height=page_height)
-                y = margin
+            if y + line_height > page_height - margin_bottom:
+                current_page = new_pdf_page()
+                y = margin_top
 
             # Gestisci titoli
             if line.startswith('# '):
-                y += 20
+                y += chapter_spacing
+                if y + font_chapter_size + 10 > page_height - margin_bottom:
+                    current_page = new_pdf_page()
+                    y = margin_top
                 current_page.insert_text(
-                    (margin, y),
+                    (margin_left, y),
                     line[2:],
-                    fontsize=16,
-                    fontname="helv"
+                    fontsize=font_chapter_size,
+                    fontname=font_body
                 )
-                y += 25
+                y += font_chapter_size + 8
             elif line.startswith('## '):
-                y += 15
+                y += section_spacing
+                if y + font_section_size + 8 > page_height - margin_bottom:
+                    current_page = new_pdf_page()
+                    y = margin_top
                 current_page.insert_text(
-                    (margin, y),
+                    (margin_left, y),
                     line[3:],
-                    fontsize=14,
-                    fontname="helv"
+                    fontsize=font_section_size,
+                    fontname=font_body
                 )
-                y += 20
+                y += font_section_size + 6
             elif line.strip():
                 # Wrap text
                 words = line.split()
                 current_line = []
                 for word in words:
                     test_line = ' '.join(current_line + [word])
-                    if len(test_line) * (font_size * 0.5) < (page_width - margin * 2):
+                    text_width = fitz.get_text_length(test_line, fontname=font_body, fontsize=font_size)
+                    if text_width < content_width:
                         current_line.append(word)
                     else:
                         if current_line:
-                            if y + line_height > page_height - margin:
-                                current_page = doc.new_page(width=page_width, height=page_height)
-                                y = margin
+                            if y + line_height > page_height - margin_bottom:
+                                current_page = new_pdf_page()
+                                y = margin_top
+                            text_str = ' '.join(current_line)
+                            text_x = calc_text_x(text_str, font_size, font_body, body_align)
                             current_page.insert_text(
-                                (margin, y),
-                                ' '.join(current_line),
+                                (text_x, y),
+                                text_str,
                                 fontsize=font_size,
-                                fontname="helv"
+                                fontname=font_body
                             )
                             y += line_height
                         current_line = [word]
 
                 if current_line:
-                    if y + line_height > page_height - margin:
-                        current_page = doc.new_page(width=page_width, height=page_height)
-                        y = margin
+                    if y + line_height > page_height - margin_bottom:
+                        current_page = new_pdf_page()
+                        y = margin_top
+                    text_str = ' '.join(current_line)
+                    text_x = calc_text_x(text_str, font_size, font_body, body_align)
                     current_page.insert_text(
-                        (margin, y),
-                        ' '.join(current_line),
+                        (text_x, y),
+                        text_str,
                         fontsize=font_size,
-                        fontname="helv"
+                        fontname=font_body
                     )
                     y += line_height
+
+                # Spazio extra tra paragrafi
+                if paragraph_spacing > 0:
+                    y += paragraph_spacing
             else:
                 y += line_height * 0.5
 
-        doc.save(file_path)
-        doc.close()
+        # Aggiungi header/footer/numeri pagina a tutte le pagine
+        total_pages = len(pdf_doc)
+        for page_idx in range(total_pages):
+            page = pdf_doc[page_idx]
+
+            # Header
+            if include_header and header_text:
+                header_x = calc_text_x(header_text, 8, font_body, "center")
+                page.insert_text(
+                    (header_x, margin_top - 15),
+                    header_text,
+                    fontsize=8,
+                    fontname=font_body,
+                    color=(0.5, 0.5, 0.5)
+                )
+                # Linea sotto header
+                page.draw_line(
+                    fitz.Point(margin_left, margin_top - 8),
+                    fitz.Point(page_width - margin_right, margin_top - 8),
+                    color=(0.85, 0.85, 0.85),
+                    width=0.5
+                )
+
+            # Footer text
+            if include_footer and footer_text:
+                footer_y = page_height - margin_bottom + 20
+                footer_x = calc_text_x(footer_text, 8, font_body, "center")
+                page.insert_text(
+                    (footer_x, footer_y),
+                    footer_text,
+                    fontsize=8,
+                    fontname=font_body,
+                    color=(0.5, 0.5, 0.5)
+                )
+
+            # Numeri di pagina
+            if include_page_numbers:
+                page_num_text = str(page_idx + 1)
+                pn_fontsize = 9
+
+                if page_number_position == "bottom_center":
+                    pn_x = calc_text_x(page_num_text, pn_fontsize, font_body, "center")
+                    pn_y = page_height - margin_bottom + 10 + (15 if include_footer and footer_text else 0)
+                elif page_number_position == "bottom_right":
+                    pn_x = page_width - margin_right - fitz.get_text_length(page_num_text, fontname=font_body, fontsize=pn_fontsize)
+                    pn_y = page_height - margin_bottom + 10 + (15 if include_footer and footer_text else 0)
+                elif page_number_position == "top_center":
+                    pn_x = calc_text_x(page_num_text, pn_fontsize, font_body, "center")
+                    pn_y = margin_top - 25
+                elif page_number_position == "top_right":
+                    pn_x = page_width - margin_right - fitz.get_text_length(page_num_text, fontname=font_body, fontsize=pn_fontsize)
+                    pn_y = margin_top - 25
+                else:
+                    pn_x = calc_text_x(page_num_text, pn_fontsize, font_body, "center")
+                    pn_y = page_height - margin_bottom + 10
+
+                page.insert_text(
+                    (pn_x, pn_y),
+                    page_num_text,
+                    fontsize=pn_fontsize,
+                    fontname=font_body,
+                    color=(0.5, 0.5, 0.5)
+                )
+
+        pdf_doc.save(file_path)
+        pdf_doc.close()
 
         return FileResponse(
             path=file_path,
