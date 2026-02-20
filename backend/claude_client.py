@@ -40,9 +40,9 @@ def lettura_pdf(file_path: str, max_pagine: int = 50) -> str:
     return testo
 
 class ClaudeClient:
-    """Client per interagire con Claude Opus 4.5 mantenendo il contesto della sessione."""
+    """Client per interagire con Claude Opus 4.6 mantenendo il contesto della sessione."""
 
-    MODEL_ID = "claude-opus-4-5-20251101"
+    MODEL_ID = "claude-opus-4-6"
 
     def __init__(self):
         """

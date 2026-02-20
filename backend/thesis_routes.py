@@ -1120,7 +1120,7 @@ def generate_content_task(thesis_id: str, user_id: str):
             thesis_data=thesis_data,
             all_content=all_raw_text
         )
-        # Usa sempre Claude per la bibliografia: o1-preview spesso si rifiuta
+        # Usa sempre Claude per la bibliografia: i modelli OpenAI a volte si rifiutano
         # di generare riferimenti bibliografici ("I'm sorry, I can't provide...")
         try:
             from ai_client import get_ai_client as _get_ai_client

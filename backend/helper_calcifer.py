@@ -127,7 +127,7 @@ class CalciferHelper:
         try:
             # Chiamata all'API di Claude (ottimizzata per velocità)
             response = client.messages.create(
-                model="claude-3-5-haiku-20241022",
+                model="claude-haiku-4-5",
                 max_tokens=512,  # Ridotto per risposte più veloci
                 system=CALCIFER_SYSTEM_PROMPT,
                 messages=messages
@@ -192,7 +192,7 @@ def get_contextual_tip(page: str, context: Optional[Dict] = None) -> str:
 
     try:
         response = client.messages.create(
-            model="claude-3-5-haiku-20241022",  # Haiku per risposte veloci
+            model="claude-haiku-4-5",  # Haiku per risposte veloci
             max_tokens=150,
             system=CALCIFER_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}]

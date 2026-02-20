@@ -14,13 +14,13 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # OpenAI Configuration
-OPENAI_MODEL_ID = os.getenv("OPENAI_MODEL_ID", "o1-preview")  # o1 reasoning model
+OPENAI_MODEL_ID = os.getenv("OPENAI_MODEL_ID", "o3")  # o3 reasoning model
 OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "16000"))
 
 # AI Provider per Thesis Generation
 # Valori: "openai" (default) o "claude"
 THESIS_AI_PROVIDER = os.getenv("THESIS_AI_PROVIDER", "openai")
-THESIS_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-sonnet-4-20250514")
+THESIS_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-sonnet-4-6")
 
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -30,7 +30,7 @@ SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 # Configurazione Claude
 MAX_TOKENS_TRAIN = int(os.getenv("MAX_TOKENS_TRAIN", "4096"))
 MAX_TOKENS_TEST = int(os.getenv("MAX_TOKENS_TEST", "8192"))
-CLAUDE_MODEL_ID = "claude-opus-4-5-20251101"
+CLAUDE_MODEL_ID = "claude-opus-4-6"
 
 # Configurazione Server
 HOST = os.getenv("HOST", "0.0.0.0")

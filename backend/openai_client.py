@@ -1,5 +1,5 @@
 """
-Client per OpenAI con supporto per modelli di reasoning (o1, o3).
+Client per OpenAI con supporto per modelli di reasoning (o3, GPT-5).
 
 Questo modulo fornisce un'interfaccia per interagire con i modelli OpenAI,
 in particolare i modelli con capacità di reasoning avanzato.
@@ -16,7 +16,7 @@ load_dotenv(find_dotenv())
 
 # Configurazione
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DEFAULT_MODEL = os.getenv("OPENAI_MODEL_ID", "o1-preview")
+DEFAULT_MODEL = os.getenv("OPENAI_MODEL_ID", "o3")
 MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "16000"))
 
 
@@ -24,7 +24,7 @@ class OpenAIThinkingClient:
     """
     Client per interagire con i modelli OpenAI di reasoning.
 
-    Supporta modelli come o1, o1-preview, o3 che hanno capacità
+    Supporta modelli come o3, o3-pro, GPT-5 che hanno capacità
     di ragionamento avanzato per task complessi.
     """
 
@@ -33,7 +33,7 @@ class OpenAIThinkingClient:
         Inizializza il client OpenAI.
 
         Args:
-            model_id: ID del modello da usare (default: o1-preview)
+            model_id: ID del modello da usare (default: o3)
             api_key: API key OpenAI (default: da variabile d'ambiente)
         """
         self.api_key = api_key or OPENAI_API_KEY
