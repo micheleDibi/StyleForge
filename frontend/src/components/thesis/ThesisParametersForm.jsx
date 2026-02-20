@@ -72,7 +72,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions }) => {
               <Sparkles className="w-5 h-5" />
               <div className="text-left">
                 <p className="font-semibold">Claude</p>
-                <p className="text-xs opacity-75">Sonnet 4.6</p>
+                <p className="text-xs opacity-75">Opus 4.6</p>
               </div>
             </button>
           </div>

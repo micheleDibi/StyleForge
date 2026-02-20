@@ -20,7 +20,7 @@ OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "16000"))
 # AI Provider per Thesis Generation
 # Valori: "openai" (default) o "claude"
 THESIS_AI_PROVIDER = os.getenv("THESIS_AI_PROVIDER", "openai")
-THESIS_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-sonnet-4-6")
+THESIS_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-opus-4-6")
 
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")

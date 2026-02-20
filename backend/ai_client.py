@@ -19,7 +19,7 @@ load_dotenv(find_dotenv())
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL_ID", "o3")
-DEFAULT_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-sonnet-4-6")
+DEFAULT_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-opus-4-6")
 MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "16000"))
 
 
