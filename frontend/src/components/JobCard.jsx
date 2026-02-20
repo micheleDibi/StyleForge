@@ -1,11 +1,16 @@
-import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Loader, Clock, Download, Trash2, FileText, Sparkles, Wand2 } from 'lucide-react';
-import { getJobStatus, downloadResult, deleteJob } from '../services/api';
+import { useState, useEffect, useRef } from 'react';
+import { CheckCircle, XCircle, Loader, Clock, Download, Trash2, FileText, Sparkles, Wand2, Pencil } from 'lucide-react';
+import { getJobStatus, downloadResult, deleteJob, renameJob } from '../services/api';
 
 const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
   const [currentJob, setCurrentJob] = useState(job);
   const [polling, setPolling] = useState(false);
   const [estimatedTime, setEstimatedTime] = useState(null);
+
+  // Inline rename state
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const editInputRef = useRef(null);
 
   useEffect(() => {
     setCurrentJob(job);
@@ -53,6 +58,14 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
       return () => clearInterval(interval);
     }
   }, [job.job_id]);
+
+  // Focus input on edit start
+  useEffect(() => {
+    if (editing && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editing]);
 
   const getStatusIcon = () => {
     switch (currentJob.status) {
@@ -115,6 +128,35 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
         console.error('Errore nell\'eliminazione:', error);
         alert('Errore nell\'eliminazione del job');
       }
+    }
+  };
+
+  const handleStartEdit = () => {
+    setEditValue(currentJob.name || getJobTypeName());
+    setEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    const trimmed = editValue.trim();
+    if (!trimmed) {
+      setEditing(false);
+      return;
+    }
+    try {
+      await renameJob(currentJob.job_id, trimmed);
+      setCurrentJob({ ...currentJob, name: trimmed });
+      if (onUpdate) onUpdate({ ...currentJob, name: trimmed });
+    } catch (error) {
+      console.error('Errore nella rinomina:', error);
+    }
+    setEditing(false);
+  };
+
+  const handleEditKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleSaveEdit();
+    } else if (e.key === 'Escape') {
+      setEditing(false);
     }
   };
 
@@ -183,6 +225,8 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
     }
   };
 
+  const displayName = currentJob.name || getJobTypeName();
+
   return (
     <div className="card hover:shadow-xl transition-all duration-300 hover:scale-[1.02] border-l-4" style={{ borderLeftColor: currentJob.status === 'completed' ? '#10b981' : currentJob.status === 'failed' ? '#ef4444' : '#6366f1' }}>
       <div className="flex items-start justify-between mb-4">
@@ -195,11 +239,33 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
             )}
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <p className="font-bold text-slate-900 text-lg">
-                {getJobTypeName()}
-              </p>
-              {getStatusIcon()}
+            <div className="flex items-center gap-2 group">
+              {editing ? (
+                <input
+                  ref={editInputRef}
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={handleSaveEdit}
+                  onKeyDown={handleEditKeyDown}
+                  className="font-bold text-slate-900 text-lg bg-white border border-slate-300 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  maxLength={255}
+                />
+              ) : (
+                <>
+                  <p className="font-bold text-slate-900 text-lg">
+                    {displayName}
+                  </p>
+                  <button
+                    onClick={handleStartEdit}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-slate-100 rounded"
+                    title="Rinomina"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                  {getStatusIcon()}
+                </>
+              )}
             </div>
             <p className="font-mono text-xs text-slate-500 mt-1 bg-slate-50 px-2 py-0.5 rounded">
               {currentJob.job_id}

@@ -91,7 +91,8 @@ class ThesisStatus(str, Enum):
 class JobStatusResponse(BaseModel):
     """Response per lo stato di un job."""
     job_id: str
-    session_id: str
+    name: Optional[str] = Field(None, description="Nome descrittivo del job")
+    session_id: Optional[str] = Field(None, description="ID sessione associata (opzionale)")
     job_type: JobType
     status: JobStatus
     progress: Optional[int] = Field(None, ge=0, le=100, description="Percentuale completamento")
@@ -141,6 +142,30 @@ class HumanizeResponse(BaseModel):
     message: str
     created_at: datetime
 
+
+class AntiAICorrectionRequest(BaseModel):
+    """Request per la Correzione Anti-AI (senza sessione addestrata)."""
+    testo: str = Field(..., min_length=50, description="Testo da correggere (micro-modifiche per ridurre AI detection)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "testo": "Il testo da correggere con micro-modifiche anti-AI..."
+            }
+        }
+
+
+class AntiAICorrectionResponse(BaseModel):
+    """Response della Correzione Anti-AI."""
+    job_id: str
+    status: JobStatus
+    message: str
+    created_at: datetime
+
+
+class RenameRequest(BaseModel):
+    """Request per rinominare un'entita' (sessione o job)."""
+    name: str = Field(..., min_length=1, max_length=255, description="Nuovo nome")
 
 
 

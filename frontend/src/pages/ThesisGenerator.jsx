@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Loader, Sparkles, Home } from 'lucide-react';
 
 // Components
@@ -43,6 +43,7 @@ const STEPS = [
 
 const ThesisGenerator = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAdmin, credits, refreshUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -133,6 +134,76 @@ const ThesisGenerator = () => {
     };
     loadData();
   }, []);
+
+  // Resume thesis from ?resume=ID
+  useEffect(() => {
+    const resumeId = searchParams.get('resume');
+    if (!resumeId) return;
+
+    const resumeThesis = async () => {
+      try {
+        setIsLoading(true);
+        const thesisData = await getThesis(resumeId);
+        setThesisId(thesisData.id);
+        setThesis(thesisData);
+
+        // Restore form data
+        setParametersData(prev => ({
+          ...prev,
+          title: thesisData.title || '',
+          description: thesisData.description || '',
+          key_topics: thesisData.key_topics || [],
+          num_chapters: thesisData.num_chapters || 5,
+          sections_per_chapter: thesisData.sections_per_chapter || 3,
+          words_per_section: thesisData.words_per_section || 1000,
+        }));
+
+        // Determine the correct step based on thesis status
+        const status = thesisData.status;
+        if (status === 'completed') {
+          setGeneratedContent(thesisData.generated_content || '');
+          setCurrentStep(7);
+        } else if (status === 'generating') {
+          setCurrentStep(6);
+          // Start polling
+          pollThesisGenerationStatus(
+            thesisData.id,
+            (genStatus) => {
+              setGenerationStatus(genStatus);
+              if (genStatus.status === 'completed') {
+                loadCompletedThesisById(thesisData.id);
+              }
+            },
+            3000,
+            1800000
+          );
+        } else if (status === 'failed') {
+          setCurrentStep(6);
+          setGenerationStatus({ status: 'failed', error: thesisData.error || 'Generazione fallita' });
+        } else if (status === 'sections_pending' || status === 'sections_confirmed') {
+          if (thesisData.chapters) {
+            setSectionsData(thesisData.chapters);
+          }
+          setCurrentStep(5);
+        } else if (status === 'chapters_pending' || status === 'chapters_confirmed') {
+          if (thesisData.chapters) {
+            setChapters(thesisData.chapters.map(c => ({ title: c.title, description: c.description })));
+          }
+          setCurrentStep(4);
+        } else {
+          // draft or other early status
+          setCurrentStep(1);
+        }
+      } catch (err) {
+        console.error('Errore nel resume della tesi:', err);
+        setError('Errore nel caricamento della tesi. Potrebbe essere stata eliminata.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    resumeThesis();
+  }, [searchParams]);
 
   // Create thesis before entering step 3 (needed for file uploads)
   const ensureThesisCreated = async () => {
@@ -303,6 +374,18 @@ const ThesisGenerator = () => {
   const loadCompletedThesis = async () => {
     try {
       const completedThesis = await getThesis(thesisId);
+      setThesis(completedThesis);
+      setGeneratedContent(completedThesis.generated_content || '');
+      setCurrentStep(7);
+    } catch (err) {
+      console.error('Errore caricamento tesi completata:', err);
+    }
+  };
+
+  // Load completed thesis by ID (used in resume)
+  const loadCompletedThesisById = async (id) => {
+    try {
+      const completedThesis = await getThesis(id);
       setThesis(completedThesis);
       setGeneratedContent(completedThesis.generated_content || '');
       setCurrentStep(7);

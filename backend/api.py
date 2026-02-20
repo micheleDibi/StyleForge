@@ -19,6 +19,8 @@ from models import (
     TrainingRequest, TrainingResponse,
     GenerationRequest, GenerationResponse,
     HumanizeRequest, HumanizeResponse,
+    AntiAICorrectionRequest, AntiAICorrectionResponse,
+    RenameRequest,
     JobStatusResponse, SessionInfo, SessionListResponse,
     ErrorResponse, HealthResponse,
     JobStatus, JobType,
@@ -313,12 +315,14 @@ async def train_session(
     else:
         session_id = session_manager.create_session(user_id, session_id)
 
-    # Crea job
+    # Crea job con nome auto-generato
+    job_name = f"Training: {file.filename}"
     job_id = job_manager.create_job(
         session_id=session_id,
         user_id=user_id,
         job_type='training',
         task_func=train_session_task,
+        name=job_name,
         file_path=file_path,
         max_pages=max_pages
     )
@@ -419,12 +423,14 @@ async def generate_content(
         db=db
     )
 
-    # Crea job
+    # Crea job con nome auto-generato
+    job_name = f"Generazione: {request.argomento[:50]} (~{request.numero_parole} parole)"
     job_id = job_manager.create_job(
         session_id=request.session_id,
         user_id=user_id,
         job_type='generation',
         task_func=generate_content_task,
+        name=job_name,
         argomento=request.argomento,
         numero_parole=request.numero_parole,
         destinatario=request.destinatario
@@ -524,12 +530,15 @@ async def humanize_content(
         db=db
     )
 
-    # Crea job
+    # Crea job con nome auto-generato
+    testo_preview = request.testo[:40].replace('\n', ' ')
+    job_name = f"Umanizzazione: {testo_preview}..."
     job_id = job_manager.create_job(
         session_id=request.session_id,
         user_id=user_id,
         job_type='humanization',
         task_func=humanize_content_task,
+        name=job_name,
         testo=request.testo
     )
 
@@ -546,6 +555,151 @@ async def humanize_content(
         message=f"Umanizzazione avviata. Monitora lo stato con GET /jobs/{job_id}",
         created_at=datetime.now()
     )
+
+
+# ============================================================================
+# ANTI-AI CORRECTION ENDPOINTS
+# ============================================================================
+
+def anti_ai_correction_task(testo: str) -> str:
+    """
+    Task sincrono per la correzione Anti-AI.
+
+    Applica solo micro-modifiche conservative al testo per ridurre
+    la rilevabilità AI, senza riscriverlo completamente.
+
+    Args:
+        testo: Il testo da correggere.
+
+    Returns:
+        Testo corretto con micro-modifiche.
+    """
+    from ai_client import anti_ai_correction
+    return anti_ai_correction(testo)
+
+
+@app.post("/anti-ai-correction", response_model=AntiAICorrectionResponse, tags=["Anti-AI Correction"])
+async def anti_ai_correction_endpoint(
+    request: AntiAICorrectionRequest,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: User = Depends(require_permission('humanize')),
+    db: Session = Depends(get_db)
+):
+    """
+    Correzione Anti-AI: micro-modifiche conservative per ridurre la rilevabilità AI.
+
+    A differenza dell'umanizzazione completa (che riscrive nello stile dell'autore),
+    questa funzione fa SOLO piccole modifiche mirate:
+    - Sostituzioni sinonimiche (max 10-15% delle parole)
+    - Leggere variazioni sintattiche
+    - Variazione punteggiatura
+    - Inserimento di piccole imperfezioni naturali
+
+    Il testo originale viene mantenuto al 90%+.
+
+    **NON richiede una sessione addestrata.**
+    """
+    user_id = str(current_user.id)
+
+    # Deduzione crediti (stessa logica humanize)
+    credit_estimate = estimate_credits('humanize', {'text_length': len(request.testo)}, db=db)
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate['credits_needed'],
+        operation_type='humanize',
+        description=f"Correzione Anti-AI ({len(request.testo)} caratteri)",
+        db=db
+    )
+
+    # Crea job SENZA sessione, con nome auto-generato
+    testo_preview = request.testo[:40].replace('\n', ' ')
+    job_name = f"Correzione Anti-AI: {testo_preview}..."
+    job_id = job_manager.create_job(
+        session_id=None,
+        user_id=user_id,
+        job_type='humanization',
+        task_func=anti_ai_correction_task,
+        name=job_name,
+        testo=request.testo
+    )
+
+    # Esegui job in background
+    background_tasks.add_task(job_manager.execute_job, job_id)
+
+    return AntiAICorrectionResponse(
+        job_id=job_id,
+        status='pending',
+        message=f"Correzione Anti-AI avviata. Monitora lo stato con GET /jobs/{job_id}",
+        created_at=datetime.now()
+    )
+
+
+# ============================================================================
+# RENAME ENDPOINTS
+# ============================================================================
+
+@app.patch("/sessions/{session_id}/name", tags=["Sessions"])
+async def rename_session(
+    session_id: str,
+    request: RenameRequest,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Rinomina una sessione.
+
+    Permette di impostare un nome descrittivo personalizzato per la sessione.
+    """
+    user_id = str(current_user.id)
+
+    # Verifica che la sessione esista e appartenga all'utente
+    if not session_manager.session_exists(session_id, user_id):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Sessione {session_id} non trovata"
+        )
+
+    session_manager.set_session_name(session_id, request.name)
+    return {"message": "Nome sessione aggiornato", "name": request.name}
+
+
+@app.patch("/jobs/{job_id}/name", tags=["Jobs"])
+async def rename_job(
+    job_id: str,
+    request: RenameRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Rinomina un job.
+
+    Permette di impostare un nome descrittivo personalizzato per il job.
+    """
+    from db_models import Job as JobModel
+
+    user_id = str(current_user.id)
+
+    # Verifica che il job esista e appartenga all'utente
+    db_job = db.query(JobModel).filter(
+        JobModel.job_id == job_id,
+        JobModel.user_id == user_id
+    ).first()
+
+    if not db_job:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Job {job_id} non trovato"
+        )
+
+    db_job.name = request.name
+    db_job.updated_at = datetime.utcnow()
+    db.commit()
+
+    # Aggiorna anche in memoria se presente
+    job = job_manager._active_jobs.get(job_id)
+    if job:
+        job.name = request.name
+
+    return {"message": "Nome job aggiornato", "name": request.name}
 
 
 # ============================================================================

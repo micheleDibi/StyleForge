@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Wand2, Download, Copy, Check, AlertTriangle, ShieldAlert, RefreshCw } from 'lucide-react';
-import { getSessions, humanizeContent, pollJobStatus, estimateCredits, detectAICopyleaks, downloadAIDetectionReport } from '../services/api';
+import { ArrowLeft, Wand2, Download, Copy, Check, AlertTriangle, ShieldAlert, RefreshCw, Shield, Sparkles } from 'lucide-react';
+import { getSessions, humanizeContent, antiAICorrection, pollJobStatus, estimateCredits, detectAICopyleaks, downloadAIDetectionReport } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
 import { jsPDF } from 'jspdf';
@@ -17,6 +17,9 @@ const Humanize = () => {
   const [jobStatus, setJobStatus] = useState(null);
   const [result, setResult] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Mode: 'correction' (Anti-AI) or 'full' (Umanizzazione con Profilo)
+  const [mode, setMode] = useState('correction');
 
   // AI Detection state
   const [aiDetecting, setAiDetecting] = useState(false);
@@ -55,7 +58,7 @@ const Humanize = () => {
       return;
     }
 
-    if (!selectedSession) {
+    if (mode === 'full' && !selectedSession) {
       alert('Seleziona una sessione addestrata');
       return;
     }
@@ -81,7 +84,12 @@ const Humanize = () => {
     setResult('');
 
     try {
-      const response = await humanizeContent(selectedSession, testoOriginale);
+      let response;
+      if (mode === 'correction') {
+        response = await antiAICorrection(testoOriginale);
+      } else {
+        response = await humanizeContent(selectedSession, testoOriginale);
+      }
       setJobStatus({ ...response, status: 'pending', progress: 0 });
 
       const finalStatus = await pollJobStatus(
@@ -93,17 +101,17 @@ const Humanize = () => {
       if (finalStatus.status === 'completed') {
         setResult(finalStatus.result);
       } else if (finalStatus.status === 'failed') {
-        alert('Errore durante l\'umanizzazione: ' + (finalStatus.error || 'Errore sconosciuto'));
+        alert('Errore durante l\'elaborazione: ' + (finalStatus.error || 'Errore sconosciuto'));
       }
 
       // Aggiorna saldo crediti
       refreshUser();
     } catch (error) {
-      console.error('Errore nell\'umanizzazione:', error);
+      console.error('Errore nell\'elaborazione:', error);
       if (error.response?.status === 402) {
         alert('Crediti insufficienti per questa operazione.');
       } else {
-        alert('Errore nell\'umanizzazione del testo');
+        alert('Errore nell\'elaborazione del testo');
       }
     } finally {
       setProcessing(false);
@@ -142,7 +150,8 @@ const Humanize = () => {
       y += lineHeight;
     }
 
-    doc.save(`testo_umanizzato_${Date.now()}.pdf`);
+    const filename = mode === 'correction' ? 'testo_corretto' : 'testo_umanizzato';
+    doc.save(`${filename}_${Date.now()}.pdf`);
   };
 
   const handleAIDetect = async () => {
@@ -180,28 +189,6 @@ const Humanize = () => {
     return text.trim().split(/\s+/).filter(word => word.length > 0).length;
   };
 
-  if (sessions.length === 0) {
-    return (
-      <div className="min-h-screen p-6 flex items-center justify-center">
-        <div className="card max-w-md text-center">
-          <Wand2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">
-            Nessuna sessione addestrata
-          </h2>
-          <p className="text-slate-600 mb-6">
-            Devi prima addestrare una sessione prima di poter umanizzare testi
-          </p>
-          <button
-            onClick={() => navigate('/train')}
-            className="btn btn-primary"
-          >
-            Avvia Training
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-6xl mx-auto">
@@ -213,67 +200,148 @@ const Humanize = () => {
           Torna alla Dashboard
         </button>
 
+        {/* Mode Toggle */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => { setMode('correction'); setResult(''); setJobStatus(null); setAiResult(null); }}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-sm transition-all border-2 ${
+              mode === 'correction'
+                ? 'bg-orange-50 border-orange-400 text-orange-700 shadow-md'
+                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+            }`}
+          >
+            <Shield className="w-5 h-5" />
+            Correzione Anti-AI
+          </button>
+          <button
+            onClick={() => { setMode('full'); setResult(''); setJobStatus(null); setAiResult(null); }}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-sm transition-all border-2 ${
+              mode === 'full'
+                ? 'bg-purple-50 border-purple-400 text-purple-700 shadow-md'
+                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+            }`}
+          >
+            <Wand2 className="w-5 h-5" />
+            Umanizzazione con Profilo Stilistico
+          </button>
+        </div>
+
+        {/* Check: full mode needs trained sessions */}
+        {mode === 'full' && sessions.length === 0 && (
+          <div className="card max-w-md mx-auto text-center mb-6">
+            <Wand2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-slate-900 mb-2">
+              Nessuna sessione addestrata
+            </h2>
+            <p className="text-slate-600 mb-6">
+              Per l'umanizzazione con profilo stilistico devi prima addestrare una sessione.
+              Puoi comunque usare la <strong>Correzione Anti-AI</strong>.
+            </p>
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={() => navigate('/train')}
+                className="btn btn-primary"
+              >
+                Avvia Training
+              </button>
+              <button
+                onClick={() => setMode('correction')}
+                className="btn btn-secondary"
+              >
+                Usa Correzione Anti-AI
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Form */}
           <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">
-              Umanizza Testo AI
+              {mode === 'correction' ? 'Correzione Anti-AI' : 'Umanizza Testo AI'}
             </h1>
             <p className="text-slate-600 mb-6">
-              Riscrivi testi generati da AI nello stile appreso
+              {mode === 'correction'
+                ? 'Micro-correzioni per ridurre la rilevabilita AI'
+                : 'Riscrivi testi generati da AI nello stile appreso'
+              }
             </p>
 
             {/* Info Box */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
-              <div className="flex gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-medium text-amber-800 mb-1">Come funziona</h4>
-                  <p className="text-sm text-amber-700">
-                    Questa funzione riscrive testi generati da AI applicando lo <strong>stile dell'autore</strong> appreso
-                    durante l'addestramento e tecniche avanzate per aumentare la perplessita e la variabilita,
-                    rendendolo indistinguibile da un testo scritto da un umano. Ideale per superare
-                    i controlli di Compilatio, Copyleaks e GPTZero.
-                  </p>
+            {mode === 'correction' ? (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6">
+                <div className="flex gap-3">
+                  <Shield className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-orange-800 mb-1">Come funziona</h4>
+                    <p className="text-sm text-orange-700">
+                      Applica <strong>micro-correzioni</strong> al tuo testo per ridurre la percentuale di rilevamento AI.
+                      Il testo <strong>non viene riscritto</strong> ma solo ritoccato con sinonimi mirati, leggere variazioni
+                      sintattiche e piccole imperfezioni naturali. Il risultato mantiene il <strong>90%+ del testo originale</strong>.
+                    </p>
+                    <p className="text-xs text-orange-600 mt-2">
+                      Non richiede una sessione addestrata.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-6">
+                <div className="flex gap-3">
+                  <Wand2 className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-purple-800 mb-1">Come funziona</h4>
+                    <p className="text-sm text-purple-700">
+                      Riscrive testi generati da AI applicando lo <strong>stile dell'autore</strong> appreso
+                      durante l'addestramento e tecniche avanzate per aumentare la perplessita e la variabilita,
+                      rendendolo indistinguibile da un testo scritto da un umano. Ideale per superare
+                      i controlli di Compilatio, Copyleaks e GPTZero.
+                    </p>
+                    <p className="text-xs text-purple-600 mt-2">
+                      Richiede una sessione addestrata.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="card space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Sessione (Profilo Stilistico)
-                </label>
-                <select
-                  value={selectedSession}
-                  onChange={(e) => setSelectedSession(e.target.value)}
-                  className="input w-full"
-                  required
-                >
-                  {sessions.map((session) => (
-                    <option key={session.session_id} value={session.session_id}>
-                      {session.name || session.session_id}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-slate-500 mt-1">
-                  Il testo verra riscritto nello stile dell'autore di questa sessione
-                </p>
-              </div>
+              {/* Session selector - only in full mode */}
+              {mode === 'full' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Sessione (Profilo Stilistico)
+                  </label>
+                  <select
+                    value={selectedSession}
+                    onChange={(e) => setSelectedSession(e.target.value)}
+                    className="input w-full"
+                    required
+                  >
+                    {sessions.map((session) => (
+                      <option key={session.session_id} value={session.session_id}>
+                        {session.name || session.session_id}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Il testo verra riscritto nello stile dell'autore di questa sessione
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Testo da Umanizzare
+                  {mode === 'correction' ? 'Testo da Correggere' : 'Testo da Umanizzare'}
                 </label>
                 <textarea
                   value={testoOriginale}
                   onChange={(e) => setTestoOriginale(e.target.value)}
                   className="input w-full h-96 resize-y min-h-64"
-                  placeholder="Incolla qui il testo generato da AI che vuoi riscrivere...
-
-Puoi incollare articoli, saggi, relazioni o qualsiasi testo generato da intelligenza artificiale.
-
-Il testo verra riscritto applicando lo stile dell'autore della sessione selezionata e tecniche avanzate per evitare la detection AI."
+                  placeholder={mode === 'correction'
+                    ? "Incolla qui il testo su cui applicare micro-correzioni anti-AI...\n\nIl testo verra mantenuto quasi identico all'originale con sole piccole modifiche mirate per ridurre la percentuale di rilevamento AI."
+                    : "Incolla qui il testo generato da AI che vuoi riscrivere...\n\nPuoi incollare articoli, saggi, relazioni o qualsiasi testo generato da intelligenza artificiale.\n\nIl testo verra riscritto applicando lo stile dell'autore della sessione selezionata e tecniche avanzate per evitare la detection AI."
+                  }
                   required
                 />
                 <p className="text-xs text-slate-500 mt-2">
@@ -283,8 +351,12 @@ Il testo verra riscritto applicando lo stile dell'autore della sessione selezion
 
               <button
                 type="submit"
-                disabled={processing || testoOriginale.trim().length < 50}
-                className="w-full btn btn-primary h-12 text-base gap-2"
+                disabled={processing || testoOriginale.trim().length < 50 || (mode === 'full' && !selectedSession)}
+                className={`w-full btn h-12 text-base gap-2 ${
+                  mode === 'correction'
+                    ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white border-0'
+                    : 'btn-primary'
+                }`}
               >
                 {processing ? (
                   <>
@@ -293,12 +365,12 @@ Il testo verra riscritto applicando lo stile dell'autore della sessione selezion
                       <span></span>
                       <span></span>
                     </div>
-                    Umanizzazione in corso...
+                    {mode === 'correction' ? 'Correzione in corso...' : 'Umanizzazione in corso...'}
                   </>
                 ) : (
                   <>
-                    <Wand2 className="w-5 h-5" />
-                    Umanizza Testo
+                    {mode === 'correction' ? <Shield className="w-5 h-5" /> : <Wand2 className="w-5 h-5" />}
+                    {mode === 'correction' ? 'Avvia Correzione Anti-AI' : 'Umanizza Testo'}
                   </>
                 )}
               </button>
@@ -314,16 +386,29 @@ Il testo verra riscritto applicando lo stile dell'autore della sessione selezion
             {jobStatus && jobStatus.status !== 'completed' && jobStatus.status !== 'failed' && (
               <div className="card">
                 <div className="text-center py-8">
-                  <Wand2 className="w-12 h-12 text-purple-600 animate-pulse mx-auto mb-4" />
-                  <p className="text-slate-600 mb-2">Umanizzazione in corso...</p>
+                  {mode === 'correction' ? (
+                    <Shield className="w-12 h-12 text-orange-600 animate-pulse mx-auto mb-4" />
+                  ) : (
+                    <Wand2 className="w-12 h-12 text-purple-600 animate-pulse mx-auto mb-4" />
+                  )}
+                  <p className="text-slate-600 mb-2">
+                    {mode === 'correction' ? 'Correzione in corso...' : 'Umanizzazione in corso...'}
+                  </p>
                   <p className="text-sm text-slate-500">
-                    Sto riscrivendo il testo nello stile appreso
+                    {mode === 'correction'
+                      ? 'Sto applicando micro-correzioni al testo'
+                      : 'Sto riscrivendo il testo nello stile appreso'
+                    }
                   </p>
                   {jobStatus.progress > 0 && (
                     <div className="max-w-xs mx-auto">
                       <div className="w-full bg-slate-200 rounded-full h-2 mt-4">
                         <div
-                          className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all"
+                          className={`h-2 rounded-full transition-all ${
+                            mode === 'correction'
+                              ? 'bg-gradient-to-r from-orange-500 to-orange-600'
+                              : 'bg-gradient-to-r from-purple-500 to-pink-500'
+                          }`}
                           style={{ width: `${jobStatus.progress}%` }}
                         ></div>
                       </div>
@@ -426,9 +511,16 @@ Il testo verra riscritto applicando lo stile dell'autore della sessione selezion
 
             {!jobStatus && !result && (
               <div className="card text-center py-12">
-                <Wand2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                {mode === 'correction' ? (
+                  <Shield className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                ) : (
+                  <Wand2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                )}
                 <p className="text-slate-600">
-                  Il testo umanizzato apparira qui
+                  {mode === 'correction'
+                    ? 'Il testo corretto apparira qui'
+                    : 'Il testo umanizzato apparira qui'
+                  }
                 </p>
               </div>
             )}
@@ -441,7 +533,7 @@ Il testo verra riscritto applicando lo stile dell'autore della sessione selezion
         isOpen={showCreditDialog}
         onConfirm={handleConfirmedHumanize}
         onCancel={() => setShowCreditDialog(false)}
-        operationName="Umanizza Testo"
+        operationName={mode === 'correction' ? 'Correzione Anti-AI' : 'Umanizza Testo'}
         estimatedCredits={creditEstimate?.credits_needed || 0}
         breakdown={creditEstimate?.breakdown || {}}
         currentBalance={isAdmin ? -1 : (creditEstimate?.current_balance ?? credits)}

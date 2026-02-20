@@ -247,6 +247,11 @@ export const deleteSession = async (sessionId) => {
   return response.data;
 };
 
+export const renameSession = async (sessionId, name) => {
+  const response = await api.patch(`/sessions/${sessionId}/name`, { name });
+  return response.data;
+};
+
 // ============================================================================
 // TRAINING
 // ============================================================================
@@ -289,6 +294,11 @@ export const humanizeContent = async (sessionId, testo) => {
   return response.data;
 };
 
+export const antiAICorrection = async (testo) => {
+  const response = await api.post('/anti-ai-correction', { testo });
+  return response.data;
+};
+
 // ============================================================================
 // JOBS
 // ============================================================================
@@ -306,6 +316,11 @@ export const getJobs = async (sessionId = null) => {
 
 export const deleteJob = async (jobId) => {
   const response = await api.delete(`/jobs/${jobId}`);
+  return response.data;
+};
+
+export const renameJob = async (jobId, name) => {
+  const response = await api.patch(`/jobs/${jobId}/name`, { name });
   return response.data;
 };
 

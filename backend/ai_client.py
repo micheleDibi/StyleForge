@@ -469,6 +469,114 @@ REGOLE FINALI:
         return humanize_text_post_processing(text)
 
 
+def anti_ai_correction(text: str) -> str:
+    """
+    Correzione Anti-AI: applica SOLO micro-modifiche conservative al testo
+    per ridurre la percentuale di rilevamento AI, senza riscriverlo da zero.
+    Il testo originale viene mantenuto al 90%+.
+
+    A differenza di humanize_text_with_claude() che riscrive completamente,
+    questa funzione fa solo:
+    - Sostituzioni sinonimiche mirate
+    - Leggere variazioni sintattiche
+    - Variazione punteggiatura
+    - Inserimento di piccole imperfezioni naturali
+
+    Args:
+        text: Il testo da correggere
+
+    Returns:
+        Il testo con micro-correzioni anti-AI
+    """
+    word_count = len(text.split())
+
+    correction_prompt = f"""Sei un correttore di testi specializzato nell'evasione dei detector AI.
+
+Il tuo compito e' applicare SOLO micro-modifiche mirate al testo seguente per ridurre
+la percentuale di rilevamento AI. NON devi riscrivere il testo, NON devi cambiare
+la struttura, NON devi riformulare interi paragrafi.
+
+═══════════════════════════════════════════════════════════════
+REGOLA FONDAMENTALE
+═══════════════════════════════════════════════════════════════
+Il testo finale DEVE essere riconoscibile al 90% come l'originale.
+L'utente deve rileggere il risultato e pensare "e' quasi identico, con
+qualche piccola differenza qua e la".
+
+═══════════════════════════════════════════════════════════════
+CITAZIONI BIBLIOGRAFICHE — PRESERVA OBBLIGATORIAMENTE
+═══════════════════════════════════════════════════════════════
+✓ MANTIENI INTATTE tutte le citazioni nel formato [x] (es. [1], [2], [3])
+✓ NON rimuovere, NON modificare, NON rinumerare le citazioni [x]
+
+═══════════════════════════════════════════════════════════════
+MICRO-MODIFICHE CONSENTITE (fai SOLO queste)
+═══════════════════════════════════════════════════════════════
+
+1. SINONIMI MIRATI (max 10-15% delle parole):
+   - "fondamentale" → "importante" / "centrale" / "essenziale"
+   - "evidenzia" → "mostra" / "indica"
+   - "significativo" → "notevole" / "rilevante" / "importante"
+   - "contribuisce" → "aiuta" / "concorre"
+   - "rappresenta" → "e'" / "costituisce"
+   - Sostituisci SOLO parole che i detector AI riconoscono come pattern tipici
+
+2. VARIAZIONE PUNTEGGIATURA (leggera):
+   - Aggiungi o rimuovi qualche virgola
+   - Spezza occasionalmente una frase lunga con un punto
+   - Unisci occasionalmente due frasi brevi con un punto e virgola o una virgola + congiunzione
+
+3. MICRO-RISTRUTTURAZIONI (max 2-3 frasi su tutto il testo):
+   - Inverti soggetto-verbo in una o due frasi
+   - Sposta un avverbio in posizione diversa
+   - Aggiungi un brevissimo inciso (es. "in pratica", "va detto", "del resto")
+
+4. IMPERFEZIONI NATURALI (max 2-3 su tutto il testo):
+   - Aggiungi un "cioe'" o un "in pratica" come collegamento
+   - Usa "ma" invece di "tuttavia" in un paio di punti
+   - Aggiungi un brevissimo commento personale ("il punto e' che", "non e' scontato")
+
+═══════════════════════════════════════════════════════════════
+COSA NON FARE (VIETATO)
+═══════════════════════════════════════════════════════════════
+✗ NON riscrivere interi paragrafi
+✗ NON cambiare l'ordine dei paragrafi
+✗ NON aggiungere o rimuovere concetti
+✗ NON cambiare il registro o il tono generale
+✗ NON sintetizzare o espandere il testo
+✗ NON rimuovere o aggiungere frasi intere
+✗ NON modificare dati, numeri, nomi o riferimenti
+
+═══════════════════════════════════════════════════════════════
+TESTO DA CORREGGERE ({word_count} parole)
+═══════════════════════════════════════════════════════════════
+
+{text}
+
+═══════════════════════════════════════════════════════════════
+
+REGOLE FINALI:
+- La lunghezza DEVE essere quasi identica all'originale (tolleranza +/- 3%)
+- Output SOLO il testo corretto, senza commenti, premesse o spiegazioni
+- Il risultato deve sembrare lo STESSO testo con qualche piccola differenza"""
+
+    try:
+        client = get_claude_client()
+        estimated_tokens = int(word_count * 2.5) + 2000
+        max_tokens = max(estimated_tokens, 20000)
+        corrected = client.generate_text(correction_prompt, max_tokens=max_tokens)
+
+        # Applica anche l'algoritmo anti-AI post-processing (leggero)
+        from anti_ai_processor import humanize_text_post_processing
+        return humanize_text_post_processing(corrected)
+    except InsufficientCreditsError:
+        raise
+    except Exception as e:
+        # Fallback: solo algoritmo anti-AI
+        from anti_ai_processor import humanize_text_post_processing
+        return humanize_text_post_processing(text)
+
+
 # ============================================================================
 # TEST
 # ============================================================================

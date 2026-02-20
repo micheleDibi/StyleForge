@@ -20,11 +20,12 @@ class Job:
     def __init__(
         self,
         job_id: str,
-        session_id: str,
+        session_id: Optional[str],
         user_id: str,
         job_type: JobType,
         task_func: Callable,
-        db_session_id: str,  # UUID della sessione nel database
+        db_session_id: Optional[str] = None,  # UUID della sessione nel database (opzionale)
+        name: Optional[str] = None,
         **kwargs
     ):
         """
@@ -32,11 +33,12 @@ class Job:
 
         Args:
             job_id: ID univoco del job.
-            session_id: ID della sessione associata (stringa leggibile).
+            session_id: ID della sessione associata (stringa leggibile, None per job senza sessione).
             user_id: ID dell'utente proprietario.
             job_type: Tipo di job.
             task_func: Funzione da eseguire.
-            db_session_id: UUID della sessione nel database.
+            db_session_id: UUID della sessione nel database (opzionale).
+            name: Nome descrittivo del job.
             **kwargs: Argomenti da passare alla funzione.
         """
         self.job_id = job_id
@@ -44,6 +46,7 @@ class Job:
         self.user_id = user_id
         self.db_session_id = db_session_id
         self.job_type = job_type
+        self.name = name
         self.task_func = task_func
         self.kwargs = kwargs
         self.status = 'pending'
@@ -59,6 +62,7 @@ class Job:
         """Converte il job in un dizionario."""
         return {
             "job_id": self.job_id,
+            "name": self.name,
             "session_id": self.session_id,
             "job_type": self.job_type,
             "status": self.status,
@@ -94,22 +98,24 @@ class JobManager:
 
     def create_job(
         self,
-        session_id: str,
+        session_id: Optional[str],
         user_id: str,
         job_type: JobType,
         task_func: Callable,
         job_id: Optional[str] = None,
+        name: Optional[str] = None,
         **kwargs
     ) -> str:
         """
         Crea un nuovo job.
 
         Args:
-            session_id: ID della sessione (stringa leggibile).
+            session_id: ID della sessione (stringa leggibile, None per job senza sessione).
             user_id: ID dell'utente proprietario.
             job_type: Tipo di job.
             task_func: Funzione da eseguire.
             job_id: ID opzionale per il job.
+            name: Nome descrittivo del job.
             **kwargs: Argomenti da passare alla funzione.
 
         Returns:
@@ -121,19 +127,24 @@ class JobManager:
                 if job_id is None:
                     job_id = f"job_{uuid.uuid4().hex[:12]}"
 
-                # Trova la sessione nel database
-                db_session = db.query(SessionModel).filter(
-                    SessionModel.session_id == session_id
-                ).first()
-                if not db_session:
-                    raise ValueError(f"Sessione {session_id} non trovata")
+                # Trova la sessione nel database (se presente)
+                db_session = None
+                db_session_id = None
+                if session_id is not None:
+                    db_session = db.query(SessionModel).filter(
+                        SessionModel.session_id == session_id
+                    ).first()
+                    if not db_session:
+                        raise ValueError(f"Sessione {session_id} non trovata")
+                    db_session_id = str(db_session.id)
 
                 # Crea il job nel database
                 db_job = JobModel(
                     job_id=job_id,
-                    session_id=db_session.id,
+                    session_id=db_session.id if db_session else None,
                     user_id=user_id,
                     job_type=job_type,
+                    name=name,
                     status='pending',
                     progress=0
                 )
@@ -147,12 +158,13 @@ class JobManager:
                     user_id=user_id,
                     job_type=job_type,
                     task_func=task_func,
-                    db_session_id=str(db_session.id),
+                    db_session_id=db_session_id,
+                    name=name,
                     **kwargs
                 )
 
-                # Aggiungi session_id ai kwargs del job
-                if 'session_id' not in job.kwargs:
+                # Aggiungi session_id ai kwargs del job (se presente)
+                if session_id is not None and 'session_id' not in job.kwargs:
                     job.kwargs['session_id'] = session_id
 
                 self._active_jobs[job_id] = job
@@ -269,11 +281,12 @@ class JobManager:
                 # Crea un oggetto Job fittizio dal database
                 job = Job(
                     job_id=db_job.job_id,
-                    session_id=db_job.session.session_id if db_job.session else "",
+                    session_id=db_job.session.session_id if db_job.session else None,
                     user_id=str(db_job.user_id),
                     job_type=db_job.job_type,
                     task_func=lambda: None,  # Placeholder
-                    db_session_id=str(db_job.session_id)
+                    db_session_id=str(db_job.session_id) if db_job.session_id else None,
+                    name=db_job.name
                 )
                 job.status = db_job.status
                 job.progress = db_job.progress

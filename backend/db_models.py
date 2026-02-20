@@ -92,9 +92,10 @@ class Job(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_id = Column(String(50), unique=True, nullable=False, index=True)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     job_type = Column(pg_job_type, nullable=False)
+    name = Column(String(255), nullable=True)
     status = Column(pg_job_status, default='pending')
     progress = Column(Integer, default=0)
     result = Column(Text, nullable=True)
@@ -114,6 +115,7 @@ class Job(Base):
         """Converte il job in un dizionario."""
         return {
             "job_id": self.job_id,
+            "name": self.name,
             "session_id": self.session.session_id if self.session else None,
             "job_type": self.job_type,
             "status": self.status,

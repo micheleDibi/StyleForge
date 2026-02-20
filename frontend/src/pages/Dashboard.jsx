@@ -1,14 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileText, Activity, LogOut, Upload,
   Sparkles, RefreshCw, Trash2, ChevronRight, Wand2,
   Clock, CheckCircle2, AlertCircle, Zap, User, Settings,
   TrendingUp, Layers, Brain, BookOpen, Calendar, Download,
-  ChevronDown, Eye, List, Coins, Shield, ShieldAlert
+  ChevronDown, Eye, List, Coins, Shield, ShieldAlert, Pencil, Play
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getSessions, deleteSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis } from '../services/api';
+import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates } from '../services/api';
 import JobCard from '../components/JobCard';
 import Logo from '../components/Logo';
 
@@ -24,24 +24,47 @@ const Dashboard = () => {
   const [expandedThesis, setExpandedThesis] = useState(null);
   const [exportingThesis, setExportingThesis] = useState(null);
 
+  // Templates state
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplates, setSelectedTemplates] = useState({});
+
+  // Session rename state
+  const [editingSessionName, setEditingSessionName] = useState(null);
+  const [editSessionValue, setEditSessionValue] = useState('');
+  const editSessionRef = useRef(null);
+
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 10000);
+    const interval = setInterval(() => {
+      // Don't overwrite during edit
+      if (!editingSessionName) {
+        loadData();
+      }
+    }, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [editingSessionName]);
+
+  useEffect(() => {
+    if (editingSessionName && editSessionRef.current) {
+      editSessionRef.current.focus();
+      editSessionRef.current.select();
+    }
+  }, [editingSessionName]);
 
   const loadData = async () => {
     try {
-      const [sessionsData, healthData, jobsData, thesesData] = await Promise.all([
+      const [sessionsData, healthData, jobsData, thesesData, templatesData] = await Promise.all([
         getSessions(),
         healthCheck(),
         getJobs(),
-        getTheses().catch(() => ({ theses: [] }))
+        getTheses().catch(() => ({ theses: [] })),
+        getExportTemplates().catch(() => ({ templates: [] }))
       ]);
       setSessions(sessionsData.sessions);
       setHealth(healthData);
       setJobs(jobsData.jobs || []);
       setTheses(thesesData.theses || []);
+      setTemplates(templatesData.templates || []);
     } catch (error) {
       console.error('Errore nel caricamento:', error);
     } finally {
@@ -82,7 +105,8 @@ const Dashboard = () => {
   const handleExportThesis = async (thesisId, format = 'pdf') => {
     setExportingThesis(thesisId);
     try {
-      await exportThesis(thesisId, format);
+      const templateId = selectedTemplates[thesisId] || null;
+      await exportThesis(thesisId, format, templateId);
     } catch (error) {
       console.error('Errore nell\'export:', error);
       alert('Errore nell\'export della tesi');
@@ -95,6 +119,53 @@ const Dashboard = () => {
     if (confirm('Sei sicuro di voler uscire?')) {
       logout();
     }
+  };
+
+  // Session rename handlers
+  const handleStartSessionEdit = (sessionId, currentName) => {
+    setEditingSessionName(sessionId);
+    setEditSessionValue(currentName || sessionId);
+  };
+
+  const handleSaveSessionName = async (sessionId) => {
+    const trimmed = editSessionValue.trim();
+    if (!trimmed) {
+      setEditingSessionName(null);
+      return;
+    }
+    try {
+      await renameSession(sessionId, trimmed);
+      setSessions(sessions.map(s =>
+        s.session_id === sessionId ? { ...s, name: trimmed } : s
+      ));
+    } catch (error) {
+      console.error('Errore nella rinomina:', error);
+    }
+    setEditingSessionName(null);
+  };
+
+  const handleSessionEditKeyDown = (e, sessionId) => {
+    if (e.key === 'Enter') {
+      handleSaveSessionName(sessionId);
+    } else if (e.key === 'Escape') {
+      setEditingSessionName(null);
+    }
+  };
+
+  // Thesis navigation
+  const getThesisAction = (thesis) => {
+    switch (thesis.status) {
+      case 'completed':
+        return { label: 'Visualizza', icon: Eye };
+      case 'generating':
+        return { label: 'Progresso', icon: Clock };
+      default:
+        return { label: 'Continua', icon: Play };
+    }
+  };
+
+  const handleThesisNavigate = (thesis) => {
+    navigate(`/thesis?resume=${thesis.id}`);
   };
 
   const formatDate = (dateString) => {
@@ -558,154 +629,196 @@ const Dashboard = () => {
             </div>
 
             <div className="space-y-3">
-              {theses.map((thesis) => (
-                <div
-                  key={thesis.id}
-                  className="glass rounded-2xl overflow-hidden hover:shadow-xl transition-shadow"
-                >
-                  {/* Thesis Header */}
+              {theses.map((thesis) => {
+                const action = getThesisAction(thesis);
+                const ActionIcon = action.icon;
+
+                return (
                   <div
-                    className="p-4 cursor-pointer"
-                    onClick={() => setExpandedThesis(expandedThesis === thesis.id ? null : thesis.id)}
+                    key={thesis.id}
+                    className="glass rounded-2xl overflow-hidden hover:shadow-xl transition-shadow"
                   >
-                    <div className="flex items-start gap-4">
-                      <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-                        <BookOpen className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-lg text-gray-900 break-words">
-                          {thesis.title}
-                        </h3>
-                        {thesis.description && (
-                          <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                            {thesis.description}
-                          </p>
-                        )}
-                        <div className="flex flex-wrap items-center gap-3 mt-2">
-                          {getStatusBadge(thesis.status)}
-                          <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {formatDate(thesis.created_at)}
-                          </span>
-                          <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <List className="w-3 h-3" />
-                            {thesis.num_chapters} capitoli
-                          </span>
+                    {/* Thesis Header */}
+                    <div
+                      className="p-4 cursor-pointer"
+                      onClick={() => setExpandedThesis(expandedThesis === thesis.id ? null : thesis.id)}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
+                          <BookOpen className="w-6 h-6 text-white" />
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {thesis.status === 'completed' && (
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-lg text-gray-900 break-words">
+                            {thesis.title}
+                          </h3>
+                          {thesis.description && (
+                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                              {thesis.description}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap items-center gap-3 mt-2">
+                            {getStatusBadge(thesis.status)}
+                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {formatDate(thesis.created_at)}
+                            </span>
+                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <List className="w-3 h-3" />
+                              {thesis.num_chapters} capitoli
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {/* Navigate button */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleExportThesis(thesis.id, 'pdf');
+                              handleThesisNavigate(thesis);
                             }}
-                            disabled={exportingThesis === thesis.id}
-                            className="btn btn-primary btn-sm"
+                            className={`btn btn-sm gap-1 ${
+                              thesis.status === 'completed'
+                                ? 'btn-primary'
+                                : thesis.status === 'generating'
+                                ? 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200'
+                                : 'btn-secondary'
+                            }`}
                           >
-                            {exportingThesis === thesis.id ? (
-                              <RefreshCw className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Download className="w-4 h-4" />
-                            )}
-                            PDF
+                            <ActionIcon className="w-4 h-4" />
+                            {action.label}
                           </button>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteThesis(thesis.id);
-                          }}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-600" />
-                        </button>
-                        <ChevronDown
-                          className={`w-5 h-5 text-gray-400 transition-transform ${
-                            expandedThesis === thesis.id ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Expanded Details */}
-                  {expandedThesis === thesis.id && (
-                    <div className="border-t border-gray-200 p-4 bg-gray-50/50">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <div className="bg-white rounded-lg p-3 text-center">
-                          <p className="text-xs text-gray-500 mb-1">Capitoli</p>
-                          <p className="text-lg font-bold text-gray-900">{thesis.num_chapters}</p>
-                        </div>
-                        <div className="bg-white rounded-lg p-3 text-center">
-                          <p className="text-xs text-gray-500 mb-1">Sezioni/Cap</p>
-                          <p className="text-lg font-bold text-gray-900">{thesis.sections_per_chapter}</p>
-                        </div>
-                        <div className="bg-white rounded-lg p-3 text-center">
-                          <p className="text-xs text-gray-500 mb-1">Parole/Sez</p>
-                          <p className="text-lg font-bold text-gray-900">{thesis.words_per_section?.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-white rounded-lg p-3 text-center">
-                          <p className="text-xs text-gray-500 mb-1">Progresso</p>
-                          <p className="text-lg font-bold text-gray-900">{thesis.generation_progress || 0}%</p>
-                        </div>
-                      </div>
-
-                      {thesis.key_topics && thesis.key_topics.length > 0 && (
-                        <div className="mb-4">
-                          <p className="text-xs text-gray-500 mb-2">Argomenti chiave:</p>
-                          <div className="flex flex-wrap gap-2">
-                            {thesis.key_topics.map((topic, i) => (
-                              <span key={i} className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs rounded-full">
-                                {topic}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex gap-2">
-                        {thesis.status === 'completed' && (
-                          <>
+                          {thesis.status === 'completed' && (
                             <button
-                              onClick={() => handleExportThesis(thesis.id, 'pdf')}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExportThesis(thesis.id, 'pdf');
+                              }}
                               disabled={exportingThesis === thesis.id}
                               className="btn btn-primary btn-sm"
                             >
-                              <Download className="w-4 h-4" />
+                              {exportingThesis === thesis.id ? (
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Download className="w-4 h-4" />
+                              )}
                               PDF
                             </button>
-                            <button
-                              onClick={() => handleExportThesis(thesis.id, 'docx')}
-                              disabled={exportingThesis === thesis.id}
-                              className="btn btn-secondary btn-sm"
-                            >
-                              <Download className="w-4 h-4" />
-                              DOCX
-                            </button>
-                            <button
-                              onClick={() => handleExportThesis(thesis.id, 'txt')}
-                              disabled={exportingThesis === thesis.id}
-                              className="btn btn-secondary btn-sm"
-                            >
-                              <Download className="w-4 h-4" />
-                              TXT
-                            </button>
-                            <button
-                              onClick={() => handleExportThesis(thesis.id, 'md')}
-                              disabled={exportingThesis === thesis.id}
-                              className="btn btn-secondary btn-sm"
-                            >
-                              <Download className="w-4 h-4" />
-                              MD
-                            </button>
-                          </>
-                        )}
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteThesis(thesis.id);
+                            }}
+                            className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-600" />
+                          </button>
+                          <ChevronDown
+                            className={`w-5 h-5 text-gray-400 transition-transform ${
+                              expandedThesis === thesis.id ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </div>
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    {/* Expanded Details */}
+                    {expandedThesis === thesis.id && (
+                      <div className="border-t border-gray-200 p-4 bg-gray-50/50">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                          <div className="bg-white rounded-lg p-3 text-center">
+                            <p className="text-xs text-gray-500 mb-1">Capitoli</p>
+                            <p className="text-lg font-bold text-gray-900">{thesis.num_chapters}</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-3 text-center">
+                            <p className="text-xs text-gray-500 mb-1">Sezioni/Cap</p>
+                            <p className="text-lg font-bold text-gray-900">{thesis.sections_per_chapter}</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-3 text-center">
+                            <p className="text-xs text-gray-500 mb-1">Parole/Sez</p>
+                            <p className="text-lg font-bold text-gray-900">{thesis.words_per_section?.toLocaleString()}</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-3 text-center">
+                            <p className="text-xs text-gray-500 mb-1">Progresso</p>
+                            <p className="text-lg font-bold text-gray-900">{thesis.generation_progress || 0}%</p>
+                          </div>
+                        </div>
+
+                        {thesis.key_topics && thesis.key_topics.length > 0 && (
+                          <div className="mb-4">
+                            <p className="text-xs text-gray-500 mb-2">Argomenti chiave:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {thesis.key_topics.map((topic, i) => (
+                                <span key={i} className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs rounded-full">
+                                  {topic}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Template selector */}
+                        {thesis.status === 'completed' && templates.length > 0 && (
+                          <div className="mb-4">
+                            <label className="text-xs text-gray-500 mb-1 block">Template esportazione:</label>
+                            <select
+                              value={selectedTemplates[thesis.id] || ''}
+                              onChange={(e) => setSelectedTemplates({ ...selectedTemplates, [thesis.id]: e.target.value || null })}
+                              className="input text-sm w-full max-w-xs"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="">Default (nessun template)</option>
+                              {templates.map((tpl) => (
+                                <option key={tpl.id} value={tpl.id}>
+                                  {tpl.name} ({tpl.formats?.join(', ') || 'pdf'})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          {thesis.status === 'completed' && (
+                            <>
+                              <button
+                                onClick={() => handleExportThesis(thesis.id, 'pdf')}
+                                disabled={exportingThesis === thesis.id}
+                                className="btn btn-primary btn-sm"
+                              >
+                                <Download className="w-4 h-4" />
+                                PDF
+                              </button>
+                              <button
+                                onClick={() => handleExportThesis(thesis.id, 'docx')}
+                                disabled={exportingThesis === thesis.id}
+                                className="btn btn-secondary btn-sm"
+                              >
+                                <Download className="w-4 h-4" />
+                                DOCX
+                              </button>
+                              <button
+                                onClick={() => handleExportThesis(thesis.id, 'txt')}
+                                disabled={exportingThesis === thesis.id}
+                                className="btn btn-secondary btn-sm"
+                              >
+                                <Download className="w-4 h-4" />
+                                TXT
+                              </button>
+                              <button
+                                onClick={() => handleExportThesis(thesis.id, 'md')}
+                                disabled={exportingThesis === thesis.id}
+                                className="btn btn-secondary btn-sm"
+                              >
+                                <Download className="w-4 h-4" />
+                                MD
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -816,10 +929,33 @@ const Dashboard = () => {
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-lg text-gray-900 mb-1 truncate">
-                        {session.name || session.session_id}
-                      </h3>
-                      {session.name && (
+                      {editingSessionName === session.session_id ? (
+                        <input
+                          ref={editSessionRef}
+                          type="text"
+                          value={editSessionValue}
+                          onChange={(e) => setEditSessionValue(e.target.value)}
+                          onBlur={() => handleSaveSessionName(session.session_id)}
+                          onKeyDown={(e) => handleSessionEditKeyDown(e, session.session_id)}
+                          className="font-bold text-lg text-gray-900 bg-white border border-slate-300 rounded-lg px-2 py-0.5 w-full focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          maxLength={255}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <div className="flex items-center gap-1 group/name">
+                          <h3 className="font-bold text-lg text-gray-900 mb-1 truncate">
+                            {session.name || session.session_id}
+                          </h3>
+                          <button
+                            onClick={() => handleStartSessionEdit(session.session_id, session.name || session.session_id)}
+                            className="opacity-0 group-hover/name:opacity-100 transition-opacity p-1 hover:bg-slate-100 rounded flex-shrink-0"
+                            title="Rinomina"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                          </button>
+                        </div>
+                      )}
+                      {session.name && !editingSessionName && (
                         <p className="font-mono text-xs text-gray-400 truncate">
                           {session.session_id}
                         </p>
