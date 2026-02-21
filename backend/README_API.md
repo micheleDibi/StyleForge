@@ -8,7 +8,6 @@ API scalabile per la generazione di contenuti utilizzando Claude Opus 4.5 con ar
 - **Session Management**: Supporto per sessioni multiple indipendenti
 - **Background Processing**: Tutte le operazioni pesanti vengono eseguite in background
 - **API RESTful**: Endpoints ben strutturati con documentazione OpenAPI
-- **AI Detection**: Rilevamento integrato di testi generati da AI
 
 ## Installazione
 
@@ -197,11 +196,6 @@ curl "http://localhost:8000/results/job_def456" -O
 - `GET /jobs/{job_id}` - Ottiene lo stato di un job
 - `GET /jobs` - Elenca tutti i job (opzionalmente filtrati per sessione)
 - `DELETE /jobs/{job_id}` - Elimina un job
-
-### AI Detection (Copyleaks)
-
-- `POST /detect/copyleaks` - Rileva testo AI con Copyleaks
-- `POST /detect/copyleaks/report` - Genera report PDF AI detection
 
 ### Results
 

@@ -21,7 +21,6 @@ Il layer principale dell'applicazione che espone gli endpoint REST.
 - `/train` - Addestramento con PDF
 - `/generate` - Generazione contenuti
 - `/jobs` - Monitoraggio job
-- `/detect` - AI detection
 - `/health` - Health check
 
 ### 2. Session Manager (`session_manager.py`)
@@ -63,7 +62,6 @@ Gestisce l'esecuzione asincrona di job con sistema di code.
 **Tipi di job:**
 - `TRAINING` - Addestramento sessione
 - `GENERATION` - Generazione contenuto
-- `DETECTION` - Rilevamento AI (futuro)
 
 **Stati job:**
 ```
@@ -91,7 +89,6 @@ Modelli Pydantic per validazione e serializzazione.
 - `GenerationRequest/Response`
 - `JobStatusResponse`
 - `SessionInfo`
-- `CopyleaksDetectionRequest/Response`
 
 ### 6. Configuration (`config.py`)
 
@@ -176,7 +173,6 @@ Configurazione centralizzata con validazione.
 - API Claude rate limits
 - Memoria per sessioni multiple
 - Disco per upload/results
-- CPU per AI detection
 
 ## Sicurezza
 

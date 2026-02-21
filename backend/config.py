@@ -80,7 +80,6 @@ API per la generazione di contenuti utilizzando Claude Opus 4.5.
 
 - **Training**: Addestra Claude su un documento PDF per apprendere lo stile di scrittura
 - **Generation**: Genera contenuti basati sullo stile appreso
-- **AI Detection**: Rileva se un testo è stato generato da AI
 - **Session Management**: Gestisce multiple sessioni indipendenti
 - **Job Management**: Esegue operazioni in background con gestione della coda
 - **Thesis Generation**: Genera tesi e relazioni complete con AI

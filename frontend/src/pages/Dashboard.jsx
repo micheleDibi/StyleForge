@@ -5,7 +5,7 @@ import {
   Sparkles, RefreshCw, Trash2, ChevronRight, Wand2,
   Clock, CheckCircle2, AlertCircle, Zap, User, Settings,
   TrendingUp, Layers, Brain, BookOpen, Calendar, Download,
-  ChevronDown, Eye, List, Coins, Shield, ShieldAlert, Pencil, Play
+  ChevronDown, Eye, List, Coins, Shield, Pencil, Play
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates } from '../services/api';
@@ -545,36 +545,6 @@ const Dashboard = () => {
                 <span className="badge" style={{ backgroundColor: '#d1fae5', color: '#065f46' }}>
                   <Sparkles className="w-3 h-3" />
                   AI Avanzata
-                </span>
-              </div>
-            </button>
-          )}
-
-          {/* AI Detection */}
-          {hasPermission('detect') && (
-            <button
-              onClick={() => navigate('/ai-detection')}
-              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-red-200 relative overflow-hidden"
-            >
-              <div className="absolute top-3 right-3">
-                <span className="px-2 py-1 bg-gradient-to-r from-red-500 to-orange-500 text-white text-xs font-bold rounded-full shadow-lg">
-                  NUOVO
-                </span>
-              </div>
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-red-500 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-red-500/30">
-                  <ShieldAlert className="w-7 h-7 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">Rileva AI</h3>
-                  <p className="text-sm text-gray-500">Analizza testo per AI</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-red-600 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge" style={{ backgroundColor: '#fee2e2', color: '#991b1b' }}>
-                  <ShieldAlert className="w-3 h-3" />
-                  AI Scanner
                 </span>
               </div>
             </button>

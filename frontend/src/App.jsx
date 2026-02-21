@@ -8,7 +8,6 @@ import Generate from './pages/Generate';
 import Humanize from './pages/Humanize';
 import SessionDetail from './pages/SessionDetail';
 import ThesisGenerator from './pages/ThesisGenerator';
-import AIDetection from './pages/AIDetection';
 import Admin from './pages/Admin';
 import Helper from './components/Helper';
 import Footer from './components/Footer';
@@ -157,14 +156,6 @@ const AppRoutes = () => {
         element={
           <PermissionRoute permission="thesis">
             <ThesisGenerator />
-          </PermissionRoute>
-        }
-      />
-      <Route
-        path="/ai-detection"
-        element={
-          <PermissionRoute permission="detect">
-            <AIDetection />
           </PermissionRoute>
         }
       />

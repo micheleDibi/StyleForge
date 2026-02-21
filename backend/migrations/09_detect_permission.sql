@@ -1,5 +1,5 @@
 -- ============================================================================
--- 09: Permesso 'detect' per AI Detection con Copyleaks
+-- 09: Permesso 'detect' per AI Detection
 -- Lo schema usa role_permissions con permission_code (VARCHAR), non una
 -- tabella permissions separata.
 -- ============================================================================

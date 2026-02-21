@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Sparkles, Download, Copy, Check, ShieldAlert, RefreshCw, AlertTriangle } from 'lucide-react';
-import { getSessions, generateContent, pollJobStatus, getResultText, estimateCredits, detectAICopyleaks, downloadAIDetectionReport } from '../services/api';
+import { ArrowLeft, Sparkles, Download, Copy, Check, RefreshCw, AlertTriangle } from 'lucide-react';
+import { getSessions, generateContent, pollJobStatus, getResultText, estimateCredits } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
 import { jsPDF } from 'jspdf';
@@ -19,12 +19,6 @@ const Generate = () => {
   const [jobStatus, setJobStatus] = useState(null);
   const [result, setResult] = useState('');
   const [copied, setCopied] = useState(false);
-
-  // AI Detection state
-  const [aiDetecting, setAiDetecting] = useState(false);
-  const [aiResult, setAiResult] = useState(null);
-  const [aiError, setAiError] = useState('');
-  const [aiReportLoading, setAiReportLoading] = useState(false);
 
   // Credit confirmation state
   const [showCreditDialog, setShowCreditDialog] = useState(false);
@@ -137,37 +131,6 @@ const Generate = () => {
 
     // Scarica il PDF
     doc.save(`contenuto_${Date.now()}.pdf`);
-  };
-
-  const handleAIDetect = async () => {
-    if (!result || result.length < 255) {
-      setAiError('Il testo deve essere di almeno 255 caratteri per l\'analisi AI.');
-      return;
-    }
-    setAiDetecting(true);
-    setAiError('');
-    setAiResult(null);
-    try {
-      const data = await detectAICopyleaks(result.substring(0, 25000));
-      setAiResult(data);
-      refreshUser();
-    } catch (err) {
-      setAiError(err.response?.data?.detail || 'Errore durante l\'analisi AI.');
-    } finally {
-      setAiDetecting(false);
-    }
-  };
-
-  const handleAIReport = async () => {
-    if (!aiResult) return;
-    setAiReportLoading(true);
-    try {
-      await downloadAIDetectionReport(result, aiResult.segments, aiResult.ai_percentage, aiResult.human_percentage);
-    } catch (err) {
-      setAiError('Errore nel download del report.');
-    } finally {
-      setAiReportLoading(false);
-    }
   };
 
   if (sessions.length === 0) {
@@ -353,68 +316,6 @@ const Generate = () => {
                   </pre>
                 </div>
 
-                {/* AI Detection Button */}
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <button
-                    onClick={handleAIDetect}
-                    disabled={aiDetecting || result.length < 255}
-                    className="btn btn-secondary gap-2 text-sm w-full justify-center"
-                    style={{ backgroundColor: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}
-                  >
-                    {aiDetecting ? (
-                      <><RefreshCw className="w-4 h-4 animate-spin" /> Analisi AI in corso...</>
-                    ) : (
-                      <><ShieldAlert className="w-4 h-4" /> Rileva AI (Copyleaks)</>
-                    )}
-                  </button>
-
-                  {aiError && (
-                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
-                      <span className="text-xs text-red-700">{aiError}</span>
-                    </div>
-                  )}
-
-                  {aiResult && (
-                    <div className="mt-4 space-y-3">
-                      {/* Percentages */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className={`rounded-xl p-3 text-center ${aiResult.ai_percentage > 50 ? 'bg-red-50 border border-red-200' : 'bg-red-50/50'}`}>
-                          <p className="text-2xl font-bold text-red-600">{aiResult.ai_percentage.toFixed(1)}%</p>
-                          <p className="text-xs text-red-500">AI</p>
-                        </div>
-                        <div className={`rounded-xl p-3 text-center ${aiResult.human_percentage > 50 ? 'bg-green-50 border border-green-200' : 'bg-green-50/50'}`}>
-                          <p className="text-2xl font-bold text-green-600">{aiResult.human_percentage.toFixed(1)}%</p>
-                          <p className="text-xs text-green-500">Umano</p>
-                        </div>
-                      </div>
-                      {/* Progress bar */}
-                      <div className="h-3 rounded-full overflow-hidden bg-gray-200 flex">
-                        <div className="bg-red-400" style={{ width: `${aiResult.ai_percentage}%` }} />
-                        <div className="bg-green-400" style={{ width: `${aiResult.human_percentage}%` }} />
-                      </div>
-                      {/* Highlighted text */}
-                      <div className="bg-white rounded-lg p-4 max-h-[300px] overflow-y-auto border">
-                        <div className="font-mono text-xs leading-relaxed whitespace-pre-wrap">
-                          {aiResult.segments.map((seg, i) => (
-                            <span key={i} className={seg.classification === 'ai' ? 'bg-red-100 border-b border-red-400' : 'bg-green-100 border-b border-green-400'}>
-                              {seg.text}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      {/* Download report */}
-                      <button
-                        onClick={handleAIReport}
-                        disabled={aiReportLoading}
-                        className="btn btn-primary gap-2 text-sm w-full justify-center"
-                      >
-                        {aiReportLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                        Scarica Report PDF
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
             )}
 

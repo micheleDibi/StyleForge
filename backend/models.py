@@ -610,47 +610,6 @@ class CreditCostsResponse(BaseModel):
     is_default: bool = Field(..., description="True se sono i costi default (non personalizzati)")
 
 
-# ============================================================================
-# AI DETECTION - COPYLEAKS
-# ============================================================================
-
-class CopyleaksDetectionRequest(BaseModel):
-    """Request per il rilevamento AI con Copyleaks."""
-    text: str = Field(..., min_length=255, max_length=25000, description="Testo da analizzare (255-25000 caratteri)")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "text": "Il testo da analizzare per rilevamento AI..."
-            }
-        }
-
-
-class CopyleaksSegment(BaseModel):
-    """Segmento di testo classificato da Copyleaks."""
-    text: str = Field(..., description="Testo del segmento")
-    classification: str = Field(..., description="'ai' o 'human'")
-    start: int = Field(..., description="Posizione carattere inizio")
-    length: int = Field(..., description="Lunghezza in caratteri")
-
-
-class CopyleaksDetectionResponse(BaseModel):
-    """Response del rilevamento AI con Copyleaks."""
-    ai_percentage: float = Field(..., description="Percentuale testo AI (0-100)")
-    human_percentage: float = Field(..., description="Percentuale testo umano (0-100)")
-    total_words: int = Field(..., description="Parole totali analizzate")
-    segments: List[CopyleaksSegment] = Field(default_factory=list, description="Segmenti classificati")
-    model_version: str = Field("", description="Versione modello Copyleaks")
-    scan_id: str = Field("", description="ID scansione")
-
-
-class CopyleaksReportRequest(BaseModel):
-    """Request per generare il report PDF del rilevamento AI."""
-    text: str = Field(..., description="Testo originale analizzato")
-    segments: List[CopyleaksSegment] = Field(..., description="Segmenti classificati")
-    ai_percentage: float = Field(..., description="Percentuale AI")
-    human_percentage: float = Field(..., description="Percentuale umano")
-
 
 # ============================================================================
 # EXPORT TEMPLATES

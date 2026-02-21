@@ -23,11 +23,10 @@ const PERMISSION_LABELS = {
   generate: 'Genera Contenuto',
   humanize: 'Umanizza Testo',
   thesis: 'Tesi / Relazione',
-  detect: 'AI Detection',
   manage_templates: 'Gestione Template'
 };
 
-const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis', 'detect', 'manage_templates'];
+const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis', 'manage_templates'];
 
 // Labels per le operazioni dei costi crediti
 const COST_OPERATION_LABELS = {
@@ -36,8 +35,7 @@ const COST_OPERATION_LABELS = {
   humanize: { label: 'Umanizzazione', icon: '🤖', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
   thesis_chapters: { label: 'Tesi - Capitoli', icon: '📚', fields: { base: 'Costo base' } },
   thesis_sections: { label: 'Tesi - Sezioni', icon: '📄', fields: { base: 'Costo base' } },
-  thesis_content: { label: 'Tesi - Contenuto', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
-  ai_detection: { label: 'AI Detection', icon: '🛡️', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } }
+  thesis_content: { label: 'Tesi - Contenuto', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } }
 };
 
 const Admin = () => {
