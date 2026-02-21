@@ -63,7 +63,7 @@ const Helper = () => {
       'Qui puoi rendere un testo AI non rilevabile dai detector! 🔥',
       'Incolla un testo generato da ChatGPT, Claude o altri AI.',
       'Seleziona una sessione addestrata: il testo verrà riscritto nel tuo stile personale.',
-      'Il risultato supera i controlli di Compilatio, Copyleaks e GPTZero.',
+      'Il risultato supera i controlli di Compilatio, GPTZero e altri detector AI.',
       'Funziona aumentando la perplessità e la burstiness per simulare la scrittura umana.',
     ],
     '/thesis': [

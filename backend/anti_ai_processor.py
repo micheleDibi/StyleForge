@@ -18,7 +18,8 @@ TECNICHE IMPLEMENTATE:
 5. Inserimento imperfezioni umane (anacoluti, autocorrezioni)
 6. Aumento perplessità e burstiness
 7. Randomizzazione punteggiatura
-8. Sostituzione frasi AI ad alta frequenza (Copyleaks AI Phrases)
+8. Sostituzione frasi AI ad alta frequenza
+9. Trasformazioni Compilatio-specifiche (entropia, collocazioni, perplessità)
 9. Diversificazione vocabolario ripetitivo
 10. Rimozione cluster di hedging words
 """
@@ -213,7 +214,7 @@ class AntiAIProcessor:
         }
 
         # ═══════════════════════════════════════════════════════════════
-        # FRASI AI AD ALTA FREQUENZA (Copyleaks AI Phrases)
+        # FRASI AI AD ALTA FREQUENZA (AI High-Frequency Phrases)
         # ═══════════════════════════════════════════════════════════════
         # Queste frasi appaiono con frequenza molto più alta nei testi AI
         # rispetto ai testi umani. Vanno sostituite con alternative naturali.
@@ -840,13 +841,13 @@ class AntiAIProcessor:
         return testo
 
     # ═══════════════════════════════════════════════════════════════════════
-    # METODI DI TRASFORMAZIONE - FRASI AI AD ALTA FREQUENZA (Copyleaks)
+    # METODI DI TRASFORMAZIONE - FRASI AI AD ALTA FREQUENZA
     # ═══════════════════════════════════════════════════════════════════════
 
     def sostituisci_frasi_ai_alta_frequenza(self, testo: str) -> str:
         """
         Sostituisce le frasi che appaiono con frequenza molto più alta
-        nei testi AI rispetto ai testi umani (rilevate da Copyleaks).
+        nei testi AI rispetto ai testi umani (rilevate dai detector AI).
 
         Questa è la funzione chiave per ridurre la metrica "AI Phrases" a 0%.
         """
@@ -1277,6 +1278,211 @@ class AntiAIProcessor:
         return '\n'.join(lines)
 
     # ═══════════════════════════════════════════════════════════════════════
+    # METODI COMPILATIO-SPECIFICI
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def sostituisci_collocazioni_compilatio(self, testo: str) -> str:
+        """
+        Sostituisce collocazioni formali che Compilatio rileva come AI.
+        Queste sono combinazioni di parole che l'AI usa con frequenza
+        molto superiore rispetto ai testi umani.
+        """
+        collocazioni = {
+            "al contempo": ["allo stesso tempo", "insieme", "e intanto", "nel frattempo"],
+            "in maniera": ["in modo", "nel senso che", "tipo"],
+            "nell'ambito": ["nel campo", "quando si parla di", "per quanto riguarda"],
+            "in termini di": ["parlando di", "riguardo a", "per", "come"],
+            "dal punto di vista": ["guardando", "per quanto riguarda", "se pensiamo a"],
+            "prendere in considerazione": ["considerare", "pensare a", "tenere conto di", "guardare"],
+            "mettere in evidenza": ["mostrare", "far vedere", "far notare"],
+            "porre l'accento su": ["insistere su", "concentrarsi su", "puntare su"],
+            "dare luogo a": ["causare", "creare", "portare a", "generare"],
+            "fare riferimento a": ["riferirsi a", "parlare di", "citare", "richiamare"],
+            "a livello di": ["per", "in", "sul piano di", "quando si guarda"],
+            "nel contesto di": ["in", "quando si parla di", "dentro", "nel quadro di"],
+            "ai fini di": ["per", "allo scopo di", "in vista di"],
+            "in relazione a": ["riguardo a", "su", "per quanto riguarda", "circa"],
+            "per quanto concerne": ["per", "riguardo a", "su", "quanto a"],
+            "alla luce di": ["considerando", "visto", "dato", "tenendo conto di"],
+            "è opportuno sottolineare": ["va detto", "c'è da dire", "bisogna notare"],
+            "è importante evidenziare": ["va notato", "vale la pena dire", "c'è da segnalare"],
+            "assume un ruolo": ["ha un ruolo", "conta", "pesa", "è importante"],
+            "riveste un'importanza": ["è importante", "conta", "pesa", "ha valore"],
+            "si configura come": ["è", "diventa", "funziona come", "si presenta come"],
+            "risulta essere": ["è", "sembra", "appare", "si rivela"],
+            "si rivela": ["è", "appare", "si mostra", "si dimostra"],
+            "assume particolare rilevanza": ["diventa importante", "conta molto", "pesa parecchio"],
+        }
+
+        for frase, alternative in collocazioni.items():
+            pattern = re.compile(re.escape(frase), re.IGNORECASE)
+            matches = list(pattern.finditer(testo))
+            for match in reversed(matches):
+                sostituzione = random.choice(alternative)
+                # Preserva capitalizzazione
+                if match.group()[0].isupper():
+                    sostituzione = sostituzione[0].upper() + sostituzione[1:]
+                testo = testo[:match.start()] + sostituzione + testo[match.end():]
+
+        return testo
+
+    def aumenta_entropia_lessicale(self, testo: str) -> str:
+        """
+        Introduce scelte lessicali rare che aumentano l'entropia a livello di token.
+        Compilatio misura quanto ogni token è prevedibile dal contesto.
+        Parole rare ma valide abbassano drasticamente la prevedibilità.
+        Applicato con probabilità 15-20% per non stravolgere il testo.
+        """
+        sostituzioni_rare = {
+            "importante": ["rilevante", "pregnante", "calzante", "di spicco", "di peso"],
+            "problema": ["nodo", "questione spinosa", "grattacapo", "garbuglio", "punto critico"],
+            "situazione": ["congiuntura", "circostanza", "frangente", "quadro", "scenario"],
+            "cambiamento": ["mutamento", "virata", "stravolgimento", "scossone", "svolta"],
+            "sviluppo": ["evoluzione", "maturazione", "avanzata", "progressione"],
+            "aspetto": ["sfaccettatura", "risvolto", "piega", "versante", "lato"],
+            "elemento": ["ingrediente", "tassello", "fattore", "componente", "pezzo"],
+            "necessario": ["indispensabile", "imprescindibile", "doveroso", "irrinunciabile"],
+            "possibile": ["fattibile", "realizzabile", "attuabile", "plausibile", "pensabile"],
+            "difficile": ["arduo", "spinoso", "ostico", "impervio", "complesso"],
+            "risultato": ["esito", "riscontro", "frutto", "prodotto", "resa"],
+            "obiettivo": ["traguardo", "meta", "scopo", "mira", "fine"],
+            "sistema": ["meccanismo", "apparato", "ingranaggio", "impianto", "struttura"],
+            "processo": ["percorso", "iter", "dinamica", "procedura", "cammino"],
+            "approccio": ["ottica", "prospettiva", "logica", "impostazione", "angolazione"],
+            "ambito": ["campo", "terreno", "sfera", "settore", "area"],
+            "analisi": ["disamina", "lettura", "esame", "vaglio", "scrutinio"],
+            "impatto": ["peso", "ricaduta", "effetto", "portata", "incidenza"],
+            "strategia": ["linea", "tattica", "piano", "mossa", "impostazione"],
+            "contributo": ["apporto", "concorso", "partecipazione", "aiuto"],
+        }
+
+        for parola, rare_alternatives in sostituzioni_rare.items():
+            pattern = re.compile(r'\b' + re.escape(parola) + r'\b', re.IGNORECASE)
+            matches = list(pattern.finditer(testo))
+            for match in reversed(matches):
+                if random.random() < 0.18:
+                    sostituzione = random.choice(rare_alternatives)
+                    if match.group()[0].isupper():
+                        sostituzione = sostituzione[0].upper() + sostituzione[1:]
+                    testo = testo[:match.start()] + sostituzione + testo[match.end():]
+
+        return testo
+
+    def inserisci_micro_imperfezioni(self, testo: str) -> str:
+        """
+        Inserisce micro-imperfezioni umane che abbassano drasticamente
+        lo score AI su Compilatio. Queste imperfezioni sono invisibili
+        al lettore medio ma visibilissime ai detector.
+        Max ~1 ogni 8 frasi per non esagerare.
+        """
+        frasi = re.split(r'(?<=[.!?])\s+', testo)
+        if len(frasi) < 6:
+            return testo
+
+        modifiche = 0
+        max_modifiche = max(3, len(frasi) // 8)
+
+        for i in range(len(frasi)):
+            if modifiche >= max_modifiche:
+                break
+            frase = frasi[i]
+            parole = frase.split()
+            if len(parole) < 8:
+                continue
+
+            roll = random.random()
+
+            if roll < 0.10:
+                # Aggiunta di pensiero sospeso con trattino
+                frasi[i] = frase.rstrip('.!?') + ' — almeno da quello che si vede.'
+                modifiche += 1
+            elif roll < 0.18:
+                # Autocorrezione mid-sentence
+                punto_inserimento = random.randint(3, min(len(parole) - 3, len(parole) - 1))
+                correzioni = [', anzi, ', ', o meglio, ', ', cioè, ', ', diciamo, ']
+                parole.insert(punto_inserimento, random.choice(correzioni))
+                frasi[i] = ' '.join(parole)
+                modifiche += 1
+            elif roll < 0.25:
+                # Inciso parentetico
+                punto = random.randint(3, min(len(parole) - 3, len(parole) - 1))
+                incisi = [
+                    '(e non è scontato)',
+                    '(che poi è tutto da vedere)',
+                    '(e qui ci sarebbe da discutere)',
+                    '(almeno secondo chi se ne occupa)',
+                    '(come spesso accade)',
+                    '(e non è poco)',
+                    '(vale la pena ribadirlo)',
+                ]
+                parole.insert(punto, random.choice(incisi))
+                frasi[i] = ' '.join(parole)
+                modifiche += 1
+            elif roll < 0.30:
+                # Aggiunta di connettivo colloquiale a inizio frase
+                connettivi = ['Insomma, ', 'Ecco, ', 'Ora, ', 'Beh, ', 'Detto questo, ']
+                if not frase.startswith(('Insomma', 'Ecco', 'Ora', 'Beh', 'Detto')):
+                    frasi[i] = random.choice(connettivi) + frase[0].lower() + frase[1:]
+                    modifiche += 1
+
+        return ' '.join(frasi)
+
+    def varia_perplexita_tra_frasi(self, testo: str) -> str:
+        """
+        Alterna deliberatamente frasi semplici/brevi e frasi complesse.
+        Compilatio rileva che le frasi AI hanno perplessità uniforme.
+        Le frasi umane alternano tra molto semplici e molto complesse.
+        """
+        frasi = re.split(r'(?<=[.!?])\s+', testo)
+        if len(frasi) < 8:
+            return testo
+
+        modifiche = 0
+        max_modifiche = max(2, len(frasi) // 10)
+
+        for i in range(2, len(frasi), 4):  # Ogni 4 frasi
+            if i >= len(frasi) or modifiche >= max_modifiche:
+                break
+            frase = frasi[i]
+            parole = frase.split()
+            if len(parole) < 10:
+                continue
+
+            roll = random.random()
+            if roll < 0.30:
+                # Semplificazione: spezza la frase in due più corte
+                punto_taglio = len(parole) // 2
+                # Trova un punto naturale di taglio vicino alla metà
+                for j in range(punto_taglio - 2, min(punto_taglio + 3, len(parole))):
+                    if j < len(parole) and parole[j].rstrip('.,;:') in ('che', 'e', 'ma', 'dove', 'quando', 'perché', 'mentre'):
+                        punto_taglio = j
+                        break
+
+                prima_parte = ' '.join(parole[:punto_taglio])
+                if not prima_parte.rstrip().endswith(('.', '!', '?')):
+                    prima_parte = prima_parte.rstrip('.,;:') + '.'
+                seconda_parte = ' '.join(parole[punto_taglio:])
+                if seconda_parte and seconda_parte[0].islower():
+                    seconda_parte = seconda_parte[0].upper() + seconda_parte[1:]
+                frasi[i] = prima_parte + ' ' + seconda_parte
+                modifiche += 1
+            elif roll < 0.50:
+                # Complessificazione: aggiungi subordinata
+                inserti = [
+                    ', il che non è affatto banale,',
+                    ', e questo va tenuto presente,',
+                    ', anche se non tutti sono d\'accordo,',
+                    ', cosa che spesso viene trascurata,',
+                    ', e non si tratta di un dettaglio,',
+                ]
+                punto = len(parole) // 2
+                parole.insert(punto, random.choice(inserti))
+                frasi[i] = ' '.join(parole)
+                modifiche += 1
+
+        return ' '.join(frasi)
+
+    # ═══════════════════════════════════════════════════════════════════════
     # METODO PRINCIPALE DI PROCESSING
     # ═══════════════════════════════════════════════════════════════════════
 
@@ -1310,10 +1516,11 @@ class AntiAIProcessor:
         Il processo è organizzato in fasi:
         0. PROTEZIONE CITAZIONI - Protegge [x] dalle trasformazioni
         1. PULIZIA - Rimuove elementi facilmente rilevabili
-        2. FRASI AI ALTA FREQUENZA - Sostituisce frasi rilevate da Copyleaks (CRITICO)
+        2. FRASI AI ALTA FREQUENZA - Sostituisce frasi ad alta frequenza AI (CRITICO)
         3. TRASFORMAZIONE PATTERN - Modifica strutture AI riconoscibili
         4. LESSICO - Sostituisce parole della lista nera + diversifica ripetizioni
         5. HEDGING - Rimuove cluster di hedging eccessivo
+        5.5 COMPILATIO - Collocazioni, entropia lessicale, micro-imperfezioni, variazione perplessità
         6. INIEZIONE UMANA - Aggiunge elementi tipicamente umani
         7. VARIAZIONE STRUTTURA - Aumenta perplessità e burstiness
         8. NORMALIZZAZIONE - Pulizia finale
@@ -1337,9 +1544,9 @@ class AntiAIProcessor:
         testo = self.rimuovi_separatori(testo)
 
         # ═══════════════════════════════════════════════════════════════
-        # FASE 2: FRASI AI AD ALTA FREQUENZA (Copyleaks AI Phrases)
+        # FASE 2: FRASI AI AD ALTA FREQUENZA
         # ═══════════════════════════════════════════════════════════════
-        # Questa è la fase più critica per ridurre la metrica "AI Phrases" a 0%
+        # Sostituisce frasi ad alta frequenza rilevate dai detector AI
         # Va eseguita PRIMA delle altre trasformazioni per massimizzare l'efficacia
         testo = self.sostituisci_frasi_ai_alta_frequenza(testo)
         testo = self.trasforma_inizi_formali(testo)
@@ -1367,6 +1574,16 @@ class AntiAIProcessor:
         # FASE 5: RIMOZIONE HEDGING ECCESSIVO
         # ═══════════════════════════════════════════════════════════════
         testo = self.rimuovi_hedging_eccessivo(testo)
+
+        # ═══════════════════════════════════════════════════════════════
+        # FASE 5.5: TRASFORMAZIONI COMPILATIO-SPECIFICHE
+        # ═══════════════════════════════════════════════════════════════
+        # Compilatio usa analisi perplessità, n-gram e distribuzione token
+        # diversa da altri detector. Queste fasi target specifiche.
+        testo = self.sostituisci_collocazioni_compilatio(testo)
+        testo = self.aumenta_entropia_lessicale(testo)
+        testo = self.inserisci_micro_imperfezioni(testo)
+        testo = self.varia_perplexita_tra_frasi(testo)
 
         # ═══════════════════════════════════════════════════════════════
         # FASE 6: VARIAZIONE STRUTTURALE NATURALE

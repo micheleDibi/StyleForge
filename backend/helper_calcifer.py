@@ -42,7 +42,7 @@ StyleForge è una piattaforma AI per la generazione e umanizzazione di contenuti
 **UMANIZZAZIONE** ("/humanize"):
 - Richiede una sessione addestrata
 - Incolla un testo generato da ChatGPT, Claude o altri AI
-- L'AI lo riscrive nel tuo stile personale rendendolo non rilevabile dai detector AI (Compilatio, Copyleaks, GPTZero)
+- L'AI lo riscrive nel tuo stile personale rendendolo non rilevabile dai detector AI (Compilatio, GPTZero e altri)
 - Aumenta la perplessità e la burstiness del testo per farlo sembrare scritto da un umano
 
 **GENERAZIONE TESI** ("/thesis"):
