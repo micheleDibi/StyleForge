@@ -5,7 +5,8 @@ import {
   Sparkles, RefreshCw, Trash2, ChevronRight, Wand2,
   Clock, CheckCircle2, AlertCircle, Zap, User, Settings,
   TrendingUp, Layers, Brain, BookOpen, Calendar, Download,
-  ChevronDown, Eye, List, Coins, Shield, Pencil, Play, Search
+  ChevronDown, Eye, List, Coins, Shield, Pencil, Play, Search,
+  ArrowRight, BarChart3, Hash, FileDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../services/api';
@@ -39,10 +40,12 @@ const Dashboard = () => {
   const [editSessionValue, setEditSessionValue] = useState('');
   const editSessionRef = useRef(null);
 
+  // Active tab for content sections
+  const [activeTab, setActiveTab] = useState('overview');
+
   useEffect(() => {
     loadData();
     const interval = setInterval(() => {
-      // Don't overwrite during edit
       if (!editingSessionName) {
         loadData();
       }
@@ -87,7 +90,6 @@ const Dashboard = () => {
       .filter(j => (j.status === 'completed') && (j.job_type === 'generation' || j.job_type === 'humanization'))
       .map(j => j.job_id);
 
-    // Also add thesis IDs
     const thesisIds = theses.filter(t => t.status === 'completed').map(t => t.id);
     const allIds = [...completedJobIds, ...thesisIds];
 
@@ -100,7 +102,6 @@ const Dashboard = () => {
           setScanResults(prev => ({ ...prev, ...data.scans }));
         }
       } catch (err) {
-        // Non-critical, silently ignore
         console.debug('Errore fetch scan results:', err);
       }
     };
@@ -155,7 +156,6 @@ const Dashboard = () => {
     }
   };
 
-  // Session rename handlers
   const handleStartSessionEdit = (sessionId, currentName) => {
     setEditingSessionName(sessionId);
     setEditSessionValue(currentName || sessionId);
@@ -186,11 +186,7 @@ const Dashboard = () => {
     }
   };
 
-  // Thesis scan handler (admin-only)
   const handleThesisScan = async (thesisId) => {
-    // We need the thesis content. Navigate to thesis page instead since content isn't loaded here.
-    // Actually, for theses we can start a scan from the thesis page. But the user wants it from Dashboard.
-    // We don't have the full thesis content in the dashboard. Let's navigate to the thesis page.
     navigate(`/thesis?resume=${thesisId}`);
   };
 
@@ -208,7 +204,6 @@ const Dashboard = () => {
     return 'text-red-600 bg-red-50 border-red-200';
   };
 
-  // Thesis navigation
   const getThesisAction = (thesis) => {
     switch (thesis.status) {
       case 'completed':
@@ -240,28 +235,28 @@ const Dashboard = () => {
     switch (status) {
       case 'completed':
         return (
-          <span className="badge badge-success">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-700">
             <CheckCircle2 className="w-3 h-3" />
             Completata
           </span>
         );
       case 'generating':
         return (
-          <span className="badge badge-warning">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-amber-100 text-amber-700">
             <Clock className="w-3 h-3 animate-spin" />
             In generazione
           </span>
         );
       case 'failed':
         return (
-          <span className="badge badge-error">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-red-100 text-red-700">
             <AlertCircle className="w-3 h-3" />
             Errore
           </span>
         );
       default:
         return (
-          <span className="badge badge-neutral">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
             <Clock className="w-3 h-3" />
             {status}
           </span>
@@ -269,7 +264,7 @@ const Dashboard = () => {
     }
   };
 
-  // Filter out compilatio_scan jobs - they are shown as sub-sections of other jobs
+  // Filter out compilatio_scan jobs
   const nonScanJobs = jobs.filter(j => j.job_type !== 'compilatio_scan');
   const activeJobs = nonScanJobs.filter(j => j.status === 'pending' || j.status === 'training' || j.status === 'generating');
   const completedJobs = nonScanJobs.filter(j => j.status === 'completed' || j.status === 'failed');
@@ -279,50 +274,33 @@ const Dashboard = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-slate-50 via-orange-50 to-purple-50">
-        {/* Animated Background Blobs */}
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-gradient-to-br from-orange-300 to-orange-400 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-blob"></div>
           <div className="absolute top-1/3 right-1/4 w-[400px] h-[400px] bg-gradient-to-br from-purple-300 to-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-blob animation-delay-2000"></div>
           <div className="absolute bottom-1/4 left-1/2 w-[450px] h-[450px] bg-gradient-to-br from-blue-300 to-cyan-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
         </div>
-
-        {/* Loading Content */}
         <div className="text-center relative z-10 animate-fade-in">
-          {/* Logo Container with Glow */}
           <div className="relative inline-block mb-8">
-            {/* Outer glow ring */}
             <div className="absolute inset-0 bg-gradient-to-br from-orange-400 to-orange-600 rounded-3xl blur-2xl opacity-50 scale-110 animate-pulse"></div>
-
-            {/* Logo box */}
-            <div className="relative w-28 h-28 bg-gradient-to-br from-orange-500 to-orange-600 rounded-3xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform">
+            <div className="relative w-28 h-28 bg-gradient-to-br from-orange-500 to-orange-600 rounded-3xl shadow-2xl flex items-center justify-center">
               <Sparkles className="w-14 h-14 text-white animate-pulse" />
             </div>
-
-            {/* Spinning ring */}
             <div className="absolute inset-0 border-4 border-orange-300 border-t-transparent rounded-3xl animate-spin"></div>
           </div>
-
-          {/* Brand Name */}
           <h1 className="text-4xl font-bold text-gray-900 mb-2 animate-slide-up">
             Style<span className="bg-gradient-to-r from-orange-600 to-orange-500 bg-clip-text text-transparent">Forge</span>
           </h1>
-
-          {/* Loading Animation */}
           <div className="flex items-center justify-center gap-2 mb-6 animate-slide-up animation-delay-200">
             <div className="w-3 h-3 bg-orange-500 rounded-full animate-bounce"></div>
             <div className="w-3 h-3 bg-orange-500 rounded-full animate-bounce animation-delay-200"></div>
             <div className="w-3 h-3 bg-orange-500 rounded-full animate-bounce animation-delay-400"></div>
           </div>
-
-          {/* Loading Text */}
           <p className="text-gray-600 font-semibold text-lg mb-2 animate-slide-up animation-delay-400">
             Caricamento dashboard...
           </p>
           <p className="text-gray-500 text-sm animate-slide-up animation-delay-600">
             Preparazione della tua area di lavoro
           </p>
-
-          {/* Progress Bar */}
           <div className="mt-8 w-64 mx-auto animate-slide-up animation-delay-800">
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden shadow-inner">
               <div className="h-full bg-gradient-to-r from-orange-500 via-orange-600 to-orange-500 rounded-full animate-loading-bar"></div>
@@ -334,750 +312,613 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen relative">
-      {/* Background Animation */}
+    <div className="min-h-screen bg-gray-50/80 relative">
+      {/* Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-gradient-to-br from-orange-100 to-orange-200 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-blob"></div>
-        <div className="absolute top-1/3 right-0 w-[500px] h-[500px] bg-gradient-to-br from-purple-100 to-pink-100 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-blob animation-delay-2000"></div>
-        <div className="absolute bottom-0 left-1/3 w-[400px] h-[400px] bg-gradient-to-br from-blue-100 to-cyan-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
+        <div className="absolute -top-40 -right-40 w-[600px] h-[600px] bg-gradient-to-br from-orange-100 to-orange-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
+        <div className="absolute top-1/2 -left-40 w-[500px] h-[500px] bg-gradient-to-br from-purple-100 to-pink-100 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-40 right-1/3 w-[400px] h-[400px] bg-gradient-to-br from-blue-100 to-cyan-100 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
       </div>
 
-      {/* Header */}
-      <header className="relative z-10 glass border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+      {/* ═══════════════ HEADER ═══════════════ */}
+      <header className="relative z-10 bg-white/80 backdrop-blur-xl border-b border-gray-200/60 sticky top-0">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Left: Logo + Brand */}
+            <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl blur-lg opacity-50"></div>
-                <Logo size="md" className="relative" />
+                <div className="absolute inset-0 bg-gradient-to-br from-orange-400 to-orange-600 rounded-lg blur-md opacity-40"></div>
+                <Logo size="sm" className="relative" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
+              <div className="hidden sm:block">
+                <h1 className="text-lg font-bold text-gray-900 leading-tight">
                   Style<span className="gradient-text">Forge</span>
                 </h1>
-                <p className="text-gray-500 text-sm">Dashboard di controllo</p>
+                <p className="text-[11px] text-gray-400 -mt-0.5">Dashboard</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              {/* Credits Badge */}
-              <div className="hidden md:flex items-center gap-2 px-3 py-2 bg-orange-50 rounded-xl border border-orange-200">
-                <Coins className="w-4 h-4 text-orange-600" />
-                <span className="text-sm font-bold text-orange-600">
-                  {isAdmin ? '∞' : credits}
-                </span>
-                <span className="text-xs text-orange-500">crediti</span>
+            {/* Right: Controls */}
+            <div className="flex items-center gap-2">
+              {/* Credits */}
+              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-50 rounded-lg border border-orange-200/60 text-sm">
+                <Coins className="w-3.5 h-3.5 text-orange-500" />
+                <span className="font-bold text-orange-600">{isAdmin ? '∞' : credits}</span>
+                <span className="text-[11px] text-orange-400">crediti</span>
               </div>
 
-              {/* User Info */}
-              <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-white/30">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                  isAdmin
-                    ? 'bg-gradient-to-br from-purple-400 to-purple-600'
-                    : 'bg-gradient-to-br from-orange-400 to-orange-600'
+              {/* User chip */}
+              <div className="hidden lg:flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-200/60">
+                <div className={`w-6 h-6 rounded-md flex items-center justify-center ${
+                  isAdmin ? 'bg-purple-500' : 'bg-orange-500'
                 }`}>
-                  {isAdmin ? (
-                    <Shield className="w-4 h-4 text-white" />
-                  ) : (
-                    <User className="w-4 h-4 text-white" />
-                  )}
+                  {isAdmin ? <Shield className="w-3 h-3 text-white" /> : <User className="w-3 h-3 text-white" />}
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-gray-700">
-                    {user?.username || 'Utente'}
-                  </span>
-                  {isAdmin && (
-                    <span className="text-xs text-purple-600 font-medium">Admin</span>
-                  )}
-                </div>
+                <span className="text-sm font-medium text-gray-700">{user?.username || 'Utente'}</span>
+                {isAdmin && <span className="text-[10px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">ADMIN</span>}
               </div>
 
-              {/* Admin Buttons */}
+              {/* Divider */}
+              <div className="hidden md:block w-px h-6 bg-gray-200"></div>
+
+              {/* Admin Actions */}
               {isAdmin && (
                 <>
-                  <button
-                    onClick={() => navigate('/detector-ai')}
-                    className="btn btn-secondary bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
-                  >
+                  <button onClick={() => navigate('/detector-ai')} className="p-2 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors" title="Detector AI">
                     <Search className="w-4 h-4" />
-                    <span className="hidden sm:inline">Detector AI</span>
                   </button>
-                  <button
-                    onClick={() => navigate('/admin')}
-                    className="btn btn-secondary bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
-                  >
+                  <button onClick={() => navigate('/admin')} className="p-2 rounded-lg text-purple-600 hover:bg-purple-50 transition-colors" title="Pannello Admin">
                     <Settings className="w-4 h-4" />
-                    <span className="hidden sm:inline">Admin</span>
                   </button>
                 </>
               )}
 
-              <button
-                onClick={handleRefresh}
-                className="btn btn-secondary"
-                disabled={refreshing}
-              >
+              <button onClick={handleRefresh} disabled={refreshing} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors" title="Aggiorna">
                 <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">Aggiorna</span>
               </button>
-
-              <button
-                onClick={handleLogout}
-                className="btn btn-ghost text-red-600 hover:bg-red-50"
-              >
+              <button onClick={handleLogout} className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors" title="Esci">
                 <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">Esci</span>
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="relative z-10 max-w-7xl mx-auto px-6 py-8">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8 animate-fade-in">
-          {/* System Status */}
-          <div className="glass rounded-2xl p-5 hover:shadow-xl transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                health?.status === 'healthy'
-                  ? 'bg-gradient-to-br from-green-400 to-emerald-500'
-                  : 'bg-gradient-to-br from-red-400 to-red-500'
-              }`}>
-                <Activity className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Sistema</p>
-                <p className="text-xl font-bold text-gray-900">
-                  {health?.status === 'healthy' ? 'Online' : 'Offline'}
-                </p>
-              </div>
-            </div>
-          </div>
+      {/* ═══════════════ MAIN ═══════════════ */}
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-          {/* Sessions */}
-          <div className="glass rounded-2xl p-5 hover:shadow-xl transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center">
-                <Layers className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Sessioni</p>
-                <p className="text-xl font-bold text-gray-900">{sessions.length}</p>
-              </div>
-            </div>
-          </div>
+        {/* ─── Welcome Banner + Stats ─── */}
+        <div className="animate-fade-in">
+          <div className="bg-gradient-to-r from-orange-500 via-orange-600 to-amber-500 rounded-2xl p-6 text-white relative overflow-hidden">
+            {/* Decorative circles */}
+            <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/4"></div>
+            <div className="absolute bottom-0 left-1/3 w-24 h-24 bg-white/5 rounded-full translate-y-1/2"></div>
 
-          {/* Trained */}
-          <div className="glass rounded-2xl p-5 hover:shadow-xl transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-purple-600 rounded-xl flex items-center justify-center">
-                <Brain className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Addestrate</p>
-                <p className="text-xl font-bold text-gray-900">{trainedSessions}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Active Jobs */}
-          <div className="glass rounded-2xl p-5 hover:shadow-xl transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center">
-                <Zap className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Job Attivi</p>
-                <p className="text-xl font-bold text-gray-900">{activeJobs.length}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Theses */}
-          <div className="glass rounded-2xl p-5 hover:shadow-xl transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-xl flex items-center justify-center">
-                <BookOpen className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Tesi</p>
-                <p className="text-xl font-bold text-gray-900">{completedTheses}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 animate-slide-up">
-          {/* Train */}
-          {hasPermission('train') && (
-            <button
-              onClick={() => navigate('/train')}
-              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-orange-200"
-            >
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-orange-500/30">
-                  <Upload className="w-7 h-7 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">Addestra Modello</h3>
-                  <p className="text-sm text-gray-500">Carica PDF e addestra</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-orange-600 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge badge-neutral">
-                  <Brain className="w-3 h-3" />
-                  AI Training
-                </span>
-              </div>
-            </button>
-          )}
-
-          {/* Generate */}
-          {hasPermission('generate') && (
-            <button
-              onClick={() => navigate('/generate')}
-              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-blue-200"
-            >
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-blue-500/30">
-                  <FileText className="w-7 h-7 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">Genera Contenuto</h3>
-                  <p className="text-sm text-gray-500">Crea con il tuo stile</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge badge-info">
-                  <Sparkles className="w-3 h-3" />
-                  AI-Powered
-                </span>
-              </div>
-            </button>
-          )}
-
-          {/* Humanize */}
-          {hasPermission('humanize') && (
-            <button
-              onClick={() => navigate('/humanize')}
-              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-purple-200"
-            >
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-purple-500/30">
-                  <Wand2 className="w-7 h-7 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">Umanizza Testo</h3>
-                  <p className="text-sm text-gray-500">Bypassa AI detection</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge badge-success">
-                  <CheckCircle2 className="w-3 h-3" />
-                  Anti-Detection
-                </span>
-              </div>
-            </button>
-          )}
-
-          {/* Thesis Generator */}
-          {hasPermission('thesis') && (
-            <button
-              onClick={() => navigate('/thesis')}
-              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-emerald-200 relative overflow-hidden"
-            >
-              {/* New Badge */}
-              <div className="absolute top-3 right-3">
-                <span className="px-2 py-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-xs font-bold rounded-full shadow-lg">
-                  NUOVO
-                </span>
-              </div>
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-emerald-500/30">
-                  <BookOpen className="w-7 h-7 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">Tesi / Relazione</h3>
-                  <p className="text-sm text-gray-500">Genera documenti completi</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge" style={{ backgroundColor: '#d1fae5', color: '#065f46' }}>
-                  <Sparkles className="w-3 h-3" />
-                  AI Avanzata
-                </span>
-              </div>
-            </button>
-          )}
-        </div>
-
-        {/* Theses Section */}
-        {theses.length > 0 && (
-          <div className="mb-8 animate-slide-up">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-emerald-100 to-teal-200 rounded-xl flex items-center justify-center">
-                  <BookOpen className="w-5 h-5 text-emerald-600" />
-                </div>
+            <div className="relative z-10">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Le tue Tesi / Relazioni</h2>
-                  <p className="text-sm text-gray-500">{theses.length} documenti totali</p>
+                  <h2 className="text-2xl font-bold mb-1">
+                    Bentornato, {user?.username || 'Utente'} 👋
+                  </h2>
+                  <p className="text-orange-100 text-sm">
+                    {activeJobs.length > 0
+                      ? `Hai ${activeJobs.length} job in esecuzione`
+                      : 'Tutti i sistemi sono operativi'}
+                  </p>
+                </div>
+                {/* Inline mini stats */}
+                <div className="flex gap-3">
+                  <div className="bg-white/15 backdrop-blur-sm rounded-xl px-4 py-2 text-center min-w-[80px]">
+                    <div className="text-2xl font-bold">{sessions.length}</div>
+                    <div className="text-[11px] text-orange-100">Sessioni</div>
+                  </div>
+                  <div className="bg-white/15 backdrop-blur-sm rounded-xl px-4 py-2 text-center min-w-[80px]">
+                    <div className="text-2xl font-bold">{trainedSessions}</div>
+                    <div className="text-[11px] text-orange-100">Addestrate</div>
+                  </div>
+                  <div className="bg-white/15 backdrop-blur-sm rounded-xl px-4 py-2 text-center min-w-[80px]">
+                    <div className="text-2xl font-bold">{completedTheses}</div>
+                    <div className="text-[11px] text-orange-100">Tesi</div>
+                  </div>
+                  <div className="bg-white/15 backdrop-blur-sm rounded-xl px-4 py-2 text-center min-w-[80px]">
+                    <div className="flex items-center justify-center gap-1">
+                      <div className={`w-2 h-2 rounded-full ${health?.status === 'healthy' ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                      <span className="text-2xl font-bold">{activeJobs.length}</span>
+                    </div>
+                    <div className="text-[11px] text-orange-100">Job Attivi</div>
+                  </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── Quick Actions Grid ─── */}
+        <div className="animate-slide-up">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Azioni rapide</h3>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {hasPermission('train') && (
+              <button
+                onClick={() => navigate('/train')}
+                className="group bg-white rounded-xl p-4 border border-gray-200/60 hover:border-orange-300 hover:shadow-lg hover:shadow-orange-100/50 transition-all text-left"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform shadow-md shadow-orange-500/20">
+                    <Upload className="w-5 h-5 text-white" />
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-orange-500 group-hover:translate-x-0.5 transition-all ml-auto" />
+                </div>
+                <h4 className="font-semibold text-gray-900 text-sm">Addestra Modello</h4>
+                <p className="text-xs text-gray-400 mt-0.5">Carica PDF e addestra</p>
+              </button>
+            )}
+
+            {hasPermission('generate') && (
+              <button
+                onClick={() => navigate('/generate')}
+                className="group bg-white rounded-xl p-4 border border-gray-200/60 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-100/50 transition-all text-left"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform shadow-md shadow-blue-500/20">
+                    <FileText className="w-5 h-5 text-white" />
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all ml-auto" />
+                </div>
+                <h4 className="font-semibold text-gray-900 text-sm">Genera Contenuto</h4>
+                <p className="text-xs text-gray-400 mt-0.5">Crea con il tuo stile</p>
+              </button>
+            )}
+
+            {hasPermission('humanize') && (
+              <button
+                onClick={() => navigate('/humanize')}
+                className="group bg-white rounded-xl p-4 border border-gray-200/60 hover:border-purple-300 hover:shadow-lg hover:shadow-purple-100/50 transition-all text-left"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform shadow-md shadow-purple-500/20">
+                    <Wand2 className="w-5 h-5 text-white" />
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-purple-500 group-hover:translate-x-0.5 transition-all ml-auto" />
+                </div>
+                <h4 className="font-semibold text-gray-900 text-sm">Umanizza Testo</h4>
+                <p className="text-xs text-gray-400 mt-0.5">Bypassa AI detection</p>
+              </button>
+            )}
+
+            {hasPermission('thesis') && (
               <button
                 onClick={() => navigate('/thesis')}
-                className="btn btn-primary"
+                className="group bg-white rounded-xl p-4 border border-gray-200/60 hover:border-emerald-300 hover:shadow-lg hover:shadow-emerald-100/50 transition-all text-left relative overflow-hidden"
               >
-                <Sparkles className="w-4 h-4" />
+                <div className="absolute top-2 right-2">
+                  <span className="px-1.5 py-0.5 bg-emerald-500 text-white text-[9px] font-bold rounded-md">NEW</span>
+                </div>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform shadow-md shadow-emerald-500/20">
+                    <BookOpen className="w-5 h-5 text-white" />
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all ml-auto" />
+                </div>
+                <h4 className="font-semibold text-gray-900 text-sm">Tesi / Relazione</h4>
+                <p className="text-xs text-gray-400 mt-0.5">Genera documenti completi</p>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ─── Content Tabs Navigation ─── */}
+        <div className="animate-slide-up">
+          <div className="flex items-center gap-1 bg-white rounded-xl p-1 border border-gray-200/60 w-fit">
+            {[
+              { id: 'overview', label: 'Panoramica', icon: BarChart3 },
+              ...(theses.length > 0 ? [{ id: 'theses', label: `Tesi (${theses.length})`, icon: BookOpen }] : []),
+              ...(sessions.length > 0 ? [{ id: 'sessions', label: `Sessioni (${sessions.length})`, icon: Layers }] : []),
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === tab.id
+                    ? 'bg-orange-500 text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <tab.icon className="w-3.5 h-3.5" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ═══════ TAB: PANORAMICA ═══════ */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6 animate-fade-in">
+
+            {/* Active Jobs */}
+            {activeJobs.length > 0 && (
+              <section>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Job in corso ({activeJobs.length})</h3>
+                </div>
+                <div className="space-y-3">
+                  {activeJobs.map((job) => (
+                    <JobCard
+                      key={job.job_id}
+                      job={job}
+                      isAdmin={isAdmin}
+                      scanResult={scanResults[job.job_id]}
+                      onUpdate={(updatedJob) => {
+                        setJobs(jobs.map(j => j.job_id === updatedJob.job_id ? updatedJob : j));
+                      }}
+                      onScanComplete={(jobId, result) => setScanResults(prev => ({ ...prev, [jobId]: result }))}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Completed Jobs */}
+            {completedJobs.length > 0 && (
+              <section>
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Ultimi job completati</h3>
+                </div>
+                <div className="space-y-3">
+                  {completedJobs.slice(0, 5).map((job) => (
+                    <JobCard
+                      key={job.job_id}
+                      job={job}
+                      isAdmin={isAdmin}
+                      scanResult={scanResults[job.job_id]}
+                      onUpdate={(updatedJob) => {
+                        setJobs(jobs.map(j => j.job_id === updatedJob.job_id ? updatedJob : j));
+                      }}
+                      onScanComplete={(jobId, result) => setScanResults(prev => ({ ...prev, [jobId]: result }))}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Empty state for overview */}
+            {activeJobs.length === 0 && completedJobs.length === 0 && (
+              <div className="bg-white rounded-2xl border border-gray-200/60 text-center py-16">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Zap className="w-8 h-8 text-gray-300" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Nessun job</h3>
+                <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
+                  Inizia addestrando un modello o generando contenuti per vederli qui.
+                </p>
+                <button onClick={() => navigate('/train')} className="btn btn-primary">
+                  <Sparkles className="w-4 h-4" />
+                  Inizia ora
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════ TAB: TESI ═══════ */}
+        {activeTab === 'theses' && (
+          <div className="space-y-3 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">{theses.length} documenti totali</p>
+              <button onClick={() => navigate('/thesis')} className="btn btn-primary btn-sm">
+                <Sparkles className="w-3.5 h-3.5" />
                 Nuova Tesi
               </button>
             </div>
 
-            <div className="space-y-3">
-              {theses.map((thesis) => {
-                const action = getThesisAction(thesis);
-                const ActionIcon = action.icon;
-                const thesisScan = scanResults[thesis.id];
+            {theses.map((thesis) => {
+              const action = getThesisAction(thesis);
+              const ActionIcon = action.icon;
+              const thesisScan = scanResults[thesis.id];
+              const isExpanded = expandedThesis === thesis.id;
 
-                return (
+              return (
+                <div key={thesis.id} className="bg-white rounded-xl border border-gray-200/60 overflow-hidden hover:shadow-md transition-all">
+                  {/* Thesis Row */}
                   <div
-                    key={thesis.id}
-                    className="glass rounded-2xl overflow-hidden hover:shadow-xl transition-shadow"
+                    className="flex items-center gap-4 p-4 cursor-pointer hover:bg-gray-50/50 transition-colors"
+                    onClick={() => setExpandedThesis(isExpanded ? null : thesis.id)}
                   >
-                    {/* Thesis Header */}
-                    <div
-                      className="p-4 cursor-pointer"
-                      onClick={() => setExpandedThesis(expandedThesis === thesis.id ? null : thesis.id)}
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-                          <BookOpen className="w-6 h-6 text-white" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-lg text-gray-900 break-words">
-                            {thesis.title}
-                          </h3>
-                          {thesis.description && (
-                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                              {thesis.description}
-                            </p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-3 mt-2">
-                            {getStatusBadge(thesis.status)}
-                            {/* Inline AI scan badge */}
-                            {isAdmin && thesisScan && (
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${getAIScoreColor(thesisScan.ai_generated_percent)}`}>
-                                <Shield className="w-3 h-3" />
-                                AI: {thesisScan.ai_generated_percent?.toFixed(1)}%
-                              </span>
-                            )}
-                            <span className="text-xs text-gray-500 flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {formatDate(thesis.created_at)}
-                            </span>
-                            <span className="text-xs text-gray-500 flex items-center gap-1">
-                              <List className="w-3 h-3" />
-                              {thesis.num_chapters} capitoli
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {/* Navigate button */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleThesisNavigate(thesis);
-                            }}
-                            className={`btn btn-sm gap-1 ${
-                              thesis.status === 'completed'
-                                ? 'btn-primary'
-                                : thesis.status === 'generating'
-                                ? 'bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200'
-                                : 'btn-secondary'
-                            }`}
-                          >
-                            <ActionIcon className="w-4 h-4" />
-                            {action.label}
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteThesis(thesis.id);
-                            }}
-                            className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-600" />
-                          </button>
-                          <ChevronDown
-                            className={`w-5 h-5 text-gray-400 transition-transform ${
-                              expandedThesis === thesis.id ? 'rotate-180' : ''
-                            }`}
-                          />
-                        </div>
+                    {/* Icon */}
+                    <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center shadow-sm">
+                      <BookOpen className="w-5 h-5 text-white" />
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-semibold text-gray-900 text-sm truncate">{thesis.title}</h4>
+                        {getStatusBadge(thesis.status)}
+                        {isAdmin && thesisScan && (
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold border ${getAIScoreColor(thesisScan.ai_generated_percent)}`}>
+                            AI {thesisScan.ai_generated_percent?.toFixed(0)}%
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                        <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatDate(thesis.created_at)}</span>
+                        <span>{thesis.num_chapters} cap.</span>
                       </div>
                     </div>
 
-                    {/* Expanded Details */}
-                    {expandedThesis === thesis.id && (
-                      <div className="border-t border-gray-200 p-4 bg-gray-50/50 space-y-4">
-                        {/* Stats Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <div className="bg-white rounded-xl p-3 text-center border border-gray-100 shadow-sm">
-                            <p className="text-xs text-gray-500 mb-1">Capitoli</p>
-                            <p className="text-lg font-bold text-gray-900">{thesis.num_chapters}</p>
+                    {/* Actions */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleThesisNavigate(thesis); }}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          thesis.status === 'completed'
+                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : thesis.status === 'generating'
+                            ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                            : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <ActionIcon className="w-3.5 h-3.5" />
+                        {action.label}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteThesis(thesis.id); }}
+                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      <ChevronDown className={`w-4 h-4 text-gray-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    </div>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {isExpanded && (
+                    <div className="border-t border-gray-100 bg-gray-50/30 p-4 space-y-4">
+                      {/* Description */}
+                      {thesis.description && (
+                        <p className="text-sm text-gray-600 bg-white rounded-lg p-3 border border-gray-100">{thesis.description}</p>
+                      )}
+
+                      {/* Stats Row */}
+                      <div className="grid grid-cols-4 gap-2">
+                        {[
+                          { label: 'Capitoli', value: thesis.num_chapters },
+                          { label: 'Sezioni/Cap', value: thesis.sections_per_chapter },
+                          { label: 'Parole/Sez', value: thesis.words_per_section?.toLocaleString() },
+                          { label: 'Progresso', value: `${thesis.generation_progress || 0}%` },
+                        ].map((stat, i) => (
+                          <div key={i} className="bg-white rounded-lg p-2.5 text-center border border-gray-100">
+                            <div className="text-lg font-bold text-gray-900">{stat.value}</div>
+                            <div className="text-[10px] text-gray-400 uppercase tracking-wide">{stat.label}</div>
                           </div>
-                          <div className="bg-white rounded-xl p-3 text-center border border-gray-100 shadow-sm">
-                            <p className="text-xs text-gray-500 mb-1">Sezioni/Cap</p>
-                            <p className="text-lg font-bold text-gray-900">{thesis.sections_per_chapter}</p>
-                          </div>
-                          <div className="bg-white rounded-xl p-3 text-center border border-gray-100 shadow-sm">
-                            <p className="text-xs text-gray-500 mb-1">Parole/Sez</p>
-                            <p className="text-lg font-bold text-gray-900">{thesis.words_per_section?.toLocaleString()}</p>
-                          </div>
-                          <div className="bg-white rounded-xl p-3 text-center border border-gray-100 shadow-sm">
-                            <p className="text-xs text-gray-500 mb-1">Progresso</p>
-                            <p className="text-lg font-bold text-gray-900">{thesis.generation_progress || 0}%</p>
+                        ))}
+                      </div>
+
+                      {/* Key Topics */}
+                      {thesis.key_topics && thesis.key_topics.length > 0 && (
+                        <div>
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1.5">Argomenti</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {thesis.key_topics.map((topic, i) => (
+                              <span key={i} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs rounded-md border border-emerald-200/50">
+                                {topic}
+                              </span>
+                            ))}
                           </div>
                         </div>
+                      )}
 
-                        {/* Key Topics */}
-                        {thesis.key_topics && thesis.key_topics.length > 0 && (
-                          <div>
-                            <p className="text-xs text-gray-500 mb-2">Argomenti chiave:</p>
-                            <div className="flex flex-wrap gap-2">
-                              {thesis.key_topics.map((topic, i) => (
-                                <span key={i} className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs rounded-full">
-                                  {topic}
+                      {/* Detector AI Scan */}
+                      {isAdmin && thesis.status === 'completed' && (
+                        <div>
+                          {thesisScan ? (
+                            <div className="bg-white rounded-lg border border-purple-200/60 p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wide flex items-center gap-1">
+                                  <Shield className="w-3 h-3" /> Detector AI
                                 </span>
+                                {thesisScan.has_report && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDownloadScanReport(thesisScan.scan_id); }}
+                                    className="text-[11px] text-purple-600 hover:text-purple-800 flex items-center gap-1 font-medium"
+                                  >
+                                    <Download className="w-3 h-3" /> Report
+                                  </button>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-4 gap-2">
+                                <div className={`rounded-lg p-2 border text-center ${getAIScoreColor(thesisScan.ai_generated_percent)}`}>
+                                  <div className="text-base font-bold">{thesisScan.ai_generated_percent?.toFixed(1)}%</div>
+                                  <div className="text-[9px] font-medium opacity-70 uppercase">AI</div>
+                                </div>
+                                <div className="rounded-lg p-2 border bg-blue-50 border-blue-200/60 text-blue-600 text-center">
+                                  <div className="text-base font-bold">{thesisScan.similarity_percent?.toFixed(1)}%</div>
+                                  <div className="text-[9px] font-medium opacity-70 uppercase">Similarita</div>
+                                </div>
+                                <div className="rounded-lg p-2 border bg-gray-50 border-gray-200/60 text-gray-600 text-center">
+                                  <div className="text-base font-bold">{thesisScan.global_score_percent?.toFixed(1)}%</div>
+                                  <div className="text-[9px] font-medium opacity-70 uppercase">Globale</div>
+                                </div>
+                                <div className="rounded-lg p-2 border bg-gray-50 border-gray-200/60 text-gray-600 text-center">
+                                  <div className="text-base font-bold">{thesisScan.exact_percent?.toFixed(1)}%</div>
+                                  <div className="text-[9px] font-medium opacity-70 uppercase">Esatti</div>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleThesisScan(thesis.id); }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/60 transition-colors"
+                            >
+                              <Shield className="w-3.5 h-3.5" /> Scansione Detector AI
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Export Row */}
+                      {thesis.status === 'completed' && (
+                        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">
+                          {templates.length > 0 && (
+                            <select
+                              value={selectedTemplates[thesis.id] || ''}
+                              onChange={(e) => setSelectedTemplates({ ...selectedTemplates, [thesis.id]: e.target.value || null })}
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-300"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="">Template default</option>
+                              {templates.map((tpl) => (
+                                <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
                               ))}
-                            </div>
+                            </select>
+                          )}
+                          <div className="flex items-center gap-1">
+                            <FileDown className="w-3.5 h-3.5 text-gray-400" />
+                            {['pdf', 'docx', 'txt', 'md'].map((fmt) => (
+                              <button
+                                key={fmt}
+                                onClick={(e) => { e.stopPropagation(); handleExportThesis(thesis.id, fmt); }}
+                                disabled={exportingThesis === thesis.id}
+                                className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                                  fmt === 'pdf'
+                                    ? 'bg-orange-500 text-white hover:bg-orange-600'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                }`}
+                              >
+                                {exportingThesis === thesis.id && fmt === 'pdf' ? (
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  fmt.toUpperCase()
+                                )}
+                              </button>
+                            ))}
                           </div>
-                        )}
-
-                        {/* Detector AI Scan - Admin Only */}
-                        {isAdmin && thesis.status === 'completed' && (
-                          <div>
-                            {thesisScan ? (
-                              <div className="bg-purple-50/50 border border-purple-200 rounded-xl p-3">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-xs font-semibold text-purple-700 flex items-center gap-1.5">
-                                    <Shield className="w-3.5 h-3.5" />
-                                    Detector AI
-                                  </span>
-                                  {thesisScan.has_report && (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); handleDownloadScanReport(thesisScan.scan_id); }}
-                                      className="text-xs text-purple-600 hover:text-purple-800 underline flex items-center gap-1"
-                                    >
-                                      <Download className="w-3 h-3" />
-                                      Report PDF
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="grid grid-cols-4 gap-1.5">
-                                  <div className={`rounded-lg p-2 border text-center ${getAIScoreColor(thesisScan.ai_generated_percent)}`}>
-                                    <div className="text-sm font-bold">{thesisScan.ai_generated_percent?.toFixed(1)}%</div>
-                                    <div className="text-[10px] font-medium opacity-80">AI</div>
-                                  </div>
-                                  <div className="rounded-lg p-2 border bg-blue-50 border-blue-200 text-blue-600 text-center">
-                                    <div className="text-sm font-bold">{thesisScan.similarity_percent?.toFixed(1)}%</div>
-                                    <div className="text-[10px] font-medium opacity-80">Simil.</div>
-                                  </div>
-                                  <div className="rounded-lg p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
-                                    <div className="text-sm font-bold">{thesisScan.global_score_percent?.toFixed(1)}%</div>
-                                    <div className="text-[10px] font-medium opacity-80">Globale</div>
-                                  </div>
-                                  <div className="rounded-lg p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
-                                    <div className="text-sm font-bold">{thesisScan.exact_percent?.toFixed(1)}%</div>
-                                    <div className="text-[10px] font-medium opacity-80">Esatti</div>
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleThesisScan(thesis.id); }}
-                                className="btn btn-sm gap-2 text-xs bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700"
-                              >
-                                <Shield className="w-3.5 h-3.5" />
-                                Scansione Detector AI
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Export Section */}
-                        {thesis.status === 'completed' && (
-                          <div className="flex flex-wrap items-end gap-3 pt-2 border-t border-gray-200">
-                            {/* Template selector */}
-                            {templates.length > 0 && (
-                              <div className="flex-shrink-0">
-                                <label className="text-xs text-gray-500 mb-1 block">Template:</label>
-                                <select
-                                  value={selectedTemplates[thesis.id] || ''}
-                                  onChange={(e) => setSelectedTemplates({ ...selectedTemplates, [thesis.id]: e.target.value || null })}
-                                  className="input text-sm h-9 w-48"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <option value="">Default</option>
-                                  {templates.map((tpl) => (
-                                    <option key={tpl.id} value={tpl.id}>
-                                      {tpl.name} ({tpl.formats?.join(', ') || 'pdf'})
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            )}
-                            {/* Export buttons */}
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-500 mr-1">Esporta:</span>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleExportThesis(thesis.id, 'pdf'); }}
-                                disabled={exportingThesis === thesis.id}
-                                className="btn btn-primary btn-sm"
-                              >
-                                {exportingThesis === thesis.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                                PDF
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleExportThesis(thesis.id, 'docx'); }}
-                                disabled={exportingThesis === thesis.id}
-                                className="btn btn-secondary btn-sm"
-                              >
-                                DOCX
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleExportThesis(thesis.id, 'txt'); }}
-                                disabled={exportingThesis === thesis.id}
-                                className="btn btn-secondary btn-sm"
-                              >
-                                TXT
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleExportThesis(thesis.id, 'md'); }}
-                                disabled={exportingThesis === thesis.id}
-                                className="btn btn-secondary btn-sm"
-                              >
-                                MD
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {/* Active Jobs */}
-        {activeJobs.length > 0 && (
-          <div className="mb-8 animate-slide-up">
+        {/* ═══════ TAB: SESSIONI ═══════ */}
+        {activeTab === 'sessions' && (
+          <div className="animate-fade-in">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-orange-100 to-orange-200 rounded-xl flex items-center justify-center">
-                  <Clock className="w-5 h-5 text-orange-600" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">Job Attivi</h2>
-                  <p className="text-sm text-gray-500">{activeJobs.length} in esecuzione</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {activeJobs.map((job) => (
-                <JobCard
-                  key={job.job_id}
-                  job={job}
-                  isAdmin={isAdmin}
-                  scanResult={scanResults[job.job_id]}
-                  onUpdate={(updatedJob) => {
-                    setJobs(jobs.map(j => j.job_id === updatedJob.job_id ? updatedJob : j));
-                  }}
-                  onScanComplete={(jobId, result) => setScanResults(prev => ({ ...prev, [jobId]: result }))}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Recent Jobs */}
-        {completedJobs.length > 0 && (
-          <div className="mb-8 animate-slide-up">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-green-100 to-green-200 rounded-xl flex items-center justify-center">
-                  <CheckCircle2 className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">Job Recenti</h2>
-                  <p className="text-sm text-gray-500">Ultimi {Math.min(completedJobs.length, 5)} completati</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {completedJobs.slice(0, 5).map((job) => (
-                <JobCard
-                  key={job.job_id}
-                  job={job}
-                  isAdmin={isAdmin}
-                  scanResult={scanResults[job.job_id]}
-                  onUpdate={(updatedJob) => {
-                    setJobs(jobs.map(j => j.job_id === updatedJob.job_id ? updatedJob : j));
-                  }}
-                  onScanComplete={(jobId, result) => setScanResults(prev => ({ ...prev, [jobId]: result }))}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Sessions */}
-        <div className="animate-slide-up">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl flex items-center justify-center">
-                <Layers className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Le tue Sessioni</h2>
-                <p className="text-sm text-gray-500">{sessions.length} sessioni totali</p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => navigate('/train')}
-              className="btn btn-primary"
-            >
-              <Sparkles className="w-4 h-4" />
-              Nuova Sessione
-            </button>
-          </div>
-
-          {sessions.length === 0 ? (
-            <div className="glass rounded-2xl text-center py-16">
-              <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <FileText className="w-10 h-10 text-gray-400" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Nessuna sessione</h3>
-              <p className="text-gray-500 mb-6 max-w-md mx-auto">
-                Inizia creando la tua prima sessione di addestramento per generare contenuti con il tuo stile unico.
-              </p>
-              <button
-                onClick={() => navigate('/train')}
-                className="btn btn-primary btn-lg"
-              >
-                <Upload className="w-5 h-5" />
-                Crea Prima Sessione
+              <p className="text-sm text-gray-500">{sessions.length} sessioni totali, {trainedSessions} addestrate</p>
+              <button onClick={() => navigate('/train')} className="btn btn-primary btn-sm">
+                <Sparkles className="w-3.5 h-3.5" />
+                Nuova Sessione
               </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sessions.map((session) => (
-                <div
-                  key={session.session_id}
-                  className="glass rounded-2xl p-5 hover:shadow-xl transition-all group border-2 border-transparent hover:border-orange-100"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1 min-w-0">
-                      {editingSessionName === session.session_id ? (
-                        <input
-                          ref={editSessionRef}
-                          type="text"
-                          value={editSessionValue}
-                          onChange={(e) => setEditSessionValue(e.target.value)}
-                          onBlur={() => handleSaveSessionName(session.session_id)}
-                          onKeyDown={(e) => handleSessionEditKeyDown(e, session.session_id)}
-                          className="font-bold text-lg text-gray-900 bg-white border border-slate-300 rounded-lg px-2 py-0.5 w-full focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                          maxLength={255}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : (
-                        <div className="flex items-center gap-1 group/name">
-                          <h3 className="font-bold text-lg text-gray-900 mb-1 truncate">
-                            {session.name || session.session_id}
-                          </h3>
-                          <button
-                            onClick={() => handleStartSessionEdit(session.session_id, session.name || session.session_id)}
-                            className="opacity-0 group-hover/name:opacity-100 transition-opacity p-1 hover:bg-slate-100 rounded flex-shrink-0"
-                            title="Rinomina"
-                          >
-                            <Pencil className="w-3.5 h-3.5 text-slate-400" />
-                          </button>
-                        </div>
-                      )}
-                      {session.name && !editingSessionName && (
-                        <p className="font-mono text-xs text-gray-400 truncate">
-                          {session.session_id}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleDeleteSession(session.session_id)}
-                      className="p-2 hover:bg-red-50 rounded-xl transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-600" />
-                    </button>
-                  </div>
 
-                  {/* Status Badge */}
-                  <div className="mb-4">
-                    {session.is_trained ? (
-                      <span className="badge badge-success">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Addestrata
-                      </span>
-                    ) : (
-                      <span className="badge badge-warning">
-                        <Clock className="w-3 h-3" />
-                        Non addestrata
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Stats */}
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="bg-gray-50 rounded-xl p-3 text-center">
-                      <p className="text-2xl font-bold text-gray-900">{session.conversation_length}</p>
-                      <p className="text-xs text-gray-500">Conversazioni</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-3 text-center">
-                      <p className="text-2xl font-bold text-gray-900">{session.jobs.length}</p>
-                      <p className="text-xs text-gray-500">Job</p>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => navigate(`/sessions/${session.session_id}`)}
-                      className="flex-1 btn btn-secondary"
-                    >
-                      Dettagli
-                    </button>
-                    <button
-                      onClick={() => navigate(`/generate?session=${session.session_id}`)}
-                      className="flex-1 btn btn-primary"
-                      disabled={!session.is_trained}
-                    >
-                      {session.is_trained ? 'Genera' : 'Non pronta'}
-                    </button>
-                  </div>
+            {sessions.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-200/60 text-center py-16">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <FileText className="w-8 h-8 text-gray-300" />
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Nessuna sessione</h3>
+                <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
+                  Inizia creando la tua prima sessione di addestramento.
+                </p>
+                <button onClick={() => navigate('/train')} className="btn btn-primary">
+                  <Upload className="w-4 h-4" />
+                  Crea Prima Sessione
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {sessions.map((session) => (
+                  <div
+                    key={session.session_id}
+                    className="bg-white rounded-xl border border-gray-200/60 p-4 hover:shadow-md hover:border-gray-300/60 transition-all group"
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1 min-w-0">
+                        {editingSessionName === session.session_id ? (
+                          <input
+                            ref={editSessionRef}
+                            type="text"
+                            value={editSessionValue}
+                            onChange={(e) => setEditSessionValue(e.target.value)}
+                            onBlur={() => handleSaveSessionName(session.session_id)}
+                            onKeyDown={(e) => handleSessionEditKeyDown(e, session.session_id)}
+                            className="font-semibold text-sm text-gray-900 bg-white border border-gray-300 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-transparent"
+                            maxLength={255}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <div className="flex items-center gap-1 group/name">
+                            <h4 className="font-semibold text-sm text-gray-900 truncate">
+                              {session.name || session.session_id}
+                            </h4>
+                            <button
+                              onClick={() => handleStartSessionEdit(session.session_id, session.name || session.session_id)}
+                              className="opacity-0 group-hover/name:opacity-100 transition-opacity p-0.5 hover:bg-gray-100 rounded flex-shrink-0"
+                              title="Rinomina"
+                            >
+                              <Pencil className="w-3 h-3 text-gray-400" />
+                            </button>
+                          </div>
+                        )}
+                        {session.name && !editingSessionName && (
+                          <p className="font-mono text-[10px] text-gray-400 truncate mt-0.5">{session.session_id}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleDeleteSession(session.session_id)}
+                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Status + Stats */}
+                    <div className="flex items-center gap-2 mb-3">
+                      {session.is_trained ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-green-100 text-green-700">
+                          <CheckCircle2 className="w-3 h-3" /> Addestrata
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-100 text-amber-700">
+                          <Clock className="w-3 h-3" /> Non addestrata
+                        </span>
+                      )}
+                      <span className="text-[11px] text-gray-400">{session.conversation_length} conv. &middot; {session.jobs.length} job</span>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => navigate(`/sessions/${session.session_id}`)}
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200/60 transition-colors"
+                      >
+                        Dettagli
+                      </button>
+                      <button
+                        onClick={() => navigate(`/generate?session=${session.session_id}`)}
+                        className={`flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          session.is_trained
+                            ? 'bg-orange-500 text-white hover:bg-orange-600 shadow-sm'
+                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        }`}
+                        disabled={!session.is_trained}
+                      >
+                        {session.is_trained ? 'Genera' : 'Non pronta'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );

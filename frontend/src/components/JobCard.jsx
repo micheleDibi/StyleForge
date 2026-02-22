@@ -25,7 +25,6 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
   useEffect(() => {
     setCurrentJob(job);
 
-    // Avvia polling se il job è in corso
     if (job.status === 'pending' || job.status === 'training' || job.status === 'generating') {
       setPolling(true);
       const startTime = Date.now();
@@ -38,14 +37,13 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
           setCurrentJob(updated);
           if (onUpdate) onUpdate(updated);
 
-          // Calcola stima tempo rimanente
           if (updated.progress && updated.progress > 0) {
             const now = Date.now();
             const progressDelta = updated.progress - lastProgress;
 
             if (progressDelta > 0) {
-              const timeDelta = (now - lastUpdate) / 1000; // secondi
-              const progressRate = progressDelta / timeDelta; // % per secondo
+              const timeDelta = (now - lastUpdate) / 1000;
+              const progressRate = progressDelta / timeDelta;
               const remainingProgress = 100 - updated.progress;
               const estimatedSeconds = remainingProgress / progressRate;
 
@@ -69,7 +67,6 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
     }
   }, [job.job_id]);
 
-  // Focus input on edit start
   useEffect(() => {
     if (editing && editInputRef.current) {
       editInputRef.current.focus();
@@ -77,46 +74,29 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
     }
   }, [editing]);
 
-  const getStatusIcon = () => {
-    switch (currentJob.status) {
-      case 'completed':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'failed':
-        return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'pending':
-        return <Clock className="w-5 h-5 text-slate-400" />;
-      default:
-        return <Loader className="w-5 h-5 text-primary-500 animate-spin" />;
-    }
-  };
-
   const getStatusColor = () => {
     switch (currentJob.status) {
-      case 'completed':
-        return 'bg-green-100 text-green-700';
-      case 'failed':
-        return 'bg-red-100 text-red-700';
-      case 'pending':
-        return 'bg-slate-100 text-slate-700';
-      default:
-        return 'bg-primary-100 text-primary-700';
+      case 'completed': return 'border-green-400';
+      case 'failed': return 'border-red-400';
+      case 'pending': return 'border-gray-300';
+      default: return 'border-orange-400';
     }
   };
 
-  const getStatusText = () => {
+  const getStatusBadge = () => {
     switch (currentJob.status) {
       case 'completed':
-        return 'Completato';
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-green-100 text-green-700"><CheckCircle className="w-3 h-3" />Completato</span>;
       case 'failed':
-        return 'Fallito';
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-red-100 text-red-700"><XCircle className="w-3 h-3" />Fallito</span>;
       case 'pending':
-        return 'In coda';
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-gray-100 text-gray-600"><Clock className="w-3 h-3" />In coda</span>;
       case 'training':
-        return 'Training in corso';
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-orange-100 text-orange-700"><Loader className="w-3 h-3 animate-spin" />Training</span>;
       case 'generating':
-        return 'Generazione in corso';
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-orange-100 text-orange-700"><Loader className="w-3 h-3 animate-spin" />Generazione</span>;
       default:
-        return currentJob.status;
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-gray-100 text-gray-600">{currentJob.status}</span>;
     }
   };
 
@@ -241,140 +221,141 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
 
   const formatEstimatedTime = (seconds) => {
     if (!seconds || seconds <= 0) return null;
-
-    if (seconds < 60) {
-      return `~${seconds}s`;
-    } else if (seconds < 3600) {
+    if (seconds < 60) return `~${seconds}s`;
+    if (seconds < 3600) {
       const minutes = Math.floor(seconds / 60);
       const secs = seconds % 60;
       return secs > 0 ? `~${minutes}m ${secs}s` : `~${minutes}m`;
-    } else {
-      const hours = Math.floor(seconds / 3600);
-      const minutes = Math.floor((seconds % 3600) / 60);
-      return minutes > 0 ? `~${hours}h ${minutes}m` : `~${hours}h`;
     }
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return minutes > 0 ? `~${hours}h ${minutes}m` : `~${hours}h`;
   };
 
   const getJobTypeName = () => {
     switch (currentJob.job_type) {
-      case 'training':
-        return 'Training PDF';
-      case 'generation':
-        return 'Generazione Contenuto';
-      case 'humanization':
-        return 'Umanizzazione Testo';
-      default:
-        return currentJob.job_type;
+      case 'training': return 'Training PDF';
+      case 'generation': return 'Generazione Contenuto';
+      case 'humanization': return 'Umanizzazione Testo';
+      default: return currentJob.job_type;
     }
   };
 
   const getJobTypeIcon = () => {
     switch (currentJob.job_type) {
-      case 'training':
-        return <FileText className="w-5 h-5 text-blue-500" />;
-      case 'generation':
-        return <Sparkles className="w-5 h-5 text-primary-500" />;
-      case 'humanization':
-        return <Wand2 className="w-5 h-5 text-purple-500" />;
-      default:
-        return null;
+      case 'training': return <FileText className="w-4 h-4 text-white" />;
+      case 'generation': return <Sparkles className="w-4 h-4 text-white" />;
+      case 'humanization': return <Wand2 className="w-4 h-4 text-white" />;
+      default: return null;
     }
   };
 
-  const getJobTypeColor = () => {
+  const getJobTypeGradient = () => {
     switch (currentJob.job_type) {
-      case 'training':
-        return 'from-blue-500 to-blue-700';
-      case 'generation':
-        return 'from-primary-500 to-primary-700';
-      case 'humanization':
-        return 'from-purple-500 to-pink-600';
-      default:
-        return 'from-slate-500 to-slate-700';
+      case 'training': return 'from-blue-500 to-blue-600';
+      case 'generation': return 'from-orange-500 to-orange-600';
+      case 'humanization': return 'from-purple-500 to-pink-600';
+      default: return 'from-gray-500 to-gray-600';
     }
   };
 
   const displayName = currentJob.name || getJobTypeName();
 
   return (
-    <div className="card hover:shadow-xl transition-all duration-300 hover:scale-[1.02] border-l-4" style={{ borderLeftColor: currentJob.status === 'completed' ? '#10b981' : currentJob.status === 'failed' ? '#ef4444' : '#6366f1' }}>
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getJobTypeColor()} flex items-center justify-center shadow-lg transform transition-transform hover:rotate-12`}>
-            {getJobTypeIcon() ? (
-              <span className="text-white">{getJobTypeIcon()}</span>
+    <div className={`bg-white rounded-xl border-l-4 ${getStatusColor()} border border-gray-200/60 p-4 hover:shadow-md transition-all`}>
+      {/* Header Row */}
+      <div className="flex items-start gap-3">
+        {/* Type Icon */}
+        <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${getJobTypeGradient()} flex items-center justify-center shadow-sm flex-shrink-0`}>
+          {getJobTypeIcon()}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 group">
+            {editing ? (
+              <input
+                ref={editInputRef}
+                type="text"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={handleSaveEdit}
+                onKeyDown={handleEditKeyDown}
+                className="font-semibold text-sm text-gray-900 bg-white border border-gray-300 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-transparent"
+                maxLength={255}
+              />
             ) : (
-              getStatusIcon()
+              <>
+                <h4 className="font-semibold text-sm text-gray-900 truncate">{displayName}</h4>
+                <button
+                  onClick={handleStartEdit}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-gray-100 rounded flex-shrink-0"
+                  title="Rinomina"
+                >
+                  <Pencil className="w-3 h-3 text-gray-400" />
+                </button>
+              </>
             )}
           </div>
-          <div>
-            <div className="flex items-center gap-2 group">
-              {editing ? (
-                <input
-                  ref={editInputRef}
-                  type="text"
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onBlur={handleSaveEdit}
-                  onKeyDown={handleEditKeyDown}
-                  className="font-bold text-slate-900 text-lg bg-white border border-slate-300 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  maxLength={255}
-                />
-              ) : (
-                <>
-                  <p className="font-bold text-slate-900 text-lg">
-                    {displayName}
-                  </p>
-                  <button
-                    onClick={handleStartEdit}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-slate-100 rounded"
-                    title="Rinomina"
-                  >
-                    <Pencil className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                  {getStatusIcon()}
-                </>
-              )}
-            </div>
-            <p className="font-mono text-xs text-slate-500 mt-1 bg-slate-50 px-2 py-0.5 rounded">
-              {currentJob.job_id}
-            </p>
-            <p className="text-xs text-slate-600 mt-1 flex items-center gap-1">
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {getStatusBadge()}
+            {/* Inline AI badge for completed scans */}
+            {scanResult && (
+              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold border ${getAIScoreColor(scanResult.ai_generated_percent)}`}>
+                AI {scanResult.ai_generated_percent?.toFixed(0)}%
+              </span>
+            )}
+            <span className="text-[11px] text-gray-400 flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {formatDate(currentJob.created_at)}
-            </p>
+            </span>
           </div>
         </div>
-        <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${getStatusColor()} shadow-sm`}>
-          {getStatusText()}
-        </span>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {currentJob.status === 'completed' && (currentJob.job_type === 'generation' || currentJob.job_type === 'humanization' || currentJob.job_type === 'training') && (
+            <button
+              onClick={handleDownload}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-orange-500 text-white hover:bg-orange-600 shadow-sm transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Scarica
+            </button>
+          )}
+          <button
+            onClick={handleDelete}
+            className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Progress Bar */}
       {(currentJob.status === 'pending' || currentJob.status === 'training' || currentJob.status === 'generating') && (
-        <div className="mb-4 p-4 bg-gradient-to-br from-slate-50 to-blue-50 rounded-xl border border-slate-200">
-          <div className="flex items-center justify-between text-sm text-slate-700 mb-3">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold">Progresso</span>
+        <div className="mt-3 bg-gray-50 rounded-lg p-3 border border-gray-100">
+          <div className="flex items-center justify-between text-xs mb-1.5">
+            <span className="text-gray-500 font-medium">
               {currentJob.status === 'training' || currentJob.status === 'generating' ? (
-                <span className="text-xs text-primary-600 font-bold animate-pulse flex items-center gap-1">
-                  <span className="w-2 h-2 bg-primary-600 rounded-full"></span>
-                  Elaborazione in corso...
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse"></span>
+                  Elaborazione...
                 </span>
-              ) : estimatedTime && (
-                <span className="text-xs text-slate-600 bg-white px-2 py-1 rounded-lg shadow-sm">
-                  Tempo stimato: {formatEstimatedTime(estimatedTime)}
-                </span>
+              ) : estimatedTime ? (
+                `Tempo stimato: ${formatEstimatedTime(estimatedTime)}`
+              ) : (
+                'In attesa...'
               )}
-            </div>
-            <span className="font-bold text-primary-600 text-lg">{currentJob.progress || 0}%</span>
+            </span>
+            <span className="font-bold text-orange-600">{currentJob.progress || 0}%</span>
           </div>
-          <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden shadow-inner">
+          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
             <div
-              className={`h-3 rounded-full transition-all duration-500 ${
+              className={`h-2 rounded-full transition-all duration-500 ${
                 currentJob.status === 'training' || currentJob.status === 'generating'
-                  ? 'bg-gradient-to-r from-primary-500 via-primary-600 to-primary-500 animate-pulse shadow-lg'
-                  : 'bg-gradient-to-r from-primary-500 to-primary-700 shadow-md'
+                  ? 'bg-gradient-to-r from-orange-400 to-orange-600 animate-pulse'
+                  : 'bg-orange-500'
               }`}
               style={{ width: `${currentJob.progress || 0}%` }}
             ></div>
@@ -382,43 +363,32 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
         </div>
       )}
 
-      {/* Error Message */}
+      {/* Error */}
       {currentJob.error && (
-        <div className="mb-4 p-4 bg-gradient-to-br from-red-50 to-red-100 border-l-4 border-red-500 rounded-xl shadow-sm">
-          <div className="flex items-start gap-3">
-            <XCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-red-900 mb-1">Errore riscontrato</p>
-              <p className="text-sm text-red-700">{currentJob.error}</p>
-            </div>
+        <div className="mt-3 flex items-start gap-2 bg-red-50 rounded-lg p-3 border border-red-100">
+          <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-xs font-medium text-red-800">Errore</p>
+            <p className="text-xs text-red-600 mt-0.5">{currentJob.error}</p>
           </div>
         </div>
       )}
 
       {/* Result Preview */}
       {showResult && currentJob.result && currentJob.status === 'completed' && (
-        <div className="mb-4 p-4 bg-gradient-to-br from-green-50 to-emerald-50 border-l-4 border-green-500 rounded-xl shadow-sm">
-          <div className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-xs text-green-800 mb-2 font-bold uppercase tracking-wide">
-                Risultato:
-              </p>
-              <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                {currentJob.result}
-              </p>
-            </div>
-          </div>
+        <div className="mt-3 bg-green-50 rounded-lg p-3 border border-green-100">
+          <p className="text-[10px] text-green-700 font-bold uppercase tracking-wide mb-1">Risultato</p>
+          <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{currentJob.result}</p>
         </div>
       )}
 
-      {/* Detector AI Scan - Admin Only */}
+      {/* Detector AI Scan */}
       {isAdmin && currentJob.status === 'completed' && currentJob.result && (currentJob.job_type === 'generation' || currentJob.job_type === 'humanization') && (
-        <div className="mb-4">
+        <div className="mt-3">
           {!scanResult && !scanScanning && !scanError && (
             <button
               onClick={handleStartScan}
-              className="btn btn-sm gap-2 text-xs bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/60 transition-colors"
             >
               <Shield className="w-3.5 h-3.5" />
               Scansione Detector AI
@@ -426,98 +396,62 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
           )}
 
           {scanScanning && (
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+            <div className="bg-purple-50 border border-purple-100 rounded-lg p-3">
               <div className="flex items-center gap-2 mb-1.5">
-                <Loader className="w-4 h-4 text-purple-600 animate-spin" />
+                <Loader className="w-3.5 h-3.5 text-purple-600 animate-spin" />
                 <span className="text-purple-700 font-medium text-xs">Scansione in corso...</span>
               </div>
               <div className="w-full bg-purple-200 rounded-full h-1.5">
-                <div
-                  className="bg-gradient-to-r from-purple-500 to-indigo-500 h-1.5 rounded-full transition-all duration-500"
-                  style={{ width: `${scanProgress}%` }}
-                ></div>
+                <div className="bg-purple-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${scanProgress}%` }}></div>
               </div>
             </div>
           )}
 
           {scanError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-2 flex items-center gap-2 text-xs">
+            <div className="bg-red-50 border border-red-100 rounded-lg p-2 flex items-center gap-2 text-xs">
               <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
               <span className="text-red-700">{scanError}</span>
-              <button onClick={handleStartScan} className="ml-auto text-red-600 hover:text-red-800 underline">
-                Riprova
-              </button>
+              <button onClick={handleStartScan} className="ml-auto text-red-600 hover:text-red-800 font-medium">Riprova</button>
             </div>
           )}
 
           {scanResult && (
-            <div className="bg-purple-50/50 border border-purple-200 rounded-lg p-3">
+            <div className="bg-white rounded-lg border border-purple-200/60 p-3">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-purple-700 flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5" />
-                  Detector AI
+                <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wide flex items-center gap-1">
+                  <Shield className="w-3 h-3" /> Detector AI
                 </span>
                 {scanResult.has_report && (
                   <button
                     onClick={handleDownloadScanReport}
-                    className="text-xs text-purple-600 hover:text-purple-800 underline flex items-center gap-1"
+                    className="text-[11px] text-purple-600 hover:text-purple-800 flex items-center gap-1 font-medium"
                   >
-                    <FileText className="w-3 h-3" />
-                    Report PDF
+                    <Download className="w-3 h-3" /> Report
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-4 gap-1.5">
-                <div className={`rounded p-2 border text-center ${getAIScoreColor(scanResult.ai_generated_percent)}`}>
-                  <div className="text-sm font-bold">{scanResult.ai_generated_percent?.toFixed(1)}%</div>
-                  <div className="text-[10px] font-medium opacity-80">AI</div>
+              <div className="grid grid-cols-4 gap-2">
+                <div className={`rounded-lg p-2 border text-center ${getAIScoreColor(scanResult.ai_generated_percent)}`}>
+                  <div className="text-base font-bold">{scanResult.ai_generated_percent?.toFixed(1)}%</div>
+                  <div className="text-[9px] font-medium opacity-70 uppercase">AI</div>
                 </div>
-                <div className="rounded p-2 border bg-blue-50 border-blue-200 text-blue-600 text-center">
-                  <div className="text-sm font-bold">{scanResult.similarity_percent?.toFixed(1)}%</div>
-                  <div className="text-[10px] font-medium opacity-80">Simil.</div>
+                <div className="rounded-lg p-2 border bg-blue-50 border-blue-200/60 text-blue-600 text-center">
+                  <div className="text-base font-bold">{scanResult.similarity_percent?.toFixed(1)}%</div>
+                  <div className="text-[9px] font-medium opacity-70 uppercase">Simil.</div>
                 </div>
-                <div className="rounded p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
-                  <div className="text-sm font-bold">{scanResult.global_score_percent?.toFixed(1)}%</div>
-                  <div className="text-[10px] font-medium opacity-80">Globale</div>
+                <div className="rounded-lg p-2 border bg-gray-50 border-gray-200/60 text-gray-600 text-center">
+                  <div className="text-base font-bold">{scanResult.global_score_percent?.toFixed(1)}%</div>
+                  <div className="text-[9px] font-medium opacity-70 uppercase">Globale</div>
                 </div>
-                <div className="rounded p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
-                  <div className="text-sm font-bold">{scanResult.exact_percent?.toFixed(1)}%</div>
-                  <div className="text-[10px] font-medium opacity-80">Esatti</div>
+                <div className="rounded-lg p-2 border bg-gray-50 border-gray-200/60 text-gray-600 text-center">
+                  <div className="text-base font-bold">{scanResult.exact_percent?.toFixed(1)}%</div>
+                  <div className="text-[9px] font-medium opacity-70 uppercase">Esatti</div>
                 </div>
               </div>
             </div>
           )}
         </div>
       )}
-
-      {/* Actions */}
-      <div className="flex gap-3">
-        {currentJob.status === 'completed' && (currentJob.job_type === 'generation' || currentJob.job_type === 'humanization') && (
-          <button
-            onClick={handleDownload}
-            className={`btn flex-1 gap-2 shadow-md hover:shadow-lg transition-all ${currentJob.job_type === 'humanization' ? 'bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white' : 'btn-primary'}`}
-          >
-            <Download className="w-5 h-5" />
-            <span className="font-semibold">Scarica</span>
-          </button>
-        )}
-        {currentJob.status === 'completed' && currentJob.job_type === 'training' && (
-          <button
-            onClick={handleDownload}
-            className="btn btn-primary flex-1 gap-2 shadow-md hover:shadow-lg transition-all"
-          >
-            <Download className="w-5 h-5" />
-            <span className="font-semibold">Scarica</span>
-          </button>
-        )}
-        <button
-          onClick={handleDelete}
-          className="btn btn-secondary gap-2 shadow-md hover:shadow-lg transition-all hover:bg-red-500 hover:text-white hover:border-red-500"
-        >
-          <Trash2 className="w-5 h-5" />
-          <span className="font-semibold">Elimina</span>
-        </button>
-      </div>
     </div>
   );
 };
