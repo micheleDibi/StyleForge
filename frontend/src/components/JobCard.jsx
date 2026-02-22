@@ -418,7 +418,7 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
           {!scanResult && !scanScanning && !scanError && (
             <button
               onClick={handleStartScan}
-              className="w-full btn gap-2 text-xs bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 h-8"
+              className="btn btn-sm gap-2 text-xs bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700"
             >
               <Shield className="w-3.5 h-3.5" />
               Scansione Detector AI

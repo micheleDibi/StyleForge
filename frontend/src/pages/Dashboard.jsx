@@ -392,15 +392,24 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              {/* Admin Panel Button */}
+              {/* Admin Buttons */}
               {isAdmin && (
-                <button
-                  onClick={() => navigate('/admin')}
-                  className="btn btn-secondary bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
-                >
-                  <Settings className="w-4 h-4" />
-                  <span className="hidden sm:inline">Admin</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => navigate('/detector-ai')}
+                    className="btn btn-secondary bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+                  >
+                    <Search className="w-4 h-4" />
+                    <span className="hidden sm:inline">Detector AI</span>
+                  </button>
+                  <button
+                    onClick={() => navigate('/admin')}
+                    className="btn btn-secondary bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span className="hidden sm:inline">Admin</span>
+                  </button>
+                </>
               )}
 
               <button
@@ -501,7 +510,7 @@ const Dashboard = () => {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 animate-slide-up">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 animate-slide-up">
           {/* Train */}
           {hasPermission('train') && (
             <button
@@ -607,56 +616,6 @@ const Dashboard = () => {
               </div>
             </button>
           )}
-
-          {/* Admin Panel - Solo per admin */}
-          {isAdmin && (
-            <button
-              onClick={() => navigate('/admin')}
-              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-purple-200"
-            >
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-purple-500/30">
-                  <Shield className="w-7 h-7 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">Pannello Admin</h3>
-                  <p className="text-sm text-gray-500">Gestisci utenti e ruoli</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge" style={{ backgroundColor: '#ede9fe', color: '#5b21b6' }}>
-                  <Settings className="w-3 h-3" />
-                  Amministrazione
-                </span>
-              </div>
-            </button>
-          )}
-
-          {/* Detector AI - Solo per admin */}
-          {isAdmin && (
-            <button
-              onClick={() => navigate('/detector-ai')}
-              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-indigo-200"
-            >
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-indigo-500/30">
-                  <Search className="w-7 h-7 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">Detector AI</h3>
-                  <p className="text-sm text-gray-500">Scansione AI Detection e Plagio</p>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="badge" style={{ backgroundColor: '#e0e7ff', color: '#3730a3' }}>
-                  <Shield className="w-3 h-3" />
-                  Admin Only
-                </span>
-              </div>
-            </button>
-          )}
         </div>
 
         {/* Theses Section */}
@@ -685,6 +644,7 @@ const Dashboard = () => {
               {theses.map((thesis) => {
                 const action = getThesisAction(thesis);
                 const ActionIcon = action.icon;
+                const thesisScan = scanResults[thesis.id];
 
                 return (
                   <div
@@ -711,6 +671,13 @@ const Dashboard = () => {
                           )}
                           <div className="flex flex-wrap items-center gap-3 mt-2">
                             {getStatusBadge(thesis.status)}
+                            {/* Inline AI scan badge */}
+                            {isAdmin && thesisScan && (
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${getAIScoreColor(thesisScan.ai_generated_percent)}`}>
+                                <Shield className="w-3 h-3" />
+                                AI: {thesisScan.ai_generated_percent?.toFixed(1)}%
+                              </span>
+                            )}
                             <span className="text-xs text-gray-500 flex items-center gap-1">
                               <Calendar className="w-3 h-3" />
                               {formatDate(thesis.created_at)}
@@ -721,7 +688,7 @@ const Dashboard = () => {
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           {/* Navigate button */}
                           <button
                             onClick={(e) => {
@@ -739,23 +706,6 @@ const Dashboard = () => {
                             <ActionIcon className="w-4 h-4" />
                             {action.label}
                           </button>
-                          {thesis.status === 'completed' && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleExportThesis(thesis.id, 'pdf');
-                              }}
-                              disabled={exportingThesis === thesis.id}
-                              className="btn btn-primary btn-sm"
-                            >
-                              {exportingThesis === thesis.id ? (
-                                <RefreshCw className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Download className="w-4 h-4" />
-                              )}
-                              PDF
-                            </button>
-                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -776,28 +726,30 @@ const Dashboard = () => {
 
                     {/* Expanded Details */}
                     {expandedThesis === thesis.id && (
-                      <div className="border-t border-gray-200 p-4 bg-gray-50/50">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                          <div className="bg-white rounded-lg p-3 text-center">
+                      <div className="border-t border-gray-200 p-4 bg-gray-50/50 space-y-4">
+                        {/* Stats Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="bg-white rounded-xl p-3 text-center border border-gray-100 shadow-sm">
                             <p className="text-xs text-gray-500 mb-1">Capitoli</p>
                             <p className="text-lg font-bold text-gray-900">{thesis.num_chapters}</p>
                           </div>
-                          <div className="bg-white rounded-lg p-3 text-center">
+                          <div className="bg-white rounded-xl p-3 text-center border border-gray-100 shadow-sm">
                             <p className="text-xs text-gray-500 mb-1">Sezioni/Cap</p>
                             <p className="text-lg font-bold text-gray-900">{thesis.sections_per_chapter}</p>
                           </div>
-                          <div className="bg-white rounded-lg p-3 text-center">
+                          <div className="bg-white rounded-xl p-3 text-center border border-gray-100 shadow-sm">
                             <p className="text-xs text-gray-500 mb-1">Parole/Sez</p>
                             <p className="text-lg font-bold text-gray-900">{thesis.words_per_section?.toLocaleString()}</p>
                           </div>
-                          <div className="bg-white rounded-lg p-3 text-center">
+                          <div className="bg-white rounded-xl p-3 text-center border border-gray-100 shadow-sm">
                             <p className="text-xs text-gray-500 mb-1">Progresso</p>
                             <p className="text-lg font-bold text-gray-900">{thesis.generation_progress || 0}%</p>
                           </div>
                         </div>
 
+                        {/* Key Topics */}
                         {thesis.key_topics && thesis.key_topics.length > 0 && (
-                          <div className="mb-4">
+                          <div>
                             <p className="text-xs text-gray-500 mb-2">Argomenti chiave:</p>
                             <div className="flex flex-wrap gap-2">
                               {thesis.key_topics.map((topic, i) => (
@@ -811,17 +763,17 @@ const Dashboard = () => {
 
                         {/* Detector AI Scan - Admin Only */}
                         {isAdmin && thesis.status === 'completed' && (
-                          <div className="mb-4">
-                            {scanResults[thesis.id] ? (
-                              <div className="bg-purple-50/50 border border-purple-200 rounded-lg p-3">
+                          <div>
+                            {thesisScan ? (
+                              <div className="bg-purple-50/50 border border-purple-200 rounded-xl p-3">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="text-xs font-semibold text-purple-700 flex items-center gap-1.5">
                                     <Shield className="w-3.5 h-3.5" />
                                     Detector AI
                                   </span>
-                                  {scanResults[thesis.id].has_report && (
+                                  {thesisScan.has_report && (
                                     <button
-                                      onClick={(e) => { e.stopPropagation(); handleDownloadScanReport(scanResults[thesis.id].scan_id); }}
+                                      onClick={(e) => { e.stopPropagation(); handleDownloadScanReport(thesisScan.scan_id); }}
                                       className="text-xs text-purple-600 hover:text-purple-800 underline flex items-center gap-1"
                                     >
                                       <Download className="w-3 h-3" />
@@ -830,20 +782,20 @@ const Dashboard = () => {
                                   )}
                                 </div>
                                 <div className="grid grid-cols-4 gap-1.5">
-                                  <div className={`rounded p-2 border text-center ${getAIScoreColor(scanResults[thesis.id].ai_generated_percent)}`}>
-                                    <div className="text-sm font-bold">{scanResults[thesis.id].ai_generated_percent?.toFixed(1)}%</div>
+                                  <div className={`rounded-lg p-2 border text-center ${getAIScoreColor(thesisScan.ai_generated_percent)}`}>
+                                    <div className="text-sm font-bold">{thesisScan.ai_generated_percent?.toFixed(1)}%</div>
                                     <div className="text-[10px] font-medium opacity-80">AI</div>
                                   </div>
-                                  <div className="rounded p-2 border bg-blue-50 border-blue-200 text-blue-600 text-center">
-                                    <div className="text-sm font-bold">{scanResults[thesis.id].similarity_percent?.toFixed(1)}%</div>
+                                  <div className="rounded-lg p-2 border bg-blue-50 border-blue-200 text-blue-600 text-center">
+                                    <div className="text-sm font-bold">{thesisScan.similarity_percent?.toFixed(1)}%</div>
                                     <div className="text-[10px] font-medium opacity-80">Simil.</div>
                                   </div>
-                                  <div className="rounded p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
-                                    <div className="text-sm font-bold">{scanResults[thesis.id].global_score_percent?.toFixed(1)}%</div>
+                                  <div className="rounded-lg p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
+                                    <div className="text-sm font-bold">{thesisScan.global_score_percent?.toFixed(1)}%</div>
                                     <div className="text-[10px] font-medium opacity-80">Globale</div>
                                   </div>
-                                  <div className="rounded p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
-                                    <div className="text-sm font-bold">{scanResults[thesis.id].exact_percent?.toFixed(1)}%</div>
+                                  <div className="rounded-lg p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
+                                    <div className="text-sm font-bold">{thesisScan.exact_percent?.toFixed(1)}%</div>
                                     <div className="text-[10px] font-medium opacity-80">Esatti</div>
                                   </div>
                                 </div>
@@ -851,7 +803,7 @@ const Dashboard = () => {
                             ) : (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleThesisScan(thesis.id); }}
-                                className="w-full btn gap-2 text-xs bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 h-8"
+                                className="btn btn-sm gap-2 text-xs bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700"
                               >
                                 <Shield className="w-3.5 h-3.5" />
                                 Scansione Detector AI
@@ -860,64 +812,63 @@ const Dashboard = () => {
                           </div>
                         )}
 
-                        {/* Template selector */}
-                        {thesis.status === 'completed' && templates.length > 0 && (
-                          <div className="mb-4">
-                            <label className="text-xs text-gray-500 mb-1 block">Template esportazione:</label>
-                            <select
-                              value={selectedTemplates[thesis.id] || ''}
-                              onChange={(e) => setSelectedTemplates({ ...selectedTemplates, [thesis.id]: e.target.value || null })}
-                              className="input text-sm w-full max-w-xs"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <option value="">Default (nessun template)</option>
-                              {templates.map((tpl) => (
-                                <option key={tpl.id} value={tpl.id}>
-                                  {tpl.name} ({tpl.formats?.join(', ') || 'pdf'})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-
-                        <div className="flex gap-2">
-                          {thesis.status === 'completed' && (
-                            <>
+                        {/* Export Section */}
+                        {thesis.status === 'completed' && (
+                          <div className="flex flex-wrap items-end gap-3 pt-2 border-t border-gray-200">
+                            {/* Template selector */}
+                            {templates.length > 0 && (
+                              <div className="flex-shrink-0">
+                                <label className="text-xs text-gray-500 mb-1 block">Template:</label>
+                                <select
+                                  value={selectedTemplates[thesis.id] || ''}
+                                  onChange={(e) => setSelectedTemplates({ ...selectedTemplates, [thesis.id]: e.target.value || null })}
+                                  className="input text-sm h-9 w-48"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <option value="">Default</option>
+                                  {templates.map((tpl) => (
+                                    <option key={tpl.id} value={tpl.id}>
+                                      {tpl.name} ({tpl.formats?.join(', ') || 'pdf'})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                            {/* Export buttons */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500 mr-1">Esporta:</span>
                               <button
-                                onClick={() => handleExportThesis(thesis.id, 'pdf')}
+                                onClick={(e) => { e.stopPropagation(); handleExportThesis(thesis.id, 'pdf'); }}
                                 disabled={exportingThesis === thesis.id}
                                 className="btn btn-primary btn-sm"
                               >
-                                <Download className="w-4 h-4" />
+                                {exportingThesis === thesis.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                                 PDF
                               </button>
                               <button
-                                onClick={() => handleExportThesis(thesis.id, 'docx')}
+                                onClick={(e) => { e.stopPropagation(); handleExportThesis(thesis.id, 'docx'); }}
                                 disabled={exportingThesis === thesis.id}
                                 className="btn btn-secondary btn-sm"
                               >
-                                <Download className="w-4 h-4" />
                                 DOCX
                               </button>
                               <button
-                                onClick={() => handleExportThesis(thesis.id, 'txt')}
+                                onClick={(e) => { e.stopPropagation(); handleExportThesis(thesis.id, 'txt'); }}
                                 disabled={exportingThesis === thesis.id}
                                 className="btn btn-secondary btn-sm"
                               >
-                                <Download className="w-4 h-4" />
                                 TXT
                               </button>
                               <button
-                                onClick={() => handleExportThesis(thesis.id, 'md')}
+                                onClick={(e) => { e.stopPropagation(); handleExportThesis(thesis.id, 'md'); }}
                                 disabled={exportingThesis === thesis.id}
                                 className="btn btn-secondary btn-sm"
                               >
-                                <Download className="w-4 h-4" />
                                 MD
                               </button>
-                            </>
-                          )}
-                        </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
