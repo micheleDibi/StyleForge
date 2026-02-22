@@ -656,23 +656,37 @@ def compilatio_scan_task(
     """
     service = get_compilatio_service()
 
+    # Contatore per limitare gli aggiornamenti DB (ogni 5 chiamate)
+    _progress_state = {"count": 0, "last_db_update": 0}
+
     def progress_callback(progress: int):
-        """Aggiorna il progresso del job nel DB."""
+        """Aggiorna il progresso del job. Scrive in DB solo periodicamente per evitare connection exhaustion."""
         try:
-            from database import SessionLocal
-            from db_models import Job as JobModel
-            db = SessionLocal()
-            try:
-                db_job = db.query(JobModel).filter_by(job_id=scan_job_id).first()
-                if db_job:
-                    db_job.progress = progress
-                    db.commit()
-            finally:
-                db.close()
-            # Aggiorna anche in memoria
+            # Aggiorna sempre in memoria (leggero, no DB)
             job = job_manager._active_jobs.get(scan_job_id)
             if job:
                 job.progress = progress
+
+            # Scrivi in DB solo ogni 5 callback o al 100%, per evitare connection exhaustion con NullPool
+            _progress_state["count"] += 1
+            should_write_db = (
+                _progress_state["count"] % 5 == 0 or
+                progress >= 100 or
+                progress - _progress_state["last_db_update"] >= 20
+            )
+
+            if should_write_db:
+                _progress_state["last_db_update"] = progress
+                from database import SessionLocal
+                from db_models import Job as JobModel
+                db = SessionLocal()
+                try:
+                    db_job = db.query(JobModel).filter_by(job_id=scan_job_id).first()
+                    if db_job:
+                        db_job.progress = progress
+                        db.commit()
+                finally:
+                    db.close()
         except Exception:
             pass
 
@@ -813,6 +827,56 @@ async def download_compilatio_report(
         media_type="application/pdf",
         filename=f"compilatio_report_{scan_id[:8]}.pdf"
     )
+
+
+@app.get("/compilatio/scan-by-source/{source_job_id}", tags=["Compilatio"])
+async def get_scan_by_source(
+    source_job_id: str,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Recupera la scansione Compilatio associata a un job sorgente.
+    Utile per mostrare i risultati nella Dashboard accanto al job originale.
+    """
+    scan = db.query(CompilatioScan).filter(
+        CompilatioScan.source_job_id == source_job_id,
+        CompilatioScan.completed_at.isnot(None)
+    ).order_by(CompilatioScan.created_at.desc()).first()
+
+    if not scan:
+        return {"scan": None}
+
+    return {"scan": scan.to_dict()}
+
+
+@app.get("/compilatio/scans-by-sources", tags=["Compilatio"])
+async def get_scans_by_sources(
+    source_job_ids: str,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Recupera le scansioni Compilatio per multipli job sorgente in una sola chiamata.
+    source_job_ids: stringa con ID separati da virgola.
+    """
+    ids = [s.strip() for s in source_job_ids.split(",") if s.strip()]
+    if not ids:
+        return {"scans": {}}
+
+    scans = db.query(CompilatioScan).filter(
+        CompilatioScan.source_job_id.in_(ids),
+        CompilatioScan.completed_at.isnot(None)
+    ).all()
+
+    # Mappa source_job_id -> scan (prendi il piu' recente per ogni source)
+    result = {}
+    for scan in scans:
+        sid = scan.source_job_id
+        if sid not in result or scan.created_at > result[sid].created_at:
+            result[sid] = scan
+
+    return {"scans": {k: v.to_dict() for k, v in result.items()}}
 
 
 # ============================================================================

@@ -209,9 +209,18 @@ class CompilatioService:
             logger.error(f"Errore creazione PDF: {e}")
             raise CompilatioError(f"Errore conversione testo in PDF: {e}")
 
+    def _force_relogin(self):
+        """Forza un nuovo login invalidando il token corrente."""
+        self._token = None
+        session = self._get_session()
+        # Rimuovi header token vecchio
+        session.headers.pop("x-auth-token", None)
+        return self._login()
+
     def _upload_document(self, pdf_path: str, folder_id: str) -> str:
         """
         Carica un documento PDF su Compilatio.
+        Gestisce token scaduti (errore 498) con retry automatico.
 
         Returns:
             Document ID su Compilatio
@@ -220,18 +229,28 @@ class CompilatioService:
         url = f"{self.base_url}/api/private/document/create"
         filename = os.path.basename(pdf_path)
 
-        try:
-            with open(pdf_path, "rb") as f:
-                files = {"file": (filename, f, "application/pdf")}
-                data = {"folder_id": folder_id}
-                resp = session.post(url, data=data, files=files, timeout=60)
+        max_attempts = 2  # 1 tentativo + 1 retry con re-login
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with open(pdf_path, "rb") as f:
+                    files = {"file": (filename, f, "application/pdf")}
+                    data = {"folder_id": folder_id}
+                    resp = session.post(url, data=data, files=files, timeout=60)
 
-            resp.raise_for_status()
-            doc_id = resp.json()["data"]["document"]["id"]
-            logger.info(f"Documento caricato su Compilatio: {doc_id[:12]}...")
-            return doc_id
-        except requests.exceptions.RequestException as e:
-            raise CompilatioError(f"Errore upload documento: {e}")
+                resp.raise_for_status()
+                doc_id = resp.json()["data"]["document"]["id"]
+                logger.info(f"Documento caricato su Compilatio: {doc_id[:12]}...")
+                return doc_id
+            except requests.exceptions.HTTPError as e:
+                status_code = e.response.status_code if e.response is not None else 0
+                # 498 = token scaduto/invalido, 401 = non autorizzato
+                if status_code in (498, 401) and attempt < max_attempts:
+                    logger.warning(f"Token scaduto (HTTP {status_code}) durante upload, ri-autenticazione...")
+                    self._force_relogin()
+                    continue
+                raise CompilatioError(f"Errore upload documento: {e}")
+            except requests.exceptions.RequestException as e:
+                raise CompilatioError(f"Errore upload documento: {e}")
 
     def _fetch_documents(self, folder_id: str) -> list:
         """Recupera la lista documenti di una cartella."""
@@ -303,6 +322,7 @@ class CompilatioService:
     def _start_analysis(self, doc_id: str) -> str:
         """
         Avvia l'analisi di plagio e AI detection.
+        Gestisce token scaduti con retry automatico.
 
         Returns:
             Analysis ID
@@ -315,14 +335,23 @@ class CompilatioService:
             "params": None
         }
 
-        try:
-            resp = session.post(url, json=payload, timeout=30)
-            resp.raise_for_status()
-            analysis_id = resp.json()["data"]["analysis"]["id"]
-            logger.info(f"Analisi avviata: {analysis_id[:12]}...")
-            return analysis_id
-        except requests.exceptions.RequestException as e:
-            raise CompilatioError(f"Errore avvio analisi: {e}")
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
+            try:
+                resp = session.post(url, json=payload, timeout=30)
+                resp.raise_for_status()
+                analysis_id = resp.json()["data"]["analysis"]["id"]
+                logger.info(f"Analisi avviata: {analysis_id[:12]}...")
+                return analysis_id
+            except requests.exceptions.HTTPError as e:
+                status_code = e.response.status_code if e.response is not None else 0
+                if status_code in (498, 401) and attempt < max_attempts:
+                    logger.warning(f"Token scaduto (HTTP {status_code}) durante avvio analisi, ri-autenticazione...")
+                    self._force_relogin()
+                    continue
+                raise CompilatioError(f"Errore avvio analisi: {e}")
+            except requests.exceptions.RequestException as e:
+                raise CompilatioError(f"Errore avvio analisi: {e}")
 
     def _wait_for_analysis(
         self,

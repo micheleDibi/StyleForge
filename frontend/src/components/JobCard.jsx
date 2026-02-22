@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle, XCircle, Loader, Clock, Download, Trash2, FileText, Sparkles, Wand2, Pencil } from 'lucide-react';
-import { getJobStatus, downloadResult, deleteJob, renameJob } from '../services/api';
+import { CheckCircle, XCircle, Loader, Clock, Download, Trash2, FileText, Sparkles, Wand2, Pencil, Shield } from 'lucide-react';
+import { getJobStatus, downloadResult, deleteJob, renameJob, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../services/api';
 
-const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
+const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: initialScanResult, isAdmin = false, onScanComplete }) => {
   const [currentJob, setCurrentJob] = useState(job);
   const [polling, setPolling] = useState(false);
   const [estimatedTime, setEstimatedTime] = useState(null);
@@ -11,6 +11,16 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef(null);
+
+  // Compilatio scan state (admin-only, inline)
+  const [scanResult, setScanResult] = useState(initialScanResult || null);
+  const [scanScanning, setScanScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanError, setScanError] = useState(null);
+
+  useEffect(() => {
+    if (initialScanResult) setScanResult(initialScanResult);
+  }, [initialScanResult]);
 
   useEffect(() => {
     setCurrentJob(job);
@@ -158,6 +168,65 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
     } else if (e.key === 'Escape') {
       setEditing(false);
     }
+  };
+
+  // Compilatio scan handlers
+  const handleStartScan = async () => {
+    if (scanScanning || !currentJob.result) return;
+    setScanScanning(true);
+    setScanError(null);
+    setScanProgress(0);
+
+    try {
+      const sourceType = currentJob.job_type === 'generation' ? 'generate' : 'humanize';
+      const response = await startCompilatioScan(currentJob.result, sourceType, currentJob.job_id);
+
+      if (response.cached && response.cached_scan) {
+        setScanResult(response.cached_scan);
+        setScanScanning(false);
+        if (onScanComplete) onScanComplete(currentJob.job_id, response.cached_scan);
+        return;
+      }
+
+      const finalStatus = await pollJobStatus(
+        response.job_id,
+        (status) => setScanProgress(status.progress || 0),
+        4000
+      );
+
+      if (finalStatus.status === 'completed' && finalStatus.result) {
+        try {
+          const parsed = JSON.parse(finalStatus.result);
+          setScanResult(parsed);
+          if (onScanComplete) onScanComplete(currentJob.job_id, parsed);
+        } catch {
+          setScanResult(finalStatus.result);
+        }
+      } else if (finalStatus.status === 'failed') {
+        setScanError(finalStatus.error || 'Scansione fallita');
+      }
+    } catch (error) {
+      console.error('Errore scansione:', error);
+      setScanError(error.response?.data?.detail || 'Errore durante la scansione');
+    } finally {
+      setScanScanning(false);
+    }
+  };
+
+  const handleDownloadScanReport = async () => {
+    if (scanResult?.scan_id) {
+      try {
+        await downloadCompilatioReport(scanResult.scan_id);
+      } catch (error) {
+        console.error('Errore download report:', error);
+      }
+    }
+  };
+
+  const getAIScoreColor = (percent) => {
+    if (percent <= 5) return 'text-green-600 bg-green-50 border-green-200';
+    if (percent <= 20) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    return 'text-red-600 bg-red-50 border-red-200';
   };
 
   const formatDate = (dateString) => {
@@ -340,6 +409,84 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false }) => {
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Detector AI Scan - Admin Only */}
+      {isAdmin && currentJob.status === 'completed' && currentJob.result && (currentJob.job_type === 'generation' || currentJob.job_type === 'humanization') && (
+        <div className="mb-4">
+          {!scanResult && !scanScanning && !scanError && (
+            <button
+              onClick={handleStartScan}
+              className="w-full btn gap-2 text-xs bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 h-8"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              Scansione Detector AI
+            </button>
+          )}
+
+          {scanScanning && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Loader className="w-4 h-4 text-purple-600 animate-spin" />
+                <span className="text-purple-700 font-medium text-xs">Scansione in corso...</span>
+              </div>
+              <div className="w-full bg-purple-200 rounded-full h-1.5">
+                <div
+                  className="bg-gradient-to-r from-purple-500 to-indigo-500 h-1.5 rounded-full transition-all duration-500"
+                  style={{ width: `${scanProgress}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
+
+          {scanError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-2 flex items-center gap-2 text-xs">
+              <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+              <span className="text-red-700">{scanError}</span>
+              <button onClick={handleStartScan} className="ml-auto text-red-600 hover:text-red-800 underline">
+                Riprova
+              </button>
+            </div>
+          )}
+
+          {scanResult && (
+            <div className="bg-purple-50/50 border border-purple-200 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-purple-700 flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5" />
+                  Detector AI
+                </span>
+                {scanResult.has_report && (
+                  <button
+                    onClick={handleDownloadScanReport}
+                    className="text-xs text-purple-600 hover:text-purple-800 underline flex items-center gap-1"
+                  >
+                    <FileText className="w-3 h-3" />
+                    Report PDF
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                <div className={`rounded p-2 border text-center ${getAIScoreColor(scanResult.ai_generated_percent)}`}>
+                  <div className="text-sm font-bold">{scanResult.ai_generated_percent?.toFixed(1)}%</div>
+                  <div className="text-[10px] font-medium opacity-80">AI</div>
+                </div>
+                <div className="rounded p-2 border bg-blue-50 border-blue-200 text-blue-600 text-center">
+                  <div className="text-sm font-bold">{scanResult.similarity_percent?.toFixed(1)}%</div>
+                  <div className="text-[10px] font-medium opacity-80">Simil.</div>
+                </div>
+                <div className="rounded p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
+                  <div className="text-sm font-bold">{scanResult.global_score_percent?.toFixed(1)}%</div>
+                  <div className="text-[10px] font-medium opacity-80">Globale</div>
+                </div>
+                <div className="rounded p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
+                  <div className="text-sm font-bold">{scanResult.exact_percent?.toFixed(1)}%</div>
+                  <div className="text-[10px] font-medium opacity-80">Esatti</div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

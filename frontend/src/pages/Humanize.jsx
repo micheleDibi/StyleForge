@@ -481,91 +481,84 @@ const Humanize = () => {
                     {result}
                   </pre>
                 </div>
+              </div>
+            )}
 
-                {/* Compilatio Scan - Admin Only */}
-                {isAdmin && (
-                  <div className="mt-4 pt-4 border-t border-slate-200">
-                    {!compilatioResult && !compilatioScanning && (
-                      <button
-                        onClick={handleCompilatioScan}
-                        className="w-full btn gap-2 text-sm bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 h-10"
-                      >
-                        <Shield className="w-4 h-4" />
-                        Scansione Detector AI (AI Detection + Plagio)
-                      </button>
-                    )}
+            {/* Compilatio Scan - Admin Only (outside result card, higher position) */}
+            {isAdmin && result && (
+              <div className="mt-4">
+                {!compilatioResult && !compilatioScanning && !compilatioError && (
+                  <button
+                    onClick={handleCompilatioScan}
+                    className="w-full btn gap-2 text-sm bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 h-10"
+                  >
+                    <Shield className="w-4 h-4" />
+                    Scansione Detector AI (AI Detection + Plagio)
+                  </button>
+                )}
 
-                    {compilatioScanning && (
-                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                        <div className="flex items-center gap-3 mb-2">
-                          <Loader className="w-5 h-5 text-purple-600 animate-spin" />
-                          <span className="text-purple-700 font-medium text-sm">Scansione Detector AI in corso...</span>
-                        </div>
-                        <div className="w-full bg-purple-200 rounded-full h-2">
-                          <div
-                            className="bg-gradient-to-r from-purple-500 to-indigo-500 h-2 rounded-full transition-all duration-500"
-                            style={{ width: `${compilatioProgress}%` }}
-                          ></div>
-                        </div>
-                        <p className="text-xs text-purple-500 mt-1">L'analisi puo' richiedere alcuni minuti</p>
-                      </div>
-                    )}
+                {compilatioScanning && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <Loader className="w-5 h-5 text-purple-600 animate-spin" />
+                      <span className="text-purple-700 font-medium text-sm">Scansione Detector AI in corso...</span>
+                    </div>
+                    <div className="w-full bg-purple-200 rounded-full h-2">
+                      <div
+                        className="bg-gradient-to-r from-purple-500 to-indigo-500 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${compilatioProgress}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-xs text-purple-500 mt-1">L'analisi puo' richiedere alcuni minuti</p>
+                  </div>
+                )}
 
-                    {compilatioError && (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                        <span className="text-red-700 text-sm">{compilatioError}</span>
-                        <button onClick={handleCompilatioScan} className="ml-auto text-red-600 hover:text-red-800 text-sm underline">
-                          Riprova
-                        </button>
-                      </div>
-                    )}
+                {compilatioError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                    <span className="text-red-700 text-sm">{compilatioError}</span>
+                    <button onClick={handleCompilatioScan} className="ml-auto text-red-600 hover:text-red-800 text-sm underline">
+                      Riprova
+                    </button>
+                  </div>
+                )}
 
-                    {compilatioResult && (
-                      <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-semibold text-slate-800 flex items-center gap-2">
-                            <Shield className="w-4 h-4 text-purple-600" />
-                            Risultati Detector AI
-                          </h4>
-                          {compilatioResult.has_report && (
-                            <button
-                              onClick={handleDownloadCompilatioReport}
-                              className="btn btn-secondary gap-1 text-xs h-8"
-                            >
-                              <FileText className="w-3 h-3" />
-                              Report PDF
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className={`rounded-lg p-3 border ${getAIScoreColor(compilatioResult.ai_generated_percent)}`}>
-                            <div className="text-2xl font-bold">{compilatioResult.ai_generated_percent?.toFixed(1)}%</div>
-                            <div className="text-xs font-medium opacity-80">AI Generato</div>
-                          </div>
-                          <div className="rounded-lg p-3 border bg-blue-50 border-blue-200 text-blue-600">
-                            <div className="text-2xl font-bold">{compilatioResult.similarity_percent?.toFixed(1)}%</div>
-                            <div className="text-xs font-medium opacity-80">Similarita</div>
-                          </div>
-                          <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
-                            <div className="text-lg font-bold">{compilatioResult.global_score_percent?.toFixed(1)}%</div>
-                            <div className="text-xs font-medium opacity-80">Score Globale</div>
-                          </div>
-                          <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
-                            <div className="text-lg font-bold">{compilatioResult.exact_percent?.toFixed(1)}%</div>
-                            <div className="text-xs font-medium opacity-80">Match Esatti</div>
-                          </div>
-                        </div>
-
+                {compilatioResult && (
+                  <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-slate-800 flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-purple-600" />
+                        Risultati Detector AI
+                      </h4>
+                      {compilatioResult.has_report && (
                         <button
-                          onClick={handleCompilatioScan}
-                          className="text-xs text-purple-600 hover:text-purple-800 underline"
+                          onClick={handleDownloadCompilatioReport}
+                          className="btn btn-secondary gap-1 text-xs h-8"
                         >
-                          Riesegui scansione
+                          <FileText className="w-3 h-3" />
+                          Report PDF
                         </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className={`rounded-lg p-3 border ${getAIScoreColor(compilatioResult.ai_generated_percent)}`}>
+                        <div className="text-2xl font-bold">{compilatioResult.ai_generated_percent?.toFixed(1)}%</div>
+                        <div className="text-xs font-medium opacity-80">AI Generato</div>
                       </div>
-                    )}
+                      <div className="rounded-lg p-3 border bg-blue-50 border-blue-200 text-blue-600">
+                        <div className="text-2xl font-bold">{compilatioResult.similarity_percent?.toFixed(1)}%</div>
+                        <div className="text-xs font-medium opacity-80">Similarita</div>
+                      </div>
+                      <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
+                        <div className="text-lg font-bold">{compilatioResult.global_score_percent?.toFixed(1)}%</div>
+                        <div className="text-xs font-medium opacity-80">Score Globale</div>
+                      </div>
+                      <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
+                        <div className="text-lg font-bold">{compilatioResult.exact_percent?.toFixed(1)}%</div>
+                        <div className="text-xs font-medium opacity-80">Match Esatti</div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

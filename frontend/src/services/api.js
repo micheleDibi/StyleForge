@@ -737,6 +737,13 @@ export const getCompilatioScans = async (limit = 20, offset = 0) => {
   return response.data;
 };
 
+export const getCompilatioScansBySource = async (sourceJobIds) => {
+  const response = await api.get('/compilatio/scans-by-sources', {
+    params: { source_job_ids: sourceJobIds.join(',') }
+  });
+  return response.data;
+};
+
 export const downloadCompilatioReport = async (scanId) => {
   const response = await api.get(`/compilatio/report/${scanId}`, {
     responseType: 'blob'

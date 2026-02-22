@@ -9,6 +9,7 @@ import Humanize from './pages/Humanize';
 import SessionDetail from './pages/SessionDetail';
 import ThesisGenerator from './pages/ThesisGenerator';
 import Admin from './pages/Admin';
+import DetectorAI from './pages/DetectorAI';
 import Helper from './components/Helper';
 import Footer from './components/Footer';
 
@@ -164,6 +165,14 @@ const AppRoutes = () => {
         element={
           <AdminRoute>
             <Admin />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/detector-ai"
+        element={
+          <AdminRoute>
+            <DetectorAI />
           </AdminRoute>
         }
       />

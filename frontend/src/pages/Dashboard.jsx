@@ -8,7 +8,7 @@ import {
   ChevronDown, Eye, List, Coins, Shield, Pencil, Play, Search
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates } from '../services/api';
+import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../services/api';
 import JobCard from '../components/JobCard';
 import Logo from '../components/Logo';
 
@@ -27,6 +27,12 @@ const Dashboard = () => {
   // Templates state
   const [templates, setTemplates] = useState([]);
   const [selectedTemplates, setSelectedTemplates] = useState({});
+
+  // Compilatio scan results map: { jobId: scanResult }
+  const [scanResults, setScanResults] = useState({});
+  // Thesis scan state
+  const [thesisScanningId, setThesisScanningId] = useState(null);
+  const [thesisScanProgress, setThesisScanProgress] = useState(0);
 
   // Session rename state
   const [editingSessionName, setEditingSessionName] = useState(null);
@@ -72,6 +78,34 @@ const Dashboard = () => {
       setRefreshing(false);
     }
   };
+
+  // Fetch scan results for all completed jobs when admin
+  useEffect(() => {
+    if (!isAdmin || jobs.length === 0) return;
+
+    const completedJobIds = jobs
+      .filter(j => (j.status === 'completed') && (j.job_type === 'generation' || j.job_type === 'humanization'))
+      .map(j => j.job_id);
+
+    // Also add thesis IDs
+    const thesisIds = theses.filter(t => t.status === 'completed').map(t => t.id);
+    const allIds = [...completedJobIds, ...thesisIds];
+
+    if (allIds.length === 0) return;
+
+    const fetchScanResults = async () => {
+      try {
+        const data = await getCompilatioScansBySource(allIds);
+        if (data.scans) {
+          setScanResults(prev => ({ ...prev, ...data.scans }));
+        }
+      } catch (err) {
+        // Non-critical, silently ignore
+        console.debug('Errore fetch scan results:', err);
+      }
+    };
+    fetchScanResults();
+  }, [isAdmin, jobs, theses]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -152,6 +186,28 @@ const Dashboard = () => {
     }
   };
 
+  // Thesis scan handler (admin-only)
+  const handleThesisScan = async (thesisId) => {
+    // We need the thesis content. Navigate to thesis page instead since content isn't loaded here.
+    // Actually, for theses we can start a scan from the thesis page. But the user wants it from Dashboard.
+    // We don't have the full thesis content in the dashboard. Let's navigate to the thesis page.
+    navigate(`/thesis?resume=${thesisId}`);
+  };
+
+  const handleDownloadScanReport = async (scanId) => {
+    try {
+      await downloadCompilatioReport(scanId);
+    } catch (error) {
+      console.error('Errore download report:', error);
+    }
+  };
+
+  const getAIScoreColor = (percent) => {
+    if (percent <= 5) return 'text-green-600 bg-green-50 border-green-200';
+    if (percent <= 20) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    return 'text-red-600 bg-red-50 border-red-200';
+  };
+
   // Thesis navigation
   const getThesisAction = (thesis) => {
     switch (thesis.status) {
@@ -213,8 +269,10 @@ const Dashboard = () => {
     }
   };
 
-  const activeJobs = jobs.filter(j => j.status === 'pending' || j.status === 'training' || j.status === 'generating');
-  const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'failed');
+  // Filter out compilatio_scan jobs - they are shown as sub-sections of other jobs
+  const nonScanJobs = jobs.filter(j => j.job_type !== 'compilatio_scan');
+  const activeJobs = nonScanJobs.filter(j => j.status === 'pending' || j.status === 'training' || j.status === 'generating');
+  const completedJobs = nonScanJobs.filter(j => j.status === 'completed' || j.status === 'failed');
   const trainedSessions = sessions.filter(s => s.is_trained).length;
   const completedTheses = theses.filter(t => t.status === 'completed').length;
 
@@ -575,10 +633,10 @@ const Dashboard = () => {
             </button>
           )}
 
-          {/* Compilatio Scan - Solo per admin */}
+          {/* Detector AI - Solo per admin */}
           {isAdmin && (
             <button
-              onClick={() => navigate('/humanize')}
+              onClick={() => navigate('/detector-ai')}
               className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-indigo-200"
             >
               <div className="flex items-center gap-4 mb-4">
@@ -751,6 +809,57 @@ const Dashboard = () => {
                           </div>
                         )}
 
+                        {/* Detector AI Scan - Admin Only */}
+                        {isAdmin && thesis.status === 'completed' && (
+                          <div className="mb-4">
+                            {scanResults[thesis.id] ? (
+                              <div className="bg-purple-50/50 border border-purple-200 rounded-lg p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-semibold text-purple-700 flex items-center gap-1.5">
+                                    <Shield className="w-3.5 h-3.5" />
+                                    Detector AI
+                                  </span>
+                                  {scanResults[thesis.id].has_report && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleDownloadScanReport(scanResults[thesis.id].scan_id); }}
+                                      className="text-xs text-purple-600 hover:text-purple-800 underline flex items-center gap-1"
+                                    >
+                                      <Download className="w-3 h-3" />
+                                      Report PDF
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="grid grid-cols-4 gap-1.5">
+                                  <div className={`rounded p-2 border text-center ${getAIScoreColor(scanResults[thesis.id].ai_generated_percent)}`}>
+                                    <div className="text-sm font-bold">{scanResults[thesis.id].ai_generated_percent?.toFixed(1)}%</div>
+                                    <div className="text-[10px] font-medium opacity-80">AI</div>
+                                  </div>
+                                  <div className="rounded p-2 border bg-blue-50 border-blue-200 text-blue-600 text-center">
+                                    <div className="text-sm font-bold">{scanResults[thesis.id].similarity_percent?.toFixed(1)}%</div>
+                                    <div className="text-[10px] font-medium opacity-80">Simil.</div>
+                                  </div>
+                                  <div className="rounded p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
+                                    <div className="text-sm font-bold">{scanResults[thesis.id].global_score_percent?.toFixed(1)}%</div>
+                                    <div className="text-[10px] font-medium opacity-80">Globale</div>
+                                  </div>
+                                  <div className="rounded p-2 border bg-slate-50 border-slate-200 text-slate-600 text-center">
+                                    <div className="text-sm font-bold">{scanResults[thesis.id].exact_percent?.toFixed(1)}%</div>
+                                    <div className="text-[10px] font-medium opacity-80">Esatti</div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleThesisScan(thesis.id); }}
+                                className="w-full btn gap-2 text-xs bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 h-8"
+                              >
+                                <Shield className="w-3.5 h-3.5" />
+                                Scansione Detector AI
+                              </button>
+                            )}
+                          </div>
+                        )}
+
                         {/* Template selector */}
                         {thesis.status === 'completed' && templates.length > 0 && (
                           <div className="mb-4">
@@ -838,9 +947,12 @@ const Dashboard = () => {
                 <JobCard
                   key={job.job_id}
                   job={job}
+                  isAdmin={isAdmin}
+                  scanResult={scanResults[job.job_id]}
                   onUpdate={(updatedJob) => {
                     setJobs(jobs.map(j => j.job_id === updatedJob.job_id ? updatedJob : j));
                   }}
+                  onScanComplete={(jobId, result) => setScanResults(prev => ({ ...prev, [jobId]: result }))}
                 />
               ))}
             </div>
@@ -867,9 +979,12 @@ const Dashboard = () => {
                 <JobCard
                   key={job.job_id}
                   job={job}
+                  isAdmin={isAdmin}
+                  scanResult={scanResults[job.job_id]}
                   onUpdate={(updatedJob) => {
                     setJobs(jobs.map(j => j.job_id === updatedJob.job_id ? updatedJob : j));
                   }}
+                  onScanComplete={(jobId, result) => setScanResults(prev => ({ ...prev, [jobId]: result }))}
                 />
               ))}
             </div>
