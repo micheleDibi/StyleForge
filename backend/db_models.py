@@ -19,7 +19,7 @@ pg_job_status = PG_ENUM(
 )
 
 pg_job_type = PG_ENUM(
-    'training', 'generation', 'humanization', 'thesis_generation',
+    'training', 'generation', 'humanization', 'thesis_generation', 'compilatio_scan',
     name='job_type',
     create_type=False
 )
@@ -557,6 +557,80 @@ class ThesisGenerationJob(Base):
             "error": self.error,
             "created_at": self.created_at,
             "completed_at": self.completed_at
+        }
+
+
+# ============================================================================
+# COMPILATIO SCANS
+# ============================================================================
+
+class CompilatioScan(Base):
+    """Modello per le scansioni Compilatio (AI Detection + Plagio)."""
+    __tablename__ = "compilatio_scans"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_id = Column(String(50), ForeignKey("jobs.job_id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    # Identificativi documento su Compilatio
+    compilatio_doc_id = Column(String(255), nullable=True)
+    compilatio_analysis_id = Column(String(255), nullable=True)
+    compilatio_folder_id = Column(String(255), nullable=True)
+
+    # Info documento
+    document_filename = Column(String(500), nullable=False)
+    document_text_hash = Column(String(64), nullable=True)  # SHA-256 per dedup
+    word_count = Column(Integer, default=0)
+
+    # Risultati analisi
+    global_score_percent = Column(DECIMAL(5, 2), default=0)
+    similarity_percent = Column(DECIMAL(5, 2), default=0)
+    exact_percent = Column(DECIMAL(5, 2), default=0)
+    ai_generated_percent = Column(DECIMAL(5, 2), default=0)
+    same_meaning_percent = Column(DECIMAL(5, 2), default=0)
+    translation_percent = Column(DECIMAL(5, 2), default=0)
+    quotation_percent = Column(DECIMAL(5, 2), default=0)
+    suspicious_fingerprint_percent = Column(DECIMAL(5, 2), default=0)
+    points_of_interest = Column(Integer, default=0)
+
+    # Report e dettagli
+    report_pdf_path = Column(Text, nullable=True)
+    scan_details = Column(JSONB, nullable=True)  # JSON completo risultati + POIs
+
+    # Sorgente della scansione
+    source_type = Column(String(50), nullable=True)  # 'generate', 'humanize', 'thesis', 'manual'
+    source_job_id = Column(String(50), nullable=True)  # job_id del contenuto originale
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relazioni
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<CompilatioScan(id={self.id}, ai={self.ai_generated_percent}%, similarity={self.similarity_percent}%)>"
+
+    def to_dict(self) -> dict:
+        return {
+            "scan_id": str(self.id),
+            "job_id": self.job_id,
+            "document_filename": self.document_filename,
+            "word_count": self.word_count,
+            "global_score_percent": float(self.global_score_percent or 0),
+            "similarity_percent": float(self.similarity_percent or 0),
+            "exact_percent": float(self.exact_percent or 0),
+            "ai_generated_percent": float(self.ai_generated_percent or 0),
+            "same_meaning_percent": float(self.same_meaning_percent or 0),
+            "translation_percent": float(self.translation_percent or 0),
+            "quotation_percent": float(self.quotation_percent or 0),
+            "suspicious_fingerprint_percent": float(self.suspicious_fingerprint_percent or 0),
+            "points_of_interest": self.points_of_interest or 0,
+            "source_type": self.source_type,
+            "source_job_id": self.source_job_id,
+            "has_report": bool(self.report_pdf_path),
+            "created_at": self.created_at,
+            "completed_at": self.completed_at,
         }
 
 

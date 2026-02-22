@@ -20,6 +20,7 @@ from models import (
     GenerationRequest, GenerationResponse,
     HumanizeRequest, HumanizeResponse,
     AntiAICorrectionRequest, AntiAICorrectionResponse,
+    CompilatioScanRequest, CompilatioScanResponse, CompilatioScanResult, CompilatioScanListResponse,
     RenameRequest,
     JobStatusResponse, SessionInfo, SessionListResponse,
     ErrorResponse, HealthResponse,
@@ -629,6 +630,188 @@ async def anti_ai_correction_endpoint(
         status='pending',
         message=f"Correzione Anti-AI avviata. Monitora lo stato con GET /jobs/{job_id}",
         created_at=datetime.now()
+    )
+
+
+# ============================================================================
+# COMPILATIO SCAN ENDPOINTS (Admin-only)
+# ============================================================================
+
+from auth import get_current_admin_user
+from compilatio_service import get_compilatio_service, CompilatioService
+from db_models import CompilatioScan
+import uuid as uuid_module
+
+
+def compilatio_scan_task(
+    text: str,
+    scan_user_id: str = None,
+    scan_job_id: str = None,
+    source_type: str = None,
+    source_job_id: str = None
+) -> str:
+    """
+    Task sincrono per la scansione Compilatio.
+    Viene eseguito in background dal job_manager.
+    """
+    service = get_compilatio_service()
+
+    def progress_callback(progress: int):
+        """Aggiorna il progresso del job nel DB."""
+        try:
+            from database import SessionLocal
+            from db_models import Job as JobModel
+            db = SessionLocal()
+            try:
+                db_job = db.query(JobModel).filter_by(job_id=scan_job_id).first()
+                if db_job:
+                    db_job.progress = progress
+                    db.commit()
+            finally:
+                db.close()
+            # Aggiorna anche in memoria
+            job = job_manager._active_jobs.get(scan_job_id)
+            if job:
+                job.progress = progress
+        except Exception:
+            pass
+
+    return service.scan_text(
+        text=text,
+        user_id=scan_user_id,
+        job_id=scan_job_id,
+        source_type=source_type,
+        source_job_id=source_job_id,
+        progress_callback=progress_callback
+    )
+
+
+@app.post("/compilatio/scan", response_model=CompilatioScanResponse, tags=["Compilatio"])
+async def compilatio_scan(
+    request: CompilatioScanRequest,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Avvia una scansione Compilatio per rilevare contenuto AI e plagio.
+
+    **Solo admin.** Il testo viene convertito in PDF e inviato a Compilatio per analisi.
+    I risultati includono percentuali di AI, similarità, plagio e un report PDF dettagliato.
+
+    Se il testo è già stato scansionato (dedup via hash), ritorna il risultato cached.
+    """
+    user_id = str(current_user.id)
+
+    # Check dedup: se esiste già una scansione per questo testo
+    text_hash = CompilatioService.compute_text_hash(request.text)
+    existing = CompilatioService.check_existing_scan(text_hash, user_id, db)
+    if existing:
+        return CompilatioScanResponse(
+            job_id=existing.get("job_id", "cached"),
+            status="completed",
+            message="Risultato trovato in cache (scansione già effettuata per questo testo)",
+            created_at=existing.get("created_at", datetime.now()),
+            cached=True,
+            cached_scan=existing
+        )
+
+    # Stima e deduzione crediti
+    credit_estimate = estimate_credits('compilatio_scan', {'text_length': len(request.text)}, db=db)
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate['credits_needed'],
+        operation_type='compilatio_scan',
+        description=f"Scansione Compilatio ({len(request.text)} caratteri)",
+        db=db
+    )
+
+    # Pre-genera job_id per passarlo alla task function
+    pre_job_id = f"job_{uuid_module.uuid4().hex[:12]}"
+
+    # Crea job
+    text_preview = request.text[:40].replace('\n', ' ')
+    job_name = f"Compilatio Scan: {text_preview}..."
+    job_id = job_manager.create_job(
+        session_id=None,
+        user_id=user_id,
+        job_type='compilatio_scan',
+        task_func=compilatio_scan_task,
+        job_id=pre_job_id,
+        name=job_name,
+        text=request.text,
+        scan_user_id=user_id,
+        scan_job_id=pre_job_id,
+        source_type=request.source_type,
+        source_job_id=request.source_job_id
+    )
+
+    # Esegui in background
+    background_tasks.add_task(job_manager.execute_job, job_id)
+
+    return CompilatioScanResponse(
+        job_id=job_id,
+        status='pending',
+        message=f"Scansione Compilatio avviata. Monitora lo stato con GET /jobs/{job_id}",
+        created_at=datetime.now(),
+        cached=False
+    )
+
+
+@app.get("/compilatio/scans", response_model=CompilatioScanListResponse, tags=["Compilatio"])
+async def list_compilatio_scans(
+    limit: int = 20,
+    offset: int = 0,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Lista tutte le scansioni Compilatio dell'utente admin.
+    Ordinate per data di creazione decrescente.
+    """
+    user_id = current_user.id
+
+    total = db.query(CompilatioScan).filter(
+        CompilatioScan.user_id == user_id,
+        CompilatioScan.completed_at.isnot(None)
+    ).count()
+
+    scans = db.query(CompilatioScan).filter(
+        CompilatioScan.user_id == user_id,
+        CompilatioScan.completed_at.isnot(None)
+    ).order_by(
+        CompilatioScan.created_at.desc()
+    ).offset(offset).limit(limit).all()
+
+    return CompilatioScanListResponse(
+        scans=[s.to_dict() for s in scans],
+        total=total
+    )
+
+
+@app.get("/compilatio/report/{scan_id}", tags=["Compilatio"])
+async def download_compilatio_report(
+    scan_id: str,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Scarica il report PDF di una scansione Compilatio.
+    """
+    scan = db.query(CompilatioScan).filter(
+        CompilatioScan.id == scan_id,
+    ).first()
+
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scansione non trovata")
+
+    if not scan.report_pdf_path or not Path(scan.report_pdf_path).exists():
+        raise HTTPException(status_code=404, detail="Report PDF non disponibile")
+
+    return FileResponse(
+        path=scan.report_pdf_path,
+        media_type="application/pdf",
+        filename=f"compilatio_report_{scan_id[:8]}.pdf"
     )
 
 

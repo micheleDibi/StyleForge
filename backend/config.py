@@ -70,6 +70,17 @@ CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 # Rate Limiting (requests per minute)
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 
+# Compilatio Integration (Admin-only AI Detection)
+COMPILATIO_USERNAME = os.getenv("COMPILATIO_USERNAME", "")
+COMPILATIO_PASSWORD = os.getenv("COMPILATIO_PASSWORD", "")
+COMPILATIO_BASE_URL = os.getenv("COMPILATIO_BASE_URL", "https://app.compilatio.net")
+COMPILATIO_RECIPE = os.getenv("COMPILATIO_RECIPE", "anasim-studium")
+COMPILATIO_REPORT_LANG = os.getenv("COMPILATIO_REPORT_LANG", "it")
+COMPILATIO_POLL_INTERVAL = int(os.getenv("COMPILATIO_POLL_INTERVAL", "5"))
+COMPILATIO_MAX_RETRIES = int(os.getenv("COMPILATIO_MAX_RETRIES", "120"))
+COMPILATIO_REPORTS_DIR = Path(os.getenv("COMPILATIO_REPORTS_DIR", "./compilatio_reports"))
+COMPILATIO_REPORTS_DIR.mkdir(exist_ok=True, parents=True)
+
 # Versione API
 API_VERSION = "1.0.0"
 API_TITLE = "StyleForge API"

@@ -719,4 +719,36 @@ export const getExportTemplates = async () => {
   return response.data;
 };
 
+// ============================================================================
+// COMPILATIO SCAN (Admin-only)
+// ============================================================================
+
+export const startCompilatioScan = async (text, sourceType = null, sourceJobId = null) => {
+  const response = await api.post('/compilatio/scan', {
+    text,
+    source_type: sourceType,
+    source_job_id: sourceJobId
+  });
+  return response.data;
+};
+
+export const getCompilatioScans = async (limit = 20, offset = 0) => {
+  const response = await api.get('/compilatio/scans', { params: { limit, offset } });
+  return response.data;
+};
+
+export const downloadCompilatioReport = async (scanId) => {
+  const response = await api.get(`/compilatio/report/${scanId}`, {
+    responseType: 'blob'
+  });
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `compilatio_report_${scanId.substring(0, 8)}.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
 export default api;

@@ -46,13 +46,17 @@ DEFAULT_CREDIT_COSTS = {
         'per_section': 3,   # per sezione
         'per_1000_words_target': 1,  # per 1000 parole target per sezione
     },
+    'compilatio_scan': {
+        'base': 5,           # costo base per scansione Compilatio
+        'per_1000_chars': 1, # per 1000 caratteri analizzati
+    },
 }
 
 # Alias per compatibilita' con import esistenti
 CREDIT_COSTS = DEFAULT_CREDIT_COSTS
 
 # Lista codici permesso disponibili
-PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates']
+PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan']
 
 
 # ============================================================================
@@ -265,6 +269,17 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
             "parole": f"{total_sections * words_per_section:,} parole totali x {costs['per_1000_words_target']}/1000 = {word_cost}",
             "parole_crediti": word_cost,
             "info": f"{num_chapters} capitoli, {sections_per_chapter} sezioni/capitolo, {words_per_section} parole/sezione"
+        }
+
+    elif operation_type == 'compilatio_scan':
+        base = costs['base']
+        chars = params.get('text_length', 0)
+        char_cost = math.ceil(chars / 1000 * costs['per_1000_chars'])
+        total = base + char_cost
+        breakdown = {
+            "base": base,
+            "caratteri": f"{chars} caratteri x {costs['per_1000_chars']}/1000 = {char_cost}",
+            "caratteri_crediti": char_cost
         }
 
     return {

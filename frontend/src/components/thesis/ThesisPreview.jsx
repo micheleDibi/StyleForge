@@ -1,14 +1,21 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Download, FileText, Eye, Copy, Check, Loader, FileType, FileCode, BookOpen, List, Calendar, User, Settings, ChevronDown } from 'lucide-react';
-import { exportThesis, getExportTemplates } from '../../services/api';
+import { Download, FileText, Eye, Copy, Check, Loader, FileType, FileCode, BookOpen, List, Calendar, User, Settings, ChevronDown, Shield, AlertTriangle } from 'lucide-react';
+import { exportThesis, getExportTemplates, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../../services/api';
 
-const ThesisPreview = ({ thesis, content }) => {
+const ThesisPreview = ({ thesis, content, isAdmin }) => {
   const [activeTab, setActiveTab] = useState('preview');
   const [exportFormat, setExportFormat] = useState('pdf');
   const [isExporting, setIsExporting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+
+  // Compilatio scan state (admin-only)
+  const [compilatioScanning, setCompilatioScanning] = useState(false);
+  const [compilatioResult, setCompilatioResult] = useState(null);
+  const [compilatioError, setCompilatioError] = useState(null);
+  const [compilatioJobId, setCompilatioJobId] = useState(null);
+  const [compilatioProgress, setCompilatioProgress] = useState(0);
 
   // Carica i template disponibili
   useEffect(() => {
@@ -47,6 +54,70 @@ const ThesisPreview = ({ thesis, content }) => {
     } catch (err) {
       console.error('Errore copia:', err);
     }
+  };
+
+  // Compilatio scan handler (admin-only)
+  const handleCompilatioScan = async () => {
+    if (!content || compilatioScanning) return;
+
+    setCompilatioScanning(true);
+    setCompilatioError(null);
+    setCompilatioResult(null);
+    setCompilatioProgress(0);
+
+    try {
+      const response = await startCompilatioScan(content, 'thesis', thesis?.id);
+
+      // Se risultato cached, mostra subito
+      if (response.cached && response.cached_scan) {
+        setCompilatioResult(response.cached_scan);
+        setCompilatioScanning(false);
+        return;
+      }
+
+      // Poll per il risultato
+      setCompilatioJobId(response.job_id);
+      const finalStatus = await pollJobStatus(
+        response.job_id,
+        (status) => {
+          setCompilatioProgress(status.progress || 0);
+        },
+        4000
+      );
+
+      if (finalStatus.status === 'completed' && finalStatus.result) {
+        try {
+          const scanResult = JSON.parse(finalStatus.result);
+          setCompilatioResult(scanResult);
+        } catch {
+          setCompilatioResult(finalStatus.result);
+        }
+      } else if (finalStatus.status === 'failed') {
+        setCompilatioError(finalStatus.error || 'Scansione fallita');
+      }
+    } catch (error) {
+      console.error('Errore scansione Compilatio:', error);
+      setCompilatioError(error.response?.data?.detail || 'Errore durante la scansione');
+    } finally {
+      setCompilatioScanning(false);
+    }
+  };
+
+  const handleDownloadCompilatioReport = async () => {
+    if (compilatioResult?.scan_id) {
+      try {
+        await downloadCompilatioReport(compilatioResult.scan_id);
+      } catch (error) {
+        console.error('Errore download report:', error);
+        alert('Errore nel download del report');
+      }
+    }
+  };
+
+  const getAIScoreColor = (percent) => {
+    if (percent <= 5) return 'text-green-600 bg-green-50 border-green-200';
+    if (percent <= 20) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    return 'text-red-600 bg-red-50 border-red-200';
   };
 
   const formatExportOptions = [
@@ -348,6 +419,101 @@ const ThesisPreview = ({ thesis, content }) => {
           )}
         </div>
       </div>
+
+      {/* Compilatio Scan - Admin Only */}
+      {isAdmin && content && (
+        <div className="card">
+          <div className="flex items-center gap-2 mb-4">
+            <Shield className="w-5 h-5 text-purple-500" />
+            <h3 className="font-semibold text-slate-900">Scansione Detector AI</h3>
+            <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full font-medium">Admin</span>
+          </div>
+
+          {!compilatioResult && !compilatioScanning && !compilatioError && (
+            <div>
+              <p className="text-sm text-slate-600 mb-3">
+                Analizza la tesi per rilevamento AI e plagio.
+              </p>
+              <button
+                onClick={handleCompilatioScan}
+                className="btn gap-2 text-sm bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 h-10"
+              >
+                <Shield className="w-4 h-4" />
+                Avvia Scansione Detector AI
+              </button>
+            </div>
+          )}
+
+          {compilatioScanning && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <Loader className="w-5 h-5 text-purple-600 animate-spin" />
+                <span className="text-purple-700 font-medium text-sm">Scansione Detector AI in corso...</span>
+              </div>
+              <div className="w-full bg-purple-200 rounded-full h-2">
+                <div
+                  className="bg-gradient-to-r from-purple-500 to-indigo-500 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${compilatioProgress}%` }}
+                ></div>
+              </div>
+              <p className="text-xs text-purple-500 mt-1">L'analisi della tesi puo' richiedere alcuni minuti</p>
+            </div>
+          )}
+
+          {compilatioError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+              <span className="text-red-700 text-sm">{compilatioError}</span>
+              <button onClick={handleCompilatioScan} className="ml-auto text-red-600 hover:text-red-800 text-sm underline">
+                Riprova
+              </button>
+            </div>
+          )}
+
+          {compilatioResult && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">Risultati analisi</span>
+                {compilatioResult.has_report && (
+                  <button
+                    onClick={handleDownloadCompilatioReport}
+                    className="btn btn-secondary gap-1 text-xs h-8"
+                  >
+                    <FileText className="w-3 h-3" />
+                    Report PDF
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className={`rounded-lg p-3 border ${getAIScoreColor(compilatioResult.ai_generated_percent)}`}>
+                  <div className="text-2xl font-bold">{compilatioResult.ai_generated_percent?.toFixed(1)}%</div>
+                  <div className="text-xs font-medium opacity-80">AI Generato</div>
+                </div>
+                <div className="rounded-lg p-3 border bg-blue-50 border-blue-200 text-blue-600">
+                  <div className="text-2xl font-bold">{compilatioResult.similarity_percent?.toFixed(1)}%</div>
+                  <div className="text-xs font-medium opacity-80">Similarita</div>
+                </div>
+                <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
+                  <div className="text-lg font-bold">{compilatioResult.global_score_percent?.toFixed(1)}%</div>
+                  <div className="text-xs font-medium opacity-80">Score Globale</div>
+                </div>
+                <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
+                  <div className="text-lg font-bold">{compilatioResult.exact_percent?.toFixed(1)}%</div>
+                  <div className="text-xs font-medium opacity-80">Match Esatti</div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleCompilatioScan}
+                className="text-xs text-purple-600 hover:text-purple-800 underline"
+              >
+                Riesegui scansione
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex justify-between items-center">

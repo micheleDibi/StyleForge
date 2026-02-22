@@ -74,6 +74,7 @@ class JobType(str, Enum):
     GENERATION = "generation"
     HUMANIZATION = "humanization"
     THESIS_GENERATION = "thesis_generation"
+    COMPILATIO_SCAN = "compilatio_scan"
 
 
 class ThesisStatus(str, Enum):
@@ -693,3 +694,61 @@ class ExportTemplateListResponse(BaseModel):
 class ExportTemplateUpdateRequest(BaseModel):
     """Request per aggiornare i template."""
     templates: List[ExportTemplate] = Field(..., description="Lista completa template")
+
+
+# ============================================================================
+# COMPILATIO SCAN
+# ============================================================================
+
+class CompilatioScanRequest(BaseModel):
+    """Request per avviare una scansione Compilatio."""
+    text: str = Field(..., min_length=50, description="Testo da analizzare (min 50 caratteri)")
+    source_type: Optional[str] = Field(None, description="Sorgente: 'generate', 'humanize', 'thesis', 'manual'")
+    source_job_id: Optional[str] = Field(None, description="Job ID del contenuto originale")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "text": "Il testo da analizzare per rilevare contenuto AI...",
+                "source_type": "generate",
+                "source_job_id": "job_abc123"
+            }
+        }
+
+
+class CompilatioScanResponse(BaseModel):
+    """Response avvio scansione Compilatio."""
+    job_id: str
+    status: JobStatus
+    message: str
+    created_at: datetime
+    cached: bool = Field(False, description="True se il risultato proviene dalla cache (dedup)")
+    cached_scan: Optional[Dict[str, Any]] = Field(None, description="Risultato cached se disponibile")
+
+
+class CompilatioScanResult(BaseModel):
+    """Risultato completo di una scansione Compilatio."""
+    scan_id: str
+    job_id: str
+    document_filename: str
+    word_count: int
+    global_score_percent: float
+    similarity_percent: float
+    exact_percent: float
+    ai_generated_percent: float
+    same_meaning_percent: float
+    translation_percent: float
+    quotation_percent: float
+    suspicious_fingerprint_percent: float
+    points_of_interest: int
+    source_type: Optional[str] = None
+    source_job_id: Optional[str] = None
+    has_report: bool = False
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+
+
+class CompilatioScanListResponse(BaseModel):
+    """Lista scansioni Compilatio."""
+    scans: List[CompilatioScanResult]
+    total: int

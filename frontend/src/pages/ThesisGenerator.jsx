@@ -560,6 +560,7 @@ const ThesisGenerator = () => {
             <ThesisPreview
               thesis={thesis}
               content={generatedContent}
+              isAdmin={isAdmin}
             />
           )}
         </div>

@@ -5,7 +5,7 @@ import {
   Sparkles, RefreshCw, Trash2, ChevronRight, Wand2,
   Clock, CheckCircle2, AlertCircle, Zap, User, Settings,
   TrendingUp, Layers, Brain, BookOpen, Calendar, Download,
-  ChevronDown, Eye, List, Coins, Shield, Pencil, Play
+  ChevronDown, Eye, List, Coins, Shield, Pencil, Play, Search
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates } from '../services/api';
@@ -570,6 +570,31 @@ const Dashboard = () => {
                 <span className="badge" style={{ backgroundColor: '#ede9fe', color: '#5b21b6' }}>
                   <Settings className="w-3 h-3" />
                   Amministrazione
+                </span>
+              </div>
+            </button>
+          )}
+
+          {/* Compilatio Scan - Solo per admin */}
+          {isAdmin && (
+            <button
+              onClick={() => navigate('/humanize')}
+              className="glass rounded-2xl p-6 hover:shadow-xl transition-all group cursor-pointer text-left border-2 border-transparent hover:border-indigo-200"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-indigo-500/30">
+                  <Search className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-lg text-gray-900">Detector AI</h3>
+                  <p className="text-sm text-gray-500">Scansione AI Detection e Plagio</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="badge" style={{ backgroundColor: '#e0e7ff', color: '#3730a3' }}>
+                  <Shield className="w-3 h-3" />
+                  Admin Only
                 </span>
               </div>
             </button>
