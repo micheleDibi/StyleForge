@@ -187,7 +187,12 @@ class JobManager:
             db = self._get_db()
             try:
                 # Aggiorna stato in memoria e database
-                job.status = 'training' if job.job_type == JobType.TRAINING or job.job_type == 'training' else 'generating'
+                if job.job_type in (JobType.TRAINING, 'training'):
+                    job.status = 'training'
+                elif job.job_type in (JobType.IMAGE_ENHANCEMENT, 'image_enhancement'):
+                    job.status = 'enhancing'
+                else:
+                    job.status = 'generating'
                 job.updated_at = datetime.utcnow()
                 job.progress = 10
 
@@ -465,7 +470,7 @@ class JobManager:
         db = self._get_db()
         try:
             query = db.query(JobModel).filter(
-                JobModel.status.in_(['pending', 'training', 'generating'])
+                JobModel.status.in_(['pending', 'training', 'generating', 'enhancing'])
             )
             if user_id:
                 query = query.filter(JobModel.user_id == user_id)

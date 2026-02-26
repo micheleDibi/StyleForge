@@ -50,13 +50,26 @@ DEFAULT_CREDIT_COSTS = {
         'base': 5,           # costo base per scansione Compilatio
         'per_1000_chars': 1, # per 1000 caratteri analizzati
     },
+    'image_enhance_basic': {
+        'base': 2,           # costo base per enhancement basico (Pillow)
+    },
+    'image_enhance_ai': {
+        'base': 8,           # costo base per analisi AI (Claude Vision)
+    },
+    'image_enhance_upscale': {
+        'base': 3,           # costo base per upscaling
+        'per_factor': 1,     # extra per unita' di fattore scala
+    },
+    'image_enhance_color': {
+        'base': 2,           # costo base per correzione colore (OpenCV)
+    },
 }
 
 # Alias per compatibilita' con import esistenti
 CREDIT_COSTS = DEFAULT_CREDIT_COSTS
 
 # Lista codici permesso disponibili
-PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan']
+PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'image_enhance']
 
 
 # ============================================================================
@@ -280,6 +293,24 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
             "base": base,
             "caratteri": f"{chars} caratteri x {costs['per_1000_chars']}/1000 = {char_cost}",
             "caratteri_crediti": char_cost
+        }
+
+    elif operation_type in ('image_enhance_basic', 'image_enhance_ai', 'image_enhance_color'):
+        total = costs['base']
+        breakdown = {
+            "base": total,
+            "descrizione": f"Image Enhancement ({operation_type.replace('image_enhance_', '')})"
+        }
+
+    elif operation_type == 'image_enhance_upscale':
+        base = costs['base']
+        scale_factor = params.get('scale_factor', 2.0)
+        factor_cost = math.ceil(scale_factor * costs.get('per_factor', 1))
+        total = base + factor_cost
+        breakdown = {
+            "base": base,
+            "fattore_scala": f"{scale_factor}x = {factor_cost} crediti",
+            "fattore_crediti": factor_cost
         }
 
     return {

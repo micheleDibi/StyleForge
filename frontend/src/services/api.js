@@ -758,4 +758,74 @@ export const downloadCompilatioReport = async (scanId) => {
   window.URL.revokeObjectURL(url);
 };
 
+// ============================================================================
+// IMAGE ENHANCEMENT
+// ============================================================================
+
+export const enhanceImage = async (file, enhancementType = 'basic', params = {}, onProgress = null) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('enhancement_type', enhancementType);
+  formData.append('params', JSON.stringify(params));
+
+  const response = await api.post('/api/image/enhance', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+    onUploadProgress: onProgress ? (progressEvent) => {
+      const progress = (progressEvent.loaded / progressEvent.total) * 100;
+      onProgress(progress);
+    } : undefined
+  });
+  return response.data;
+};
+
+export const analyzeImage = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await api.post('/api/image/analyze', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000
+  });
+  return response.data;
+};
+
+export const downloadEnhancedImage = async (jobId) => {
+  const response = await api.get(`/api/image/download/${jobId}`, {
+    responseType: 'blob'
+  });
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `enhanced_image_${jobId.substring(0, 8)}.png`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const getEnhancementResult = async (jobId) => {
+  const response = await api.get(`/api/image/result/${jobId}`);
+  return response.data;
+};
+
+export const getEnhancementHistory = async (limit = 20, offset = 0) => {
+  const response = await api.get('/api/image/history', { params: { limit, offset } });
+  return response.data;
+};
+
+export const getOriginalImageBlob = async (jobId) => {
+  const response = await api.get(`/api/image/download-original/${jobId}`, {
+    responseType: 'blob'
+  });
+  return response.data;
+};
+
+export const getEnhancedImageBlob = async (jobId) => {
+  const response = await api.get(`/api/image/download/${jobId}`, {
+    responseType: 'blob'
+  });
+  return response.data;
+};
+
 export default api;

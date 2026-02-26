@@ -14,6 +14,7 @@ class JobStatus(str, Enum):
     TRAINING = "training"
     READY = "ready"
     GENERATING = "generating"
+    ENHANCING = "enhancing"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -75,6 +76,7 @@ class JobType(str, Enum):
     HUMANIZATION = "humanization"
     THESIS_GENERATION = "thesis_generation"
     COMPILATIO_SCAN = "compilatio_scan"
+    IMAGE_ENHANCEMENT = "image_enhancement"
 
 
 class ThesisStatus(str, Enum):
@@ -752,3 +754,45 @@ class CompilatioScanListResponse(BaseModel):
     """Lista scansioni Compilatio."""
     scans: List[CompilatioScanResult]
     total: int
+
+
+# ============================================================================
+# IMAGE ENHANCEMENT
+# ============================================================================
+
+class EnhancementType(str, Enum):
+    """Tipi di miglioramento immagine disponibili."""
+    BASIC = "basic"
+    AI_ANALYSIS = "ai_analysis"
+    UPSCALE = "upscale"
+    COLOR_CORRECTION = "color_correction"
+
+
+class ImageEnhanceResponse(BaseModel):
+    """Response per creazione job di image enhancement."""
+    job_id: str
+    enhancement_id: str
+    status: JobStatus
+    message: str
+    created_at: datetime
+
+
+class ImageAnalysisResult(BaseModel):
+    """Risultato dell'analisi AI con Claude Vision."""
+    overall_quality: str
+    issues_detected: List[str]
+    suggestions: List[Dict[str, Any]]
+    auto_params: Dict[str, Any]
+
+
+class ImageEnhancementResult(BaseModel):
+    """Risultato completo di un enhancement."""
+    enhancement_id: str
+    job_id: str
+    original_filename: str
+    enhancement_type: str
+    original_dimensions: Dict[str, int]
+    enhanced_dimensions: Dict[str, int]
+    ai_analysis: Optional[ImageAnalysisResult] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   FileText, LogOut, Upload, Sparkles, RefreshCw, Trash2, Wand2,
   Clock, CheckCircle2, AlertCircle, Zap, User, Settings,
-  Layers, Brain, BookOpen, Calendar, Download,
+  Layers, Brain, BookOpen, Calendar, Download, ImagePlus,
   ChevronDown, Eye, Play, Coins, Shield, Pencil, Search,
   ArrowUpRight, ScanSearch, FileDown, BarChart3
 } from 'lucide-react';
@@ -90,7 +90,7 @@ const Dashboard = () => {
   };
 
   const nonScanJobs = useMemo(() => jobs.filter(j => j.job_type !== 'compilatio_scan'), [jobs]);
-  const activeJobs = useMemo(() => nonScanJobs.filter(j => ['pending','training','generating'].includes(j.status)), [nonScanJobs]);
+  const activeJobs = useMemo(() => nonScanJobs.filter(j => ['pending','training','generating','enhancing'].includes(j.status)), [nonScanJobs]);
   const completedJobs = useMemo(() => nonScanJobs.filter(j => ['completed','failed'].includes(j.status)), [nonScanJobs]);
   const trainedSessions = useMemo(() => sessions.filter(s => s.is_trained).length, [sessions]);
   const completedTheses = useMemo(() => theses.filter(t => t.status === 'completed').length, [theses]);
@@ -122,6 +122,7 @@ const Dashboard = () => {
     hasPermission('generate') && { key: 'gen', icon: FileText, label: 'Genera', desc: 'Crea contenuti con il tuo stile', gradient: 'from-blue-400 to-blue-600', path: '/generate' },
     hasPermission('humanize') && { key: 'hum', icon: Wand2, label: 'Umanizza', desc: 'Bypassa AI detection', gradient: 'from-purple-400 to-purple-600', path: '/humanize' },
     hasPermission('thesis') && { key: 'thesis', icon: BookOpen, label: 'Tesi / Relazione', desc: 'Genera documenti completi', gradient: 'from-green-400 to-green-600', path: '/thesis' },
+    hasPermission('image_enhance') && { key: 'image', icon: ImagePlus, label: 'Migliora Immagini', desc: 'Enhancement AI delle immagini', gradient: 'from-cyan-400 to-teal-600', path: '/image-enhance' },
     isAdmin && { key: 'detector', icon: ScanSearch, label: 'Detector AI', desc: 'Scansione AI e plagio', gradient: 'from-pink-400 to-rose-600', path: '/detector-ai' },
   ].filter(Boolean);
 

@@ -61,6 +61,17 @@ THESIS_MAX_UPLOAD_SIZE = int(os.getenv("THESIS_MAX_UPLOAD_SIZE", "50")) * 1024 *
 THESIS_MAX_ATTACHMENTS = int(os.getenv("THESIS_MAX_ATTACHMENTS", "10"))
 THESIS_MAX_CONTEXT_CHARS = int(os.getenv("THESIS_MAX_CONTEXT_CHARS", "50000"))
 
+# Image Enhancement Configuration
+IMAGE_UPLOADS_DIR = Path(os.getenv("IMAGE_UPLOADS_DIR", "./image_uploads"))
+IMAGE_UPLOADS_DIR.mkdir(exist_ok=True, parents=True)
+IMAGE_RESULTS_DIR = Path(os.getenv("IMAGE_RESULTS_DIR", "./image_results"))
+IMAGE_RESULTS_DIR.mkdir(exist_ok=True, parents=True)
+IMAGE_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+IMAGE_MAX_UPLOAD_SIZE = int(os.getenv("IMAGE_MAX_UPLOAD_SIZE", "20")) * 1024 * 1024  # 20MB
+IMAGE_MAX_DIMENSION = int(os.getenv("IMAGE_MAX_DIMENSION", "8192"))
+IMAGE_UPSCALE_MAX_FACTOR = float(os.getenv("IMAGE_UPSCALE_MAX_FACTOR", "4.0"))
+CLAUDE_VISION_MODEL = os.getenv("CLAUDE_VISION_MODEL", "claude-sonnet-4-20250514")
+
 # Configurazione Prompt
 PROMPT_ADDESTRAMENTO_PATH = Path(os.getenv("PROMPT_ADDESTRAMENTO_PATH", "prompt_addestramento.txt"))
 

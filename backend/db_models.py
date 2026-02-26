@@ -13,13 +13,13 @@ from models import JobStatus, JobType
 # Definisci gli ENUM PostgreSQL che corrispondono a quelli creati in Supabase
 # Usando create_type=False perché gli ENUM esistono già nel database
 pg_job_status = PG_ENUM(
-    'pending', 'training', 'ready', 'generating', 'completed', 'failed',
+    'pending', 'training', 'ready', 'generating', 'enhancing', 'completed', 'failed',
     name='job_status',
     create_type=False
 )
 
 pg_job_type = PG_ENUM(
-    'training', 'generation', 'humanization', 'thesis_generation', 'compilatio_scan',
+    'training', 'generation', 'humanization', 'thesis_generation', 'compilatio_scan', 'image_enhancement',
     name='job_type',
     create_type=False
 )
@@ -629,6 +629,60 @@ class CompilatioScan(Base):
             "source_type": self.source_type,
             "source_job_id": self.source_job_id,
             "has_report": bool(self.report_pdf_path),
+            "created_at": self.created_at,
+            "completed_at": self.completed_at,
+        }
+
+
+class ImageEnhancement(Base):
+    """Record di image enhancement."""
+    __tablename__ = "image_enhancements"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_id = Column(String(50), ForeignKey("jobs.job_id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    original_filename = Column(String(500), nullable=False)
+    original_path = Column(Text, nullable=False)
+    original_width = Column(Integer)
+    original_height = Column(Integer)
+    original_size_bytes = Column(BigInteger)
+
+    enhanced_path = Column(Text)
+    enhanced_width = Column(Integer)
+    enhanced_height = Column(Integer)
+    enhanced_size_bytes = Column(BigInteger)
+
+    enhancement_type = Column(String(50), nullable=False)
+    enhancement_params = Column(JSONB)
+    ai_analysis_result = Column(JSONB)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<ImageEnhancement(id={self.id}, type={self.enhancement_type})>"
+
+    def to_dict(self) -> dict:
+        return {
+            "enhancement_id": str(self.id),
+            "job_id": self.job_id,
+            "original_filename": self.original_filename,
+            "enhancement_type": self.enhancement_type,
+            "enhancement_params": self.enhancement_params,
+            "original_dimensions": {
+                "width": self.original_width,
+                "height": self.original_height
+            },
+            "enhanced_dimensions": {
+                "width": self.enhanced_width,
+                "height": self.enhanced_height
+            },
+            "original_size_bytes": self.original_size_bytes,
+            "enhanced_size_bytes": self.enhanced_size_bytes,
+            "ai_analysis": self.ai_analysis_result,
             "created_at": self.created_at,
             "completed_at": self.completed_at,
         }
