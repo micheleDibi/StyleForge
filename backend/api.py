@@ -35,6 +35,7 @@ from auth import get_current_user, get_current_active_user, require_permission
 from auth_routes import router as auth_router
 from thesis_routes import router as thesis_router
 from admin_routes import router as admin_router
+from image_enhance_routes import router as image_enhance_router
 from db_models import User
 from database import init_db, get_db
 from ai_exceptions import InsufficientCreditsError
@@ -72,6 +73,9 @@ app.include_router(thesis_router)
 
 # Registra router admin
 app.include_router(admin_router)
+
+# Registra router image enhancement
+app.include_router(image_enhance_router)
 
 
 # ============================================================================

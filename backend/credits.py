@@ -50,13 +50,16 @@ DEFAULT_CREDIT_COSTS = {
         'base': 5,           # costo base per scansione Compilatio
         'per_1000_chars': 1, # per 1000 caratteri analizzati
     },
+    'enhance_image': {
+        'base': 5,           # costo base per miglioramento immagine con AI
+    },
 }
 
 # Alias per compatibilita' con import esistenti
 CREDIT_COSTS = DEFAULT_CREDIT_COSTS
 
 # Lista codici permesso disponibili
-PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan']
+PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'enhance_image']
 
 
 # ============================================================================
@@ -280,6 +283,13 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
             "base": base,
             "caratteri": f"{chars} caratteri x {costs['per_1000_chars']}/1000 = {char_cost}",
             "caratteri_crediti": char_cost
+        }
+
+    elif operation_type == 'enhance_image':
+        total = costs['base']
+        breakdown = {
+            "base": total,
+            "descrizione": "Miglioramento immagine con AI"
         }
 
     return {

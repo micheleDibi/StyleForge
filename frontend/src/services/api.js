@@ -758,4 +758,27 @@ export const downloadCompilatioReport = async (scanId) => {
   window.URL.revokeObjectURL(url);
 };
 
+// ============================================================================
+// IMAGE ENHANCEMENT
+// ============================================================================
+
+export const enhanceImage = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await api.post('/api/image/enhance', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  });
+  return response.data;
+};
+
+export const estimateEnhanceCredits = async () => {
+  const response = await api.post('/credits/estimate', {
+    operation_type: 'enhance_image',
+    params: {}
+  });
+  return response.data;
+};
+
 export default api;

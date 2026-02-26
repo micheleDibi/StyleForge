@@ -10,6 +10,7 @@ import SessionDetail from './pages/SessionDetail';
 import ThesisGenerator from './pages/ThesisGenerator';
 import Admin from './pages/Admin';
 import DetectorAI from './pages/DetectorAI';
+import EnhanceImage from './pages/EnhanceImage';
 import Helper from './components/Helper';
 import Footer from './components/Footer';
 
@@ -157,6 +158,14 @@ const AppRoutes = () => {
         element={
           <PermissionRoute permission="thesis">
             <ThesisGenerator />
+          </PermissionRoute>
+        }
+      />
+      <Route
+        path="/enhance-image"
+        element={
+          <PermissionRoute permission="enhance_image">
+            <EnhanceImage />
           </PermissionRoute>
         }
       />

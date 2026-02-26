@@ -81,6 +81,12 @@ COMPILATIO_MAX_RETRIES = int(os.getenv("COMPILATIO_MAX_RETRIES", "120"))
 COMPILATIO_REPORTS_DIR = Path(os.getenv("COMPILATIO_REPORTS_DIR", "./compilatio_reports"))
 COMPILATIO_REPORTS_DIR.mkdir(exist_ok=True, parents=True)
 
+# Configurazione Image Enhancement
+IMAGE_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+IMAGE_MAX_UPLOAD_SIZE = int(os.getenv("IMAGE_MAX_UPLOAD_SIZE", "10")) * 1024 * 1024  # 10MB
+IMAGE_MAX_DIMENSION = int(os.getenv("IMAGE_MAX_DIMENSION", "4096"))
+IMAGE_ENHANCE_MODEL = os.getenv("IMAGE_ENHANCE_MODEL", "claude-opus-4-6")
+
 # Versione API
 API_VERSION = "1.0.0"
 API_TITLE = "StyleForge API"
