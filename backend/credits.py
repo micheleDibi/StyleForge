@@ -53,13 +53,17 @@ DEFAULT_CREDIT_COSTS = {
     'enhance_image': {
         'base': 5,           # costo base per miglioramento immagine con AI
     },
+    'carousel_creator': {
+        'base': 3,           # costo base per link processato
+        'image_enhance': 3,  # costo aggiuntivo per enhancement immagine
+    },
 }
 
 # Alias per compatibilita' con import esistenti
 CREDIT_COSTS = DEFAULT_CREDIT_COSTS
 
 # Lista codici permesso disponibili
-PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'enhance_image']
+PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'enhance_image', 'carousel_creator']
 
 
 # ============================================================================
@@ -291,6 +295,19 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
             "base": total,
             "descrizione": "Miglioramento immagine con AI"
         }
+
+    elif operation_type == 'carousel_creator':
+        base = costs['base']
+        include_image = params.get('include_image', False)
+        image_cost = costs.get('image_enhance', 3) if include_image else 0
+        total = base + image_cost
+        breakdown = {
+            "base": base,
+            "descrizione": "Generazione contenuto Instagram da articolo"
+        }
+        if include_image:
+            breakdown["immagine"] = f"Enhancement immagine: {image_cost}"
+            breakdown["immagine_crediti"] = image_cost
 
     return {
         "credits_needed": total,

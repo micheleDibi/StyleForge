@@ -24,10 +24,12 @@ const PERMISSION_LABELS = {
   humanize: 'Umanizza Testo',
   thesis: 'Tesi / Relazione',
   manage_templates: 'Gestione Template',
-  compilatio_scan: 'Detector AI'
+  compilatio_scan: 'Detector AI',
+  enhance_image: 'Migliora Immagine',
+  carousel_creator: 'Carosello / Post / Copertina'
 };
 
-const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan'];
+const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'enhance_image', 'carousel_creator'];
 
 // Labels per le operazioni dei costi crediti
 const COST_OPERATION_LABELS = {
@@ -37,7 +39,9 @@ const COST_OPERATION_LABELS = {
   thesis_chapters: { label: 'Tesi - Capitoli', icon: '📚', fields: { base: 'Costo base' } },
   thesis_sections: { label: 'Tesi - Sezioni', icon: '📄', fields: { base: 'Costo base' } },
   thesis_content: { label: 'Tesi - Contenuto', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
-  compilatio_scan: { label: 'Detector AI', icon: '🔍', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } }
+  compilatio_scan: { label: 'Detector AI', icon: '🔍', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
+  enhance_image: { label: 'Migliora Immagine', icon: '🖼️', fields: { base: 'Costo base' } },
+  carousel_creator: { label: 'Carosello / Post / Copertina', icon: '📱', fields: { base: 'Costo base', image_enhance: 'Enhancement immagine' } }
 };
 
 const Admin = () => {

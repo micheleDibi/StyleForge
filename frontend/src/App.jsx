@@ -11,6 +11,7 @@ import ThesisGenerator from './pages/ThesisGenerator';
 import Admin from './pages/Admin';
 import DetectorAI from './pages/DetectorAI';
 import EnhanceImage from './pages/EnhanceImage';
+import CarouselCreator from './pages/CarouselCreator';
 import Helper from './components/Helper';
 import Footer from './components/Footer';
 
@@ -166,6 +167,14 @@ const AppRoutes = () => {
         element={
           <PermissionRoute permission="enhance_image">
             <EnhanceImage />
+          </PermissionRoute>
+        }
+      />
+      <Route
+        path="/carousel"
+        element={
+          <PermissionRoute permission="carousel_creator">
+            <CarouselCreator />
           </PermissionRoute>
         }
       />

@@ -781,4 +781,52 @@ export const estimateEnhanceCredits = async () => {
   return response.data;
 };
 
+// ============================================================================
+// CAROUSEL CREATOR
+// ============================================================================
+
+export const processCarouselUrl = async (url, sectionType) => {
+  const response = await api.post('/api/carousel/process', {
+    url,
+    section_type: sectionType,
+  }, {
+    timeout: 120000, // 2 minuti per scraping + AI
+  });
+  return response.data;
+};
+
+export const getCarouselPrompts = async () => {
+  const response = await api.get('/api/carousel/prompts');
+  return response.data;
+};
+
+export const updateCarouselPrompt = async (sectionType, prompt) => {
+  const response = await api.put('/api/carousel/prompts', {
+    section_type: sectionType,
+    prompt,
+  });
+  return response.data;
+};
+
+export const exportCarouselPdf = async (results, sectionType) => {
+  const response = await api.post('/api/carousel/export-pdf', {
+    results,
+    section_type: sectionType,
+  }, {
+    responseType: 'blob',
+    timeout: 60000,
+  });
+
+  const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `styleforge_${sectionType}_${Date.now()}.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+
+  return response.data;
+};
+
 export default api;

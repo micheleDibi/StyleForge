@@ -36,6 +36,7 @@ from auth_routes import router as auth_router
 from thesis_routes import router as thesis_router
 from admin_routes import router as admin_router
 from image_enhance_routes import router as image_enhance_router
+from carousel_routes import router as carousel_router
 from db_models import User
 from database import init_db, get_db
 from ai_exceptions import InsufficientCreditsError
@@ -76,6 +77,9 @@ app.include_router(admin_router)
 
 # Registra router image enhancement
 app.include_router(image_enhance_router)
+
+# Registra router carousel creator
+app.include_router(carousel_router)
 
 
 # ============================================================================
