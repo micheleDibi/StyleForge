@@ -453,12 +453,10 @@ async def process_url(
     prompts = _get_prompts(db)
     prompt_template = prompts.get(request.section_type, DEFAULT_PROMPTS[request.section_type])
 
-    # Sostituisci placeholders
-    prompt = prompt_template.format(
-        categoria=article['categoria'],
-        titolo=article['titolo'],
-        contenuto=article['contenuto']
-    )
+    # Sostituisci placeholders (usa replace invece di .format() per evitare conflitti con {} JSON nel prompt)
+    prompt = prompt_template.replace('{categoria}', article['categoria'])
+    prompt = prompt.replace('{titolo}', article['titolo'])
+    prompt = prompt.replace('{contenuto}', article['contenuto'])
 
     # 3. Genera contenuto con Claude
     try:
