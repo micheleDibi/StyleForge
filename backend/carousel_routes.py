@@ -425,6 +425,9 @@ async def process_url(
 ):
     """Processa un URL di articolo e genera il contenuto Instagram."""
 
+    # Pulisci URL da caratteri Unicode invisibili (zero-width chars da copia/incolla)
+    clean_url = re.sub(r'[\u200B\u200C\u200D\u2060\uFEFF\u00A0]', '', request.url).strip()
+
     # Stima e deduzione crediti
     include_image = True
     estimation = estimate_credits('carousel_creator', {'include_image': include_image}, db)
@@ -433,13 +436,13 @@ async def process_url(
         user=current_user,
         amount=credits_needed,
         operation_type='carousel_creator',
-        description=f"Contenuto Instagram ({request.section_type}): {request.url[:80]}",
+        description=f"Contenuto Instagram ({request.section_type}): {clean_url[:80]}",
         db=db
     )
 
     # 1. Fetch articolo
     try:
-        article = await _fetch_article(request.url)
+        article = await _fetch_article(clean_url)
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=400, detail=f"Impossibile raggiungere l'articolo: HTTP {e.response.status_code}")
     except Exception as e:
@@ -502,7 +505,7 @@ async def process_url(
         "image_enhanced_b64": image_enhanced_b64,
         "image_analysis": image_analysis,
         "image_format": image_format,
-        "url": request.url,
+        "url": clean_url,
     })
 
 

@@ -52,7 +52,7 @@ const CarouselCreator = () => {
   const getValidUrls = () => {
     return urlInput
       .split('\n')
-      .map(u => u.trim())
+      .map(u => u.replace(/[\u200B\u200C\u200D\u2060\uFEFF\u00A0]/g, '').trim())
       .filter(u => u && (u.startsWith('http://') || u.startsWith('https://')));
   };
 
