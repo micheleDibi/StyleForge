@@ -159,7 +159,7 @@ class APIKey(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
     key_hash = Column(String(255), nullable=False, unique=True)
-    key_prefix = Column(String(12), nullable=False)
+    key_prefix = Column(String(20), nullable=False)
     is_active = Column(Boolean, default=True)
     expires_at = Column(DateTime, nullable=True)
     last_used_at = Column(DateTime, nullable=True)
