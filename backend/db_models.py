@@ -59,6 +59,7 @@ class User(Base):
     role = relationship("Role", back_populates="users")
     user_permissions = relationship("UserPermission", back_populates="user", cascade="all, delete-orphan")
     credit_transactions = relationship("CreditTransaction", back_populates="user", cascade="all, delete-orphan")
+    api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"
@@ -144,6 +145,31 @@ class RefreshToken(Base):
 
     def __repr__(self):
         return f"<RefreshToken(id={self.id}, user_id={self.user_id}, revoked={self.revoked})>"
+
+
+# ============================================================================
+# API KEYS
+# ============================================================================
+
+class APIKey(Base):
+    """API keys per accesso programmatico esterno."""
+    __tablename__ = "api_keys"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    key_hash = Column(String(255), nullable=False, unique=True)
+    key_prefix = Column(String(12), nullable=False)
+    is_active = Column(Boolean, default=True)
+    expires_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+    rate_limit_per_minute = Column(Integer, default=30)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="api_keys")
+
+    def __repr__(self):
+        return f"<APIKey(id={self.id}, name={self.name}, prefix={self.key_prefix})>"
 
 
 # ============================================================================

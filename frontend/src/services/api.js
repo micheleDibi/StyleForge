@@ -829,4 +829,29 @@ export const exportCarouselPdf = async (results, sectionType) => {
   return response.data;
 };
 
+// ============================================================================
+// ADMIN - API KEYS
+// ============================================================================
+
+export const createApiKey = async (userId, name, expiresInDays = null, rateLimitPerMinute = 30) => {
+  const response = await api.post('/admin/api-keys', {
+    user_id: userId,
+    name,
+    expires_in_days: expiresInDays,
+    rate_limit_per_minute: rateLimitPerMinute
+  });
+  return response.data;
+};
+
+export const getApiKeys = async (userId = null) => {
+  const params = userId ? { user_id: userId } : {};
+  const response = await api.get('/admin/api-keys', { params });
+  return response.data;
+};
+
+export const revokeApiKey = async (keyId) => {
+  const response = await api.delete(`/admin/api-keys/${keyId}`);
+  return response.data;
+};
+
 export default api;

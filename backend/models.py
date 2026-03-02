@@ -752,3 +752,81 @@ class CompilatioScanListResponse(BaseModel):
     """Lista scansioni Compilatio."""
     scans: List[CompilatioScanResult]
     total: int
+
+
+# ============================================================================
+# API KEYS
+# ============================================================================
+
+class APIKeyCreateRequest(BaseModel):
+    """Richiesta creazione API key."""
+    user_id: str = Field(..., description="UUID dell'utente")
+    name: str = Field(..., min_length=1, max_length=255, description="Nome descrittivo")
+    expires_in_days: Optional[int] = Field(None, ge=1, le=365, description="Giorni alla scadenza (null=mai)")
+    rate_limit_per_minute: int = Field(30, ge=1, le=300, description="Rate limit al minuto")
+
+
+class APIKeyCreateResponse(BaseModel):
+    """Risposta creazione API key. Contiene la key completa (mostrata solo una volta)."""
+    id: str
+    name: str
+    key: str
+    key_prefix: str
+    user_id: str
+    expires_at: Optional[datetime] = None
+    rate_limit_per_minute: int
+    created_at: datetime
+    message: str = "Salva questa chiave in modo sicuro. Non verra' mostrata di nuovo."
+
+
+class APIKeyResponse(BaseModel):
+    """Info API key (senza la key completa)."""
+    id: str
+    name: str
+    key_prefix: str
+    user_id: str
+    user_email: Optional[str] = None
+    is_active: bool
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    rate_limit_per_minute: int
+    created_at: datetime
+
+
+class APIKeyListResponse(BaseModel):
+    """Lista API keys."""
+    keys: List[APIKeyResponse]
+    total: int
+
+
+# ============================================================================
+# EXTERNAL API v1
+# ============================================================================
+
+class ExternalHumanizeRequest(BaseModel):
+    """Richiesta umanizzazione via API esterna."""
+    session_id: str = Field(..., description="ID della sessione addestrata")
+    text: str = Field(..., min_length=50, description="Testo da umanizzare")
+
+
+class ExternalAntiAIRequest(BaseModel):
+    """Richiesta correzione anti-AI via API esterna."""
+    text: str = Field(..., min_length=50, description="Testo da correggere")
+
+
+class ExternalJobSubmittedResponse(BaseModel):
+    """Risposta dopo invio job via API esterna."""
+    job_id: str
+    status: str
+    message: str
+
+
+class ExternalJobStatusResponse(BaseModel):
+    """Stato job via API esterna."""
+    job_id: str
+    status: str
+    progress: int = 0
+    result: Optional[str] = None
+    error: Optional[str] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None

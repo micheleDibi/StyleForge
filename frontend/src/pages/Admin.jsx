@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronUp, Edit3, Save, X, Plus, Minus,
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
   Sparkles, Settings, Eye, EyeOff, UserPlus, RotateCcw,
-  AlertTriangle, FileText, HelpCircle, Copy, Trash2
+  AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -14,7 +14,8 @@ import {
   getAdminRoles, updateRolePermissions, getAdminStats,
   adminCreateUser, getAdminCreditCosts, updateAdminCreditCosts,
   resetAdminCreditCosts, getAdminTemplates, updateAdminTemplates,
-  deleteAdminTemplate
+  deleteAdminTemplate,
+  createApiKey, getApiKeys, revokeApiKey
 } from '../services/api';
 import Logo from '../components/Logo';
 
@@ -101,6 +102,16 @@ const Admin = () => {
   const [showDeleteTemplate, setShowDeleteTemplate] = useState(null);
   const [activeTooltip, setActiveTooltip] = useState(null);
 
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState([]);
+  const [showCreateKey, setShowCreateKey] = useState(false);
+  const [newKeyResult, setNewKeyResult] = useState(null);
+  const [keyCopied, setKeyCopied] = useState(false);
+  const [keyCreating, setKeyCreating] = useState(false);
+  const [newKeyForm, setNewKeyForm] = useState({
+    user_id: '', name: '', expires_in_days: '', rate_limit_per_minute: 30
+  });
+
   useEffect(() => {
     loadData();
   }, [activeTab]);
@@ -133,6 +144,9 @@ const Admin = () => {
         const data = await getAdminTemplates();
         setTemplates(data.templates || []);
         if (data.help) setTemplateHelp(data.help);
+      } else if (activeTab === 'api-keys') {
+        const data = await getApiKeys();
+        setApiKeys(data.keys || []);
       }
     } catch (error) {
       console.error('Errore caricamento dati:', error);
@@ -516,7 +530,8 @@ const Admin = () => {
     { id: 'roles', label: 'Ruoli', icon: Shield },
     { id: 'stats', label: 'Statistiche', icon: BarChart3 },
     { id: 'settings', label: 'Impostazioni', icon: Settings },
-    { id: 'templates', label: 'Template Export', icon: FileText }
+    { id: 'templates', label: 'Template Export', icon: FileText },
+    { id: 'api-keys', label: 'API Keys', icon: Key }
   ];
 
   return (
@@ -1491,6 +1506,186 @@ const Admin = () => {
                         </button>
                       </div>
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ═══ API KEYS TAB ═══ */}
+            {activeTab === 'api-keys' && (
+              <div className="space-y-4">
+                {/* Header + Create button */}
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-gray-800">API Keys</h2>
+                  <button
+                    onClick={() => { setShowCreateKey(true); setNewKeyResult(null); setNewKeyForm({ user_id: '', name: '', expires_in_days: '', rate_limit_per_minute: 30 }); }}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" /> Crea API Key
+                  </button>
+                </div>
+
+                {/* Create form */}
+                {showCreateKey && (
+                  <div className="card p-5 border-l-4 border-orange-400">
+                    {newKeyResult ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-green-700">
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span className="font-semibold">API Key creata!</span>
+                        </div>
+                        <div className="bg-gray-900 text-green-400 rounded-xl p-4 font-mono text-sm break-all">
+                          {newKeyResult.key}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(newKeyResult.key); setKeyCopied(true); setTimeout(() => setKeyCopied(false), 2000); }}
+                            className="btn-secondary flex items-center gap-1.5"
+                          >
+                            {keyCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                            {keyCopied ? 'Copiata!' : 'Copia chiave'}
+                          </button>
+                        </div>
+                        <p className="text-xs text-red-600 font-medium">
+                          Salva questa chiave ora. Non verra' mai piu' mostrata.
+                        </p>
+                        <button
+                          onClick={() => { setShowCreateKey(false); setNewKeyResult(null); loadData(); }}
+                          className="btn-ghost text-sm"
+                        >
+                          Chiudi
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <h3 className="font-semibold text-gray-800">Nuova API Key</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Utente</label>
+                            <select
+                              value={newKeyForm.user_id}
+                              onChange={e => setNewKeyForm(f => ({ ...f, user_id: e.target.value }))}
+                              className="input w-full"
+                            >
+                              <option value="">Seleziona utente...</option>
+                              {users.map(u => (
+                                <option key={u.id} value={u.id}>{u.email} ({u.username})</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Nome</label>
+                            <input
+                              type="text"
+                              value={newKeyForm.name}
+                              onChange={e => setNewKeyForm(f => ({ ...f, name: e.target.value }))}
+                              className="input w-full"
+                              placeholder="Es. Produzione, Test..."
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Scadenza (giorni, vuoto = mai)</label>
+                            <input
+                              type="number"
+                              value={newKeyForm.expires_in_days}
+                              onChange={e => setNewKeyForm(f => ({ ...f, expires_in_days: e.target.value }))}
+                              className="input w-full"
+                              placeholder="365"
+                              min="1"
+                              max="365"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Rate limit (req/min)</label>
+                            <input
+                              type="number"
+                              value={newKeyForm.rate_limit_per_minute}
+                              onChange={e => setNewKeyForm(f => ({ ...f, rate_limit_per_minute: parseInt(e.target.value) || 30 }))}
+                              className="input w-full"
+                              min="1"
+                              max="300"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            onClick={async () => {
+                              if (!newKeyForm.user_id || !newKeyForm.name) return;
+                              setKeyCreating(true);
+                              try {
+                                const result = await createApiKey(
+                                  newKeyForm.user_id, newKeyForm.name,
+                                  newKeyForm.expires_in_days ? parseInt(newKeyForm.expires_in_days) : null,
+                                  newKeyForm.rate_limit_per_minute
+                                );
+                                setNewKeyResult(result);
+                              } catch (e) {
+                                console.error('Errore creazione API key:', e);
+                              }
+                              setKeyCreating(false);
+                            }}
+                            disabled={!newKeyForm.user_id || !newKeyForm.name || keyCreating}
+                            className="btn-primary flex items-center gap-1.5"
+                          >
+                            {keyCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
+                            Crea
+                          </button>
+                          <button onClick={() => setShowCreateKey(false)} className="btn-ghost">
+                            <X className="w-4 h-4" /> Annulla
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Keys list */}
+                {apiKeys.length === 0 ? (
+                  <div className="card p-8 text-center text-gray-400">
+                    <Key className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                    <p>Nessuna API key creata</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {apiKeys.map(k => (
+                      <div key={k.id} className="card p-4 flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-800">{k.name}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              k.is_active
+                                ? (k.expires_at && new Date(k.expires_at) < new Date() ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700')
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {!k.is_active ? 'Revocata' : (k.expires_at && new Date(k.expires_at) < new Date() ? 'Scaduta' : 'Attiva')}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                            <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{k.key_prefix}...</span>
+                            <span>{k.user_email}</span>
+                            <span>{k.rate_limit_per_minute} req/min</span>
+                            {k.last_used_at && <span>Ultimo uso: {new Date(k.last_used_at).toLocaleDateString('it-IT')}</span>}
+                            {k.expires_at && <span>Scade: {new Date(k.expires_at).toLocaleDateString('it-IT')}</span>}
+                          </div>
+                        </div>
+                        {k.is_active && (
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Revocare la key "${k.name}"?`)) return;
+                              try {
+                                await revokeApiKey(k.id);
+                                loadData();
+                              } catch (e) {
+                                console.error('Errore revoca:', e);
+                              }
+                            }}
+                            className="btn-ghost text-red-500 hover:text-red-700 flex items-center gap-1 text-sm ml-3"
+                          >
+                            <Trash2 className="w-4 h-4" /> Revoca
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

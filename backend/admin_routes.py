@@ -13,7 +13,7 @@ from sqlalchemy import func
 
 from database import get_db
 from auth import get_current_admin_user, get_effective_permissions, get_password_hash
-from db_models import User, Role, RolePermission, UserPermission, CreditTransaction, SystemSetting
+from db_models import User, Role, RolePermission, UserPermission, CreditTransaction, SystemSetting, APIKey
 from credits import (
     add_credits, get_user_transactions, PERMISSION_CODES,
     get_credit_costs, save_credit_costs, reset_credit_costs,
@@ -614,3 +614,111 @@ async def get_template_help(
 ):
     """Restituisce le descrizioni di tutti i parametri dei template per i tooltip."""
     return TEMPLATE_PARAM_HELP
+
+
+# ============================================================================
+# API KEYS
+# ============================================================================
+
+@router.post("/api-keys")
+async def create_api_key(
+    request: dict,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Crea una nuova API key per un utente."""
+    from api_key_auth import generate_api_key
+
+    user_id = request.get('user_id')
+    name = request.get('name', 'API Key')
+    expires_in_days = request.get('expires_in_days')
+    rate_limit = request.get('rate_limit_per_minute', 30)
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id richiesto")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+
+    full_key, key_hash, key_prefix = generate_api_key()
+
+    expires_at = None
+    if expires_in_days:
+        expires_at = datetime.utcnow() + timedelta(days=int(expires_in_days))
+
+    db_key = APIKey(
+        user_id=user.id,
+        name=name,
+        key_hash=key_hash,
+        key_prefix=key_prefix,
+        is_active=True,
+        expires_at=expires_at,
+        rate_limit_per_minute=min(max(int(rate_limit), 1), 300),
+    )
+    db.add(db_key)
+    db.commit()
+    db.refresh(db_key)
+
+    return {
+        "id": str(db_key.id),
+        "name": db_key.name,
+        "key": full_key,
+        "key_prefix": db_key.key_prefix,
+        "user_id": str(db_key.user_id),
+        "expires_at": db_key.expires_at.isoformat() if db_key.expires_at else None,
+        "rate_limit_per_minute": db_key.rate_limit_per_minute,
+        "created_at": db_key.created_at.isoformat(),
+        "message": "Salva questa chiave in modo sicuro. Non verra' mostrata di nuovo."
+    }
+
+
+@router.get("/api-keys")
+async def list_api_keys(
+    user_id: Optional[str] = None,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Lista tutte le API keys, con filtro opzionale per utente."""
+    query = db.query(APIKey).join(User)
+
+    if user_id:
+        query = query.filter(APIKey.user_id == user_id)
+
+    keys = query.order_by(APIKey.created_at.desc()).all()
+
+    return {
+        "keys": [
+            {
+                "id": str(k.id),
+                "name": k.name,
+                "key_prefix": k.key_prefix,
+                "user_id": str(k.user_id),
+                "user_email": k.user.email if k.user else None,
+                "is_active": k.is_active,
+                "expires_at": k.expires_at.isoformat() if k.expires_at else None,
+                "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
+                "rate_limit_per_minute": k.rate_limit_per_minute,
+                "created_at": k.created_at.isoformat(),
+            }
+            for k in keys
+        ],
+        "total": len(keys)
+    }
+
+
+@router.delete("/api-keys/{key_id}")
+async def revoke_api_key(
+    key_id: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Revoca (disattiva) una API key."""
+    db_key = db.query(APIKey).filter(APIKey.id == key_id).first()
+    if not db_key:
+        raise HTTPException(status_code=404, detail="API key non trovata")
+
+    db_key.is_active = False
+    db.commit()
+
+    return {"message": f"API key '{db_key.name}' revocata", "id": str(db_key.id)}
