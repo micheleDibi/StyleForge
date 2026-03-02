@@ -203,16 +203,8 @@ class ClaudeClient:
             "content": assistant_message
         })
 
-        # ═══════════════════════════════════════════════════════════════
-        # POST-PROCESSING ANTI-AI
-        # ═══════════════════════════════════════════════════════════════
-        # Applica l'algoritmo di post-processing per rendere il testo
-        # generato meno rilevabile dai detector AI
-        # ═══════════════════════════════════════════════════════════════
-
+        # Post-processing anti-AI
         from anti_ai_processor import humanize_text_post_processing
-
-        # Applica trasformazioni anti-AI
         final_text = humanize_text_post_processing(assistant_message)
 
         return final_text
@@ -345,16 +337,8 @@ REGOLE:
             "content": assistant_message
         })
 
-        # ═══════════════════════════════════════════════════════════════
-        # POST-PROCESSING ANTI-AI
-        # ═══════════════════════════════════════════════════════════════
-        # DOPO aver ottenuto la risposta da Claude, applica l'algoritmo
-        # di post-processing per rendere il testo COMPLETAMENTE anti-AI
-        # ═══════════════════════════════════════════════════════════════
-
+        # Post-processing anti-AI
         from anti_ai_processor import humanize_text_post_processing
-
-        # Applica trasformazioni anti-AI
         final_text = humanize_text_post_processing(assistant_message)
 
         return final_text

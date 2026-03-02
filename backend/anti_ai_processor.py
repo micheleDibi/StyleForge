@@ -1091,27 +1091,32 @@ class AntiAIProcessor:
             parole = frase.split()
             num_parole = len(parole)
 
-            # Frasi molto lunghe (>35 parole): prova a spezzare
+            # Frasi molto lunghe (>35 parole): prova a spezzare SOLO se c'è un punto naturale
             if num_parole > 35 and random.random() < 0.5:
-                punto_rottura = num_parole // 2
-                # Cerca un punto naturale di rottura
-                for j in range(punto_rottura - 5, min(punto_rottura + 5, len(parole))):
+                punto_rottura = None
+                centro = num_parole // 2
+                # Cerca un punto naturale di rottura (congiunzione vicino al centro)
+                for j in range(centro - 5, min(centro + 5, len(parole))):
                     if 0 < j < len(parole) and parole[j].rstrip(',') in ['e', 'ma', 'che', 'dove', 'quando', 'mentre', 'perché']:
                         punto_rottura = j
                         break
 
-                parte1 = ' '.join(parole[:punto_rottura])
-                parte2 = ' '.join(parole[punto_rottura:])
+                # Spezza solo se trovato un punto naturale, altrimenti lascia intatta
+                if punto_rottura is not None:
+                    parte1 = ' '.join(parole[:punto_rottura])
+                    parte2 = ' '.join(parole[punto_rottura:])
 
-                if not parte1.rstrip().endswith(('.', '!', '?')):
-                    parte1 = parte1.rstrip(',') + '.'
-                if parte2 and parte2[0].islower():
-                    parte2 = parte2[0].upper() + parte2[1:]
+                    if not parte1.rstrip().endswith(('.', '!', '?')):
+                        parte1 = parte1.rstrip(',') + '.'
+                    if parte2 and parte2[0].islower():
+                        parte2 = parte2[0].upper() + parte2[1:]
 
-                nuove_frasi.append(parte1)
-                nuovi_separatori.append(' ')
-                if parte2.strip():
-                    nuove_frasi.append(parte2)
+                    nuove_frasi.append(parte1)
+                    nuovi_separatori.append(' ')
+                    if parte2.strip():
+                        nuove_frasi.append(parte2)
+                else:
+                    nuove_frasi.append(frase)
 
             # Frasi corte consecutive: unisci con "e" o "ma"
             elif num_parole < 10 and i + 1 < len(frasi) and len(frasi[i + 1].split()) < 10 and random.random() < 0.3:
@@ -1183,26 +1188,30 @@ class AntiAIProcessor:
             parole = frase.split()
             num_parole = len(parole)
 
-            # Frasi molto lunghe (>45 parole): spezza
+            # Frasi molto lunghe (>45 parole): spezza SOLO se c'è un punto naturale
             if num_parole > 45:
-                punto_rottura = num_parole // 2
-                for j in range(punto_rottura - 5, punto_rottura + 5):
+                punto_rottura = None
+                centro = num_parole // 2
+                for j in range(centro - 5, centro + 5):
                     if 0 < j < len(parole) and parole[j] in [',', 'e', 'ma', 'che', 'dove', 'quando']:
                         punto_rottura = j + 1
                         break
 
-                parte1 = ' '.join(parole[:punto_rottura])
-                parte2 = ' '.join(parole[punto_rottura:])
+                if punto_rottura is not None:
+                    parte1 = ' '.join(parole[:punto_rottura])
+                    parte2 = ' '.join(parole[punto_rottura:])
 
-                if not parte1.rstrip().endswith(('.', '!', '?')):
-                    parte1 = parte1.rstrip(',') + '.'
-                if parte2 and parte2[0].islower():
-                    parte2 = parte2[0].upper() + parte2[1:]
+                    if not parte1.rstrip().endswith(('.', '!', '?')):
+                        parte1 = parte1.rstrip(',') + '.'
+                    if parte2 and parte2[0].islower():
+                        parte2 = parte2[0].upper() + parte2[1:]
 
-                nuove_frasi.append(parte1)
-                if parte2.strip():
-                    nuovi_separatori.append(' ')
-                    nuove_frasi.append(parte2)
+                    nuove_frasi.append(parte1)
+                    if parte2.strip():
+                        nuovi_separatori.append(' ')
+                        nuove_frasi.append(parte2)
+                else:
+                    nuove_frasi.append(frase)
 
             # Frasi medie (15-35 parole): occasionalmente aggiungi inciso
             elif 15 < num_parole < 35 and random.random() < 0.25:
@@ -1450,22 +1459,25 @@ class AntiAIProcessor:
 
             roll = random.random()
             if roll < 0.30:
-                # Semplificazione: spezza la frase in due più corte
-                punto_taglio = len(parole) // 2
+                # Semplificazione: spezza la frase in due più corte SOLO se c'è un punto naturale
+                punto_taglio = None
+                centro = len(parole) // 2
                 # Trova un punto naturale di taglio vicino alla metà
-                for j in range(punto_taglio - 2, min(punto_taglio + 3, len(parole))):
+                for j in range(centro - 2, min(centro + 3, len(parole))):
                     if j < len(parole) and parole[j].rstrip('.,;:') in ('che', 'e', 'ma', 'dove', 'quando', 'perché', 'mentre'):
                         punto_taglio = j
                         break
 
-                prima_parte = ' '.join(parole[:punto_taglio])
-                if not prima_parte.rstrip().endswith(('.', '!', '?')):
-                    prima_parte = prima_parte.rstrip('.,;:') + '.'
-                seconda_parte = ' '.join(parole[punto_taglio:])
-                if seconda_parte and seconda_parte[0].islower():
-                    seconda_parte = seconda_parte[0].upper() + seconda_parte[1:]
-                frasi[i] = prima_parte + ' ' + seconda_parte
-                modifiche += 1
+                # Spezza solo se trovato un punto naturale, altrimenti salta
+                if punto_taglio is not None:
+                    prima_parte = ' '.join(parole[:punto_taglio])
+                    if not prima_parte.rstrip().endswith(('.', '!', '?')):
+                        prima_parte = prima_parte.rstrip('.,;:') + '.'
+                    seconda_parte = ' '.join(parole[punto_taglio:])
+                    if seconda_parte and seconda_parte[0].islower():
+                        seconda_parte = seconda_parte[0].upper() + seconda_parte[1:]
+                    frasi[i] = prima_parte + ' ' + seconda_parte
+                    modifiche += 1
             elif roll < 0.50:
                 # Complessificazione: aggiungi subordinata
                 inserti = [
