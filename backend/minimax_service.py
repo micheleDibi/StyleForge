@@ -4,10 +4,15 @@ MiniMax Video Generation Service.
 Async service for image-to-video generation using the MiniMax API.
 """
 
+import base64
+import logging
+import mimetypes
 import time
 from typing import Optional
 import httpx
 import config
+
+logger = logging.getLogger(__name__)
 
 
 class MiniMaxService:
@@ -22,35 +27,35 @@ class MiniMaxService:
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self.api_key}"}
 
-    async def upload_image(self, image_bytes: bytes, filename: str) -> str:
-        """Upload image to MiniMax and return file_id."""
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{self.base_url}/files/upload",
-                headers=self._headers(),
-                data={"purpose": "file-extract"},
-                files={"file": (filename, image_bytes)},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get("file", {}).get("file_id"):
-                return data["file"]["file_id"]
-            raise ValueError(f"MiniMax upload failed: {data}")
+    def encode_image(self, image_bytes: bytes, filename: str) -> str:
+        """Encode image as base64 data URI for MiniMax API."""
+        mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
 
     async def create_video_task(
         self,
-        file_id: str,
+        image_base64: str,
         prompt: str,
         model: Optional[str] = None,
         prompt_optimizer: bool = True,
+        duration: Optional[int] = None,
+        fast_pretreatment: Optional[bool] = None,
+        resolution: Optional[str] = None,
     ) -> str:
         """Create a video generation task and return task_id."""
         payload = {
             "model": model or self.default_model,
-            "first_frame_image": file_id,
+            "first_frame_image": image_base64,
             "prompt": prompt,
             "prompt_optimizer": prompt_optimizer,
         }
+        if duration is not None:
+            payload["duration"] = duration
+        if fast_pretreatment is not None:
+            payload["fast_pretreatment"] = fast_pretreatment
+        if resolution is not None:
+            payload["resolution"] = resolution
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
                 f"{self.base_url}/video_generation",

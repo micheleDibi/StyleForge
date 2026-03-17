@@ -1,17 +1,114 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Film, ArrowLeft, Plus, Trash2, Play, Download, AlertCircle,
-  Loader2, CheckCircle2, XCircle, Clock, Settings2, ImagePlus
+  Loader2, CheckCircle2, XCircle, Clock, Settings2, ImagePlus, Info, Zap, Sparkles
 } from 'lucide-react';
 import { generateVideos, getVideoTasksStatus, getVideoProxyUrl } from '../services/api';
 
+// ── Models ──────────────────────────────────────────────────────────────────
 const MODELS = [
-  { value: 'I2V-01', label: 'I2V-01 (Standard)' },
-  { value: 'I2V-01-live2d', label: 'I2V-01-live2d (Anime/2D)' },
+  {
+    value: 'MiniMax-Hailuo-2.3',
+    label: 'Hailuo 2.3',
+    desc: 'Ultima generazione. Massima qualita visiva, movimenti fluidi e coerenza temporale.',
+    quality: 95,
+    speed: 40,
+    time: '~3-5 min',
+    resolutions: { '768P': [6, 10], '1080P': [6] },
+    defaultRes: '768P',
+    supportsFastPretreatment: true,
+  },
+  {
+    value: 'MiniMax-Hailuo-2.3-Fast',
+    label: 'Hailuo 2.3 Fast',
+    desc: 'Versione veloce del 2.3. Qualita leggermente ridotta ma tempi dimezzati.',
+    quality: 80,
+    speed: 75,
+    time: '~1-2 min',
+    resolutions: { '768P': [6, 10], '1080P': [6] },
+    defaultRes: '768P',
+    supportsFastPretreatment: true,
+  },
+  {
+    value: 'MiniMax-Hailuo-02',
+    label: 'Hailuo 02',
+    desc: 'Generazione precedente. Buon bilanciamento qualita/velocita, stabile e affidabile.',
+    quality: 75,
+    speed: 60,
+    time: '~2-3 min',
+    resolutions: { '512P': [6, 10], '768P': [6, 10], '1080P': [6, 10] },
+    defaultRes: '768P',
+    supportsFastPretreatment: true,
+  },
+  {
+    value: 'I2V-01-Director',
+    label: 'I2V-01 Director',
+    desc: 'Supporta comandi camera nel prompt: [truck left], [zoom in], [pan right], ecc.',
+    quality: 70,
+    speed: 55,
+    time: '~2-4 min',
+    resolutions: { '720P': [6] },
+    defaultRes: '720P',
+    supportsFastPretreatment: false,
+  },
+  {
+    value: 'I2V-01-live',
+    label: 'I2V-01 Live',
+    desc: 'Ottimizzato per stile anime e illustrazioni 2D. Ideale per artwork e live2d.',
+    quality: 70,
+    speed: 60,
+    time: '~2-3 min',
+    resolutions: { '720P': [6] },
+    defaultRes: '720P',
+    supportsFastPretreatment: false,
+  },
+  {
+    value: 'I2V-01',
+    label: 'I2V-01 Standard',
+    desc: 'Modello base image-to-video. Leggero e veloce, adatto per test rapidi.',
+    quality: 60,
+    speed: 70,
+    time: '~1-2 min',
+    resolutions: { '720P': [6] },
+    defaultRes: '720P',
+    supportsFastPretreatment: false,
+  },
 ];
 
 const MAX_PROMPTS = 5;
+
+// ── Quality/Speed Bar ───────────────────────────────────────────────────────
+const StatBar = ({ label, value, color }) => (
+  <div className="flex items-center gap-2">
+    <span className="text-xs text-slate-500 w-16">{label}</span>
+    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+      <div className={`h-full rounded-full ${color}`} style={{ width: `${value}%` }} />
+    </div>
+    <span className="text-xs font-medium text-slate-600 w-8 text-right">{value}%</span>
+  </div>
+);
+
+// ── Toggle Component ────────────────────────────────────────────────────────
+const Toggle = ({ enabled, onChange, label, description }) => (
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+    <div
+      onClick={onChange}
+      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+        enabled ? 'bg-violet-50 border-violet-200' : 'bg-slate-50 border-slate-200'
+      }`}
+    >
+      <div className={`w-10 h-6 rounded-full relative transition-colors flex-shrink-0 ${enabled ? 'bg-violet-500' : 'bg-slate-300'}`}>
+        <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${enabled ? 'left-[18px]' : 'left-0.5'}`} />
+      </div>
+      <div>
+        <span className="text-sm text-slate-700">{enabled ? 'Attivo' : 'Disattivo'}</span>
+        {description && <p className="text-xs text-slate-400 mt-0.5">{description}</p>}
+      </div>
+    </div>
+  </div>
+);
 
 const ImageToVideo = () => {
   const navigate = useNavigate();
@@ -20,13 +117,39 @@ const ImageToVideo = () => {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [prompts, setPrompts] = useState(['']);
-  const [model, setModel] = useState('I2V-01');
+  const [model, setModel] = useState('MiniMax-Hailuo-2.3');
   const [promptOptimizer, setPromptOptimizer] = useState(true);
+  const [duration, setDuration] = useState(6);
+  const [resolution, setResolution] = useState('720P');
+  const [fastPretreatment, setFastPretreatment] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [tasks, setTasks] = useState([]);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(true);
+
+  const selectedModel = useMemo(() => MODELS.find(m => m.value === model) || MODELS[0], [model]);
+  const availableResolutions = useMemo(() => Object.keys(selectedModel.resolutions), [selectedModel]);
+  const availableDurations = useMemo(() => selectedModel.resolutions[resolution] || [6], [selectedModel, resolution]);
+
+  // Reset dependent params when model changes
+  useEffect(() => {
+    const resKeys = Object.keys(selectedModel.resolutions);
+    if (!resKeys.includes(resolution)) {
+      setResolution(selectedModel.defaultRes);
+    }
+    if (!selectedModel.supportsFastPretreatment) {
+      setFastPretreatment(false);
+    }
+  }, [model]);
+
+  // Reset duration when resolution changes and current duration is not supported
+  useEffect(() => {
+    const durations = selectedModel.resolutions[resolution];
+    if (durations && !durations.includes(duration)) {
+      setDuration(durations[0]);
+    }
+  }, [resolution, selectedModel]);
 
   const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
   const MAX_SIZE = 10 * 1024 * 1024;
@@ -34,7 +157,7 @@ const ImageToVideo = () => {
   // Poll pending tasks
   useEffect(() => {
     const pendingIds = tasks
-      .filter(t => t.task_id && t.status === 'Processing')
+      .filter(t => t.task_id && !['Success', 'Fail'].includes(t.status))
       .map(t => t.task_id);
 
     if (pendingIds.length === 0) return;
@@ -123,7 +246,13 @@ const ImageToVideo = () => {
     setTasks([]);
 
     try {
-      const data = await generateVideos(file, validPrompts, model, promptOptimizer);
+      const data = await generateVideos(file, validPrompts, {
+        model,
+        promptOptimizer,
+        duration,
+        fastPretreatment: selectedModel.supportsFastPretreatment ? fastPretreatment : undefined,
+        resolution,
+      });
       const newTasks = data.tasks.map(t => ({
         task_id: t.task_id,
         prompt: t.prompt,
@@ -161,17 +290,28 @@ const ImageToVideo = () => {
   };
 
   const StatusIcon = ({ status }) => {
-    if (status === 'Processing') return <Loader2 className="w-5 h-5 text-orange-500 animate-spin" />;
     if (status === 'Success') return <CheckCircle2 className="w-5 h-5 text-green-500" />;
     if (status === 'Fail') return <XCircle className="w-5 h-5 text-red-500" />;
-    return <Clock className="w-5 h-5 text-gray-400" />;
+    if (status === 'Queueing') return <Clock className="w-5 h-5 text-blue-500" />;
+    return <Loader2 className="w-5 h-5 text-orange-500 animate-spin" />;
   };
 
   const statusLabel = (status) => {
-    if (status === 'Processing') return 'In elaborazione...';
-    if (status === 'Success') return 'Completato';
-    if (status === 'Fail') return 'Errore';
-    return status;
+    const labels = {
+      Queueing: 'In coda...',
+      Preparing: 'Preparazione...',
+      Processing: 'In elaborazione...',
+      Success: 'Completato',
+      Fail: 'Errore',
+    };
+    return labels[status] || status;
+  };
+
+  const statusColor = (status) => {
+    if (status === 'Success') return 'text-green-700';
+    if (status === 'Fail') return 'text-red-700';
+    if (status === 'Queueing') return 'text-blue-700';
+    return 'text-orange-700';
   };
 
   return (
@@ -230,7 +370,7 @@ const ImageToVideo = () => {
                   <>
                     <ImagePlus className="w-12 h-12 text-slate-400 mx-auto mb-3" />
                     <p className="text-slate-600 mb-1">Trascina un'immagine o clicca per selezionare</p>
-                    <p className="text-sm text-slate-500">JPG, PNG, WEBP — max 10MB</p>
+                    <p className="text-sm text-slate-500">JPG, PNG, WEBP — max 10MB — lato corto min 300px — aspect ratio da 2:5 a 5:2</p>
                   </>
                 )}
               </div>
@@ -256,6 +396,7 @@ const ImageToVideo = () => {
                       onChange={(e) => updatePrompt(idx, e.target.value)}
                       placeholder={`Descrivi l'animazione desiderata... (es. "La persona sorride e gira la testa lentamente")`}
                       rows={2}
+                      maxLength={2000}
                       className="input flex-1 resize-none"
                     />
                     {prompts.length > 1 && (
@@ -265,6 +406,7 @@ const ImageToVideo = () => {
                     )}
                   </div>
                 ))}
+                <p className="text-xs text-slate-400">Max 2000 caratteri per prompt. {selectedModel.value === 'I2V-01-Director' && 'Supporta comandi camera: [truck left], [zoom in], [pan right], [tilt up], ecc.'}</p>
               </div>
             </div>
 
@@ -275,31 +417,121 @@ const ImageToVideo = () => {
                 className="flex items-center gap-2 text-sm font-medium text-slate-500 uppercase tracking-wider w-full"
               >
                 <Settings2 className="w-4 h-4" />
-                Parametri
+                Parametri di generazione
                 <span className={`ml-auto transition-transform ${showSettings ? 'rotate-180' : ''}`}>&#9662;</span>
               </button>
+
               {showSettings && (
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="mt-5 space-y-6">
+
+                  {/* ── Model Selection ── */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Modello</label>
-                    <select value={model} onChange={(e) => setModel(e.target.value)} className="input w-full">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Modello</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {MODELS.map(m => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
+                        <div
+                          key={m.value}
+                          onClick={() => setModel(m.value)}
+                          className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                            model === m.value
+                              ? 'border-violet-400 bg-violet-50 shadow-md shadow-violet-100'
+                              : 'border-slate-200 hover:border-slate-300 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-bold text-slate-900">{m.label}</span>
+                            <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{m.time}</span>
+                          </div>
+                          <p className="text-xs text-slate-500 mb-2.5 leading-relaxed">{m.desc}</p>
+                          <div className="space-y-1.5">
+                            <StatBar label="Qualita" value={m.quality} color="bg-gradient-to-r from-violet-400 to-violet-600" />
+                            <StatBar label="Velocita" value={m.speed} color="bg-gradient-to-r from-emerald-400 to-emerald-600" />
+                          </div>
+                        </div>
                       ))}
-                    </select>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Ottimizzazione Prompt</label>
-                    <div
-                      onClick={() => setPromptOptimizer(!promptOptimizer)}
-                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                        promptOptimizer ? 'bg-violet-50 border-violet-200' : 'bg-slate-50 border-slate-200'
-                      }`}
-                    >
-                      <div className={`w-10 h-6 rounded-full relative transition-colors ${promptOptimizer ? 'bg-violet-500' : 'bg-slate-300'}`}>
-                        <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${promptOptimizer ? 'left-[18px]' : 'left-0.5'}`} />
+
+                  {/* ── Duration + Resolution row ── */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Resolution */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Risoluzione
+                      </label>
+                      <div className="flex gap-2">
+                        {availableResolutions.map(r => (
+                          <button
+                            key={r}
+                            onClick={() => setResolution(r)}
+                            className={`flex-1 py-2.5 px-4 rounded-xl border-2 text-sm font-medium transition-all ${
+                              resolution === r
+                                ? 'border-violet-400 bg-violet-50 text-violet-700'
+                                : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                            }`}
+                          >
+                            {r}
+                          </button>
+                        ))}
                       </div>
-                      <span className="text-sm text-slate-700">{promptOptimizer ? 'Attiva' : 'Disattiva'}</span>
+                      <p className="text-xs text-slate-400 mt-1.5">
+                        Risoluzione output. 1080P offre piu dettaglio ma richiede piu tempo (~30-50% in piu).
+                      </p>
+                    </div>
+
+                    {/* Duration */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Durata video
+                      </label>
+                      <div className="flex gap-2">
+                        {availableDurations.map(d => (
+                          <button
+                            key={d}
+                            onClick={() => setDuration(d)}
+                            className={`flex-1 py-2.5 px-4 rounded-xl border-2 text-sm font-medium transition-all ${
+                              duration === d
+                                ? 'border-violet-400 bg-violet-50 text-violet-700'
+                                : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                            }`}
+                          >
+                            {d} secondi
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1.5">
+                        {availableDurations.length > 1
+                          ? 'Durata del video. 10s raddoppia circa il tempo di generazione rispetto a 6s.'
+                          : 'Questo modello/risoluzione supporta solo 6 secondi.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* ── Toggles row ── */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Toggle
+                      enabled={promptOptimizer}
+                      onChange={() => setPromptOptimizer(!promptOptimizer)}
+                      label="Ottimizzazione Prompt"
+                      description="MiniMax riscrive il tuo prompt per migliorare il risultato. Disattiva se vuoi controllo preciso."
+                    />
+
+                    {selectedModel.supportsFastPretreatment && (
+                      <Toggle
+                        enabled={fastPretreatment}
+                        onChange={() => setFastPretreatment(!fastPretreatment)}
+                        label="Pre-elaborazione veloce"
+                        description="Riduce il tempo di ottimizzazione del prompt (~20-30% piu veloce). Solo con Prompt Optimizer attivo."
+                      />
+                    )}
+                  </div>
+
+                  {/* ── Estimated time info ── */}
+                  <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <Info className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-slate-500 space-y-1">
+                      <p><strong>Tempo stimato:</strong> {selectedModel.time} per video ({resolution}, {duration}s)</p>
+                      <p><strong>Nota:</strong> 1080P aggiunge ~30-50% al tempo. 10s raddoppia circa rispetto a 6s. Il Fast Pretreatment risparmia ~20-30% sulla fase di preparazione.</p>
                     </div>
                   </div>
                 </div>
@@ -356,11 +588,7 @@ const ImageToVideo = () => {
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <StatusIcon status={task.status} />
-                      <span className={`text-sm font-medium ${
-                        task.status === 'Success' ? 'text-green-700' :
-                        task.status === 'Fail' ? 'text-red-700' :
-                        'text-orange-700'
-                      }`}>
+                      <span className={`text-sm font-medium ${statusColor(task.status)}`}>
                         {statusLabel(task.status)}
                       </span>
                     </div>
@@ -386,11 +614,11 @@ const ImageToVideo = () => {
                     </div>
                   )}
 
-                  {task.status === 'Processing' && (
+                  {!['Success', 'Fail'].includes(task.status) && (
                     <div className="flex items-center justify-center py-8">
                       <div className="text-center">
                         <Loader2 className="w-8 h-8 text-violet-400 animate-spin mx-auto mb-2" />
-                        <p className="text-xs text-slate-400">Generazione in corso...</p>
+                        <p className="text-xs text-slate-400">{statusLabel(task.status)} ({selectedModel.time})</p>
                       </div>
                     </div>
                   )}

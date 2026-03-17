@@ -46,18 +46,14 @@ def _validate_image(file: UploadFile, file_bytes: bytes):
 async def generate_videos(
     file: UploadFile = File(...),
     prompts: str = Form(...),
-    model: str = Form("I2V-01"),
+    model: str = Form("MiniMax-Hailuo-2.3"),
     prompt_optimizer: bool = Form(True),
+    duration: Optional[int] = Form(None),
+    fast_pretreatment: Optional[bool] = Form(None),
+    resolution: Optional[str] = Form(None),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """
-    Upload an image and generate one video per prompt.
-
-    - `file`: Image file (JPG, PNG, WEBP)
-    - `prompts`: JSON array of prompt strings
-    - `model`: MiniMax model ID
-    - `prompt_optimizer`: Whether to use MiniMax prompt optimization
-    """
+    """Upload an image and generate one video per prompt."""
     if not config.MINIMAX_API_KEY:
         raise HTTPException(status_code=500, detail="MINIMAX_API_KEY non configurata")
 
@@ -75,11 +71,8 @@ async def generate_videos(
     file_bytes = await file.read()
     _validate_image(file, file_bytes)
 
-    # Upload image to MiniMax once
-    try:
-        file_id = await minimax_service.upload_image(file_bytes, file.filename)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Errore upload immagine su MiniMax: {e}")
+    # Encode image as base64
+    image_base64 = minimax_service.encode_image(file_bytes, file.filename)
 
     # Create one task per prompt
     tasks = []
@@ -89,10 +82,13 @@ async def generate_videos(
             continue
         try:
             task_id = await minimax_service.create_video_task(
-                file_id=file_id,
+                image_base64=image_base64,
                 prompt=prompt_text,
                 model=model,
                 prompt_optimizer=prompt_optimizer,
+                duration=duration,
+                fast_pretreatment=fast_pretreatment,
+                resolution=resolution,
             )
             tasks.append({"task_id": task_id, "prompt": prompt_text})
         except Exception as e:

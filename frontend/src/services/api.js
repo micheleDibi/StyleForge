@@ -833,12 +833,15 @@ export const exportCarouselPdf = async (results, sectionType) => {
 // IMAGE TO VIDEO (Admin-only)
 // ============================================================================
 
-export const generateVideos = async (file, prompts, model = 'I2V-01', promptOptimizer = true) => {
+export const generateVideos = async (file, prompts, { model, promptOptimizer, duration, fastPretreatment, resolution } = {}) => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('prompts', JSON.stringify(prompts));
-  formData.append('model', model);
-  formData.append('prompt_optimizer', promptOptimizer);
+  if (model) formData.append('model', model);
+  if (promptOptimizer !== undefined) formData.append('prompt_optimizer', promptOptimizer);
+  if (duration) formData.append('duration', duration);
+  if (fastPretreatment !== undefined && fastPretreatment !== null) formData.append('fast_pretreatment', fastPretreatment);
+  if (resolution) formData.append('resolution', resolution);
 
   const response = await api.post('/api/video/generate', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
