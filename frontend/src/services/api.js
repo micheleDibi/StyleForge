@@ -830,6 +830,42 @@ export const exportCarouselPdf = async (results, sectionType) => {
 };
 
 // ============================================================================
+// IMAGE TO VIDEO (Admin-only)
+// ============================================================================
+
+export const generateVideos = async (file, prompts, model = 'I2V-01', promptOptimizer = true) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('prompts', JSON.stringify(prompts));
+  formData.append('model', model);
+  formData.append('prompt_optimizer', promptOptimizer);
+
+  const response = await api.post('/api/video/generate', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  });
+  return response.data;
+};
+
+export const getVideoTaskStatus = async (taskId) => {
+  const response = await api.get(`/api/video/status/${taskId}`);
+  return response.data;
+};
+
+export const getVideoTasksStatus = async (taskIds) => {
+  const response = await api.get('/api/video/status', {
+    params: { task_ids: taskIds.join(',') },
+  });
+  return response.data;
+};
+
+export const getVideoProxyUrl = (videoUrl) => {
+  const token = getAccessToken();
+  const params = new URLSearchParams({ url: videoUrl, token });
+  return `${API_URL}/api/video/proxy?${params.toString()}`;
+};
+
+// ============================================================================
 // ADMIN - API KEYS
 // ============================================================================
 

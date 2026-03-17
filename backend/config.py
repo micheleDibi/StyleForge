@@ -90,6 +90,13 @@ IMAGE_MAX_UPLOAD_SIZE = int(os.getenv("IMAGE_MAX_UPLOAD_SIZE", "10")) * 1024 * 1
 IMAGE_MAX_DIMENSION = int(os.getenv("IMAGE_MAX_DIMENSION", "4096"))
 IMAGE_ENHANCE_MODEL = os.getenv("IMAGE_ENHANCE_MODEL", "claude-opus-4-6")
 
+# MiniMax Video Generation (Admin-only)
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
+MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimaxi.chat/v1")
+MINIMAX_DEFAULT_MODEL = os.getenv("MINIMAX_DEFAULT_MODEL", "I2V-01")
+VIDEO_MAX_UPLOAD_SIZE = int(os.getenv("VIDEO_MAX_UPLOAD_SIZE", "10")) * 1024 * 1024
+VIDEO_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
 # Versione API
 API_VERSION = "1.0.0"
 API_TITLE = "StyleForge API"

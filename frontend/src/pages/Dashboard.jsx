@@ -5,7 +5,7 @@ import {
   Clock, CheckCircle2, AlertCircle, Zap, User, Settings,
   Layers, Brain, BookOpen, Calendar, Download,
   ChevronDown, Eye, Play, Coins, Shield, Pencil, Search,
-  ArrowUpRight, ScanSearch, FileDown, BarChart3, ImagePlus, LayoutGrid
+  ArrowUpRight, ScanSearch, FileDown, BarChart3, ImagePlus, LayoutGrid, Film
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, downloadCompilatioReport } from '../services/api';
@@ -124,6 +124,7 @@ const Dashboard = () => {
     hasPermission('thesis') && { key: 'thesis', icon: BookOpen, label: 'Tesi / Relazione', desc: 'Genera documenti completi', gradient: 'from-green-400 to-green-600', path: '/thesis' },
     hasPermission('enhance_image') && { key: 'enhance', icon: ImagePlus, label: 'Migliora Immagine', desc: 'Migliora qualita foto con AI', gradient: 'from-cyan-400 to-teal-600', path: '/enhance-image' },
     hasPermission('carousel_creator') && { key: 'carousel', icon: LayoutGrid, label: 'Carosello / Post', desc: 'Crea contenuti Instagram da articoli', gradient: 'from-pink-400 to-orange-500', path: '/carousel' },
+    isAdmin && { key: 'i2v', icon: Film, label: 'Image to Video', desc: 'Genera video da immagini con AI', gradient: 'from-violet-400 to-indigo-600', path: '/image-to-video' },
     isAdmin && { key: 'detector', icon: ScanSearch, label: 'Detector AI', desc: 'Scansione AI e plagio', gradient: 'from-pink-400 to-rose-600', path: '/detector-ai' },
   ].filter(Boolean);
 
@@ -216,7 +217,7 @@ const Dashboard = () => {
         {/* ═══ QUICK ACTIONS ═══ */}
         <section>
           <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">Azioni rapide</h3>
-          <div className={`grid gap-4 ${quickActions.length >= 5 ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5' : 'grid-cols-2 lg:grid-cols-4'}`}>
+          <div className={`grid gap-4 ${quickActions.length >= 6 ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4' : quickActions.length >= 5 ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5' : 'grid-cols-2 lg:grid-cols-4'}`}>
             {quickActions.map(a => (
               <div key={a.key} onClick={() => navigate(a.path)}
                 className="glass rounded-2xl p-5 card-interactive group cursor-pointer">

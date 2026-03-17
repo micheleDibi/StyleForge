@@ -38,6 +38,7 @@ from admin_routes import router as admin_router
 from image_enhance_routes import router as image_enhance_router
 from carousel_routes import router as carousel_router
 from external_api_routes import router as external_api_router
+from video_routes import router as video_router
 from db_models import User
 from database import init_db, get_db
 from ai_exceptions import InsufficientCreditsError
@@ -84,6 +85,9 @@ app.include_router(carousel_router)
 
 # Registra router API esterna v1
 app.include_router(external_api_router)
+
+# Registra router video generation
+app.include_router(video_router)
 
 
 # ============================================================================

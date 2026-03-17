@@ -12,6 +12,7 @@ import Admin from './pages/Admin';
 import DetectorAI from './pages/DetectorAI';
 import EnhanceImage from './pages/EnhanceImage';
 import CarouselCreator from './pages/CarouselCreator';
+import ImageToVideo from './pages/ImageToVideo';
 import Helper from './components/Helper';
 import Footer from './components/Footer';
 
@@ -183,6 +184,14 @@ const AppRoutes = () => {
         element={
           <AdminRoute>
             <Admin />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/image-to-video"
+        element={
+          <AdminRoute>
+            <ImageToVideo />
           </AdminRoute>
         }
       />
