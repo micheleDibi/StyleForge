@@ -8,8 +8,8 @@ import json
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, Query
+from fastapi.responses import Response, StreamingResponse
 from jose import JWTError, jwt
 
 from auth import get_current_admin_user, SECRET_KEY, ALGORITHM
@@ -136,10 +136,12 @@ async def get_tasks_status(
 async def proxy_video(
     url: str = Query(..., description="MiniMax video URL"),
     token: str = Query(..., description="JWT token for auth"),
+    request: Request = None,
 ):
     """
     Stream video from MiniMax URL to avoid CORS issues.
     Uses JWT token as query param since <video src> can't send headers.
+    Supports HTTP Range requests for Safari compatibility.
     """
     # Verify JWT token
     try:
@@ -151,19 +153,54 @@ async def proxy_video(
     except JWTError:
         raise HTTPException(status_code=401, detail="Token non valido o scaduto")
 
-    # Stream video from MiniMax
+    # Download video from MiniMax
     try:
         async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
             resp = await client.get(url)
             resp.raise_for_status()
-
-            return StreamingResponse(
-                iter([resp.content]),
-                media_type="video/mp4",
-                headers={
-                    "Content-Disposition": "inline",
-                    "Cache-Control": "public, max-age=3600",
-                },
-            )
+            video_data = resp.content
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Errore download video: {e}")
+
+    total_size = len(video_data)
+    range_header = request.headers.get("range") if request else None
+
+    if range_header:
+        # Parse Range header (e.g. "bytes=0-1023")
+        range_spec = range_header.strip().lower()
+        if not range_spec.startswith("bytes="):
+            raise HTTPException(status_code=416, detail="Invalid range")
+        byte_range = range_spec[6:]
+        parts = byte_range.split("-")
+        start = int(parts[0]) if parts[0] else 0
+        end = int(parts[1]) if parts[1] else total_size - 1
+        end = min(end, total_size - 1)
+
+        if start > end or start >= total_size:
+            raise HTTPException(status_code=416, detail="Range not satisfiable")
+
+        content_length = end - start + 1
+        return Response(
+            content=video_data[start:end + 1],
+            status_code=206,
+            media_type="video/mp4",
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{total_size}",
+                "Content-Length": str(content_length),
+                "Accept-Ranges": "bytes",
+                "Content-Disposition": "inline",
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
+    # Full response (no Range header)
+    return Response(
+        content=video_data,
+        media_type="video/mp4",
+        headers={
+            "Content-Length": str(total_size),
+            "Accept-Ranges": "bytes",
+            "Content-Disposition": "inline",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
