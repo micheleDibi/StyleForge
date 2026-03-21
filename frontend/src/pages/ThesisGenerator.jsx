@@ -68,12 +68,12 @@ const ThesisGenerator = () => {
     num_chapters: 5,
     sections_per_chapter: 3,
     words_per_section: 1000,
-    ai_provider: 'openai'
+    ai_provider: 'openai',
+    citation_style: 'footnotes'
   });
 
   const [audienceData, setAudienceData] = useState({
     knowledge_level_id: null,
-    audience_size_id: null,
     industry_id: null,
     target_audience_id: null
   });
@@ -467,7 +467,7 @@ const ThesisGenerator = () => {
               <span className="hidden sm:inline font-medium">Dashboard</span>
             </button>
             <div className="text-center">
-              <h1 className="text-xl font-bold text-slate-900">Genera Tesi / Relazione</h1>
+              <h1 className="text-xl font-bold text-slate-900">Tesi</h1>
             </div>
             <div className="w-20"></div>
           </div>

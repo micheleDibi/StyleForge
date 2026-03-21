@@ -256,10 +256,11 @@ class ThesisCreateRequest(BaseModel):
     sections_per_chapter: int = Field(3, ge=1, le=10, description="Sezioni per capitolo")
     words_per_section: int = Field(5000, ge=500, le=20000, description="Parole per sezione")
     knowledge_level_id: int = Field(..., description="ID livello conoscenza pubblico")
-    audience_size_id: int = Field(..., description="ID dimensione pubblico")
+    audience_size_id: Optional[int] = Field(None, description="ID dimensione pubblico (opzionale)")
     industry_id: int = Field(..., description="ID settore/industria")
     target_audience_id: int = Field(..., description="ID destinatario target")
     ai_provider: AIProviderEnum = Field(AIProviderEnum.OPENAI, description="Provider AI (openai o claude)")
+    citation_style: Optional[str] = Field("footnotes", description="Stile citazioni: 'footnotes' (note a piè di pagina) o 'bibliography' (citazioni [x])")
 
     class Config:
         json_schema_extra = {
@@ -276,9 +277,15 @@ class ThesisCreateRequest(BaseModel):
                 "audience_size_id": 3,
                 "industry_id": 3,
                 "target_audience_id": 1,
-                "ai_provider": "openai"
+                "ai_provider": "openai",
+                "citation_style": "footnotes"
             }
         }
+
+
+class ThesisUrlAttachmentRequest(BaseModel):
+    """Request per aggiungere URL come allegati alla tesi."""
+    urls: List[str] = Field(..., description="Lista di URL da usare come fonti di riferimento")
 
 
 class ChapterInfo(BaseModel):
@@ -318,6 +325,7 @@ class ThesisResponse(BaseModel):
     industry_id: Optional[int] = None
     target_audience_id: Optional[int] = None
     ai_provider: Optional[str] = Field("openai", description="Provider AI usato")
+    citation_style: Optional[str] = Field("footnotes", description="Stile citazioni")
     chapters_structure: Optional[Dict[str, Any]] = None
     generated_content: Optional[str] = None
     status: ThesisStatus

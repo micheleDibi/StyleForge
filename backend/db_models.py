@@ -455,6 +455,9 @@ class Thesis(Base):
     # Provider AI (openai o claude)
     ai_provider = Column(String(20), default='openai')
 
+    # Stile citazioni: 'footnotes' (note a piè di pagina) o 'bibliography' (citazioni [x])
+    citation_style = Column(String(20), default='footnotes')
+
     # Struttura generata (JSON)
     chapters_structure = Column(JSONB, nullable=True)
 
@@ -509,6 +512,7 @@ class Thesis(Base):
             "industry_id": self.industry_id,
             "target_audience_id": self.target_audience_id,
             "ai_provider": self.ai_provider or "openai",
+            "citation_style": self.citation_style or "footnotes",
             "chapters_structure": self.chapters_structure,
             "generated_content": self.generated_content,
             "status": self.status,

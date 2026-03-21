@@ -19,6 +19,7 @@ CREATE TABLE theses (
     industry_id INTEGER REFERENCES industries(id),
     target_audience_id INTEGER REFERENCES target_audiences(id),
     ai_provider VARCHAR(20) DEFAULT 'openai',
+    citation_style VARCHAR(20) DEFAULT 'footnotes',
     chapters_structure JSONB,
     generated_content TEXT,
     status thesis_status DEFAULT 'draft',

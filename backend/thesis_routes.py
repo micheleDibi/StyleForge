@@ -29,7 +29,7 @@ from models import (
     WritingStyleResponse, ContentDepthResponse,
     AudienceKnowledgeLevelResponse, AudienceSizeResponse,
     IndustryResponse, TargetAudienceResponse,
-    ThesisStatus, ChapterInfo
+    ThesisStatus, ChapterInfo, ThesisUrlAttachmentRequest
 )
 from db_models import (
     User, Thesis, ThesisAttachment, ThesisGenerationJob,
@@ -79,6 +79,7 @@ def build_thesis_data_dict(thesis: Thesis, db: DBSession) -> dict:
         "num_chapters": thesis.num_chapters,
         "sections_per_chapter": thesis.sections_per_chapter,
         "words_per_section": thesis.words_per_section,
+        "citation_style": getattr(thesis, 'citation_style', 'footnotes') or 'footnotes',
     }
 
     # Carica i dati di lookup
@@ -276,6 +277,7 @@ async def create_thesis(
         industry_id=request.industry_id,
         target_audience_id=request.target_audience_id,
         ai_provider=request.ai_provider.value if request.ai_provider else "openai",
+        citation_style=request.citation_style or "footnotes",
         status='draft'
     )
 
@@ -451,6 +453,110 @@ async def delete_attachment(
     db.commit()
 
     return {"message": "Allegato eliminato con successo"}
+
+
+@router.post("/{thesis_id}/attachments/urls", response_model=ThesisAttachmentsListResponse)
+async def add_url_attachments(
+    thesis_id: str,
+    request: ThesisUrlAttachmentRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: DBSession = Depends(get_db)
+):
+    """
+    Aggiunge URL come allegati alla tesi.
+
+    Scarica il contenuto delle pagine web e lo estrae come testo di riferimento.
+    """
+    import httpx
+    from bs4 import BeautifulSoup
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    # Verifica limite allegati
+    existing_count = db.query(ThesisAttachment).filter(
+        ThesisAttachment.thesis_id == thesis.id
+    ).count()
+
+    if existing_count + len(request.urls) > config.THESIS_MAX_ATTACHMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Superato il limite di {config.THESIS_MAX_ATTACHMENTS} allegati"
+        )
+
+    uploaded = []
+
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        for url in request.urls:
+            try:
+                response = await client.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; StyleForge/1.0)"
+                })
+                response.raise_for_status()
+
+                soup = BeautifulSoup(response.text, 'html.parser')
+
+                # Estrai titolo
+                og_title = soup.find('meta', property='og:title')
+                title = og_title['content'] if og_title and og_title.get('content') else ''
+                if not title:
+                    title_tag = soup.find('title')
+                    title = title_tag.get_text(strip=True) if title_tag else url
+
+                # Estrai contenuto
+                content_text = ''
+                for selector in ['.entry-content', '.post-content', 'article .content', 'article', 'main']:
+                    el = soup.select_one(selector)
+                    if el:
+                        for tag in el.find_all(['script', 'style', 'nav', 'aside', 'footer']):
+                            tag.decompose()
+                        content_text = el.get_text(separator='\n', strip=True)
+                        break
+
+                if not content_text:
+                    body = soup.find('body')
+                    if body:
+                        for tag in body.find_all(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+                            tag.decompose()
+                        content_text = body.get_text(separator='\n', strip=True)
+
+                if len(content_text) > 8000:
+                    content_text = content_text[:8000] + "\n[...contenuto troncato...]"
+
+                if not content_text:
+                    logger.warning(f"Nessun contenuto estratto da URL: {url}")
+                    continue
+
+                attachment = ThesisAttachment(
+                    thesis_id=thesis.id,
+                    filename=f"url_{uuid.uuid4().hex[:8]}.html",
+                    original_filename=title or url,
+                    file_path=url,
+                    file_size=len(content_text),
+                    mime_type="text/html",
+                    extracted_text=content_text
+                )
+
+                db.add(attachment)
+                db.commit()
+                db.refresh(attachment)
+
+                uploaded.append(ThesisAttachmentResponse(**attachment.to_dict()))
+
+            except httpx.HTTPStatusError as e:
+                logger.warning(f"Errore HTTP per URL {url}: {e.response.status_code}")
+            except Exception as e:
+                logger.warning(f"Errore recupero URL {url}: {e}")
+
+    if not uploaded:
+        raise HTTPException(
+            status_code=400,
+            detail="Impossibile recuperare contenuto da nessuno degli URL forniti"
+        )
+
+    return ThesisAttachmentsListResponse(
+        attachments=uploaded,
+        total=len(uploaded)
+    )
 
 
 # ============================================================================
@@ -1414,6 +1520,40 @@ async def get_generation_status(
 
 
 # ============================================================================
+# FOOTNOTE PROCESSING UTILITIES
+# ============================================================================
+
+import re as _re
+
+_FOOTNOTE_PATTERN = _re.compile(r'\{\{nota:\s*(.*?)\}\}')
+
+
+def extract_footnotes_from_line(line: str) -> list:
+    """Trova tutte le {{nota: ...}} in una riga. Ritorna lista di (start, end, testo_nota)."""
+    return [(m.start(), m.end(), m.group(1).strip()) for m in _FOOTNOTE_PATTERN.finditer(line)]
+
+
+def strip_footnotes_for_plain(content: str, start_num: int = 1) -> tuple:
+    """
+    Per export TXT/MD: sostituisce {{nota:...}} con numeri e raccoglie le note.
+    Ritorna (testo_processato, lista_note, next_num).
+    """
+    notes = []
+    num = start_num
+
+    def replacer(m):
+        nonlocal num
+        note_text = m.group(1).strip()
+        notes.append((num, note_text))
+        result = f"[{num}]"
+        num += 1
+        return result
+
+    processed = _FOOTNOTE_PATTERN.sub(replacer, content)
+    return processed, notes, num
+
+
+# ============================================================================
 # EXPORT ENDPOINTS
 # ============================================================================
 
@@ -1519,17 +1659,24 @@ async def export_thesis(
     content = thesis.generated_content
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_title = "".join(c for c in thesis.title[:50] if c.isalnum() or c in ' _-').strip()
+    cit_style = getattr(thesis, 'citation_style', 'footnotes') or 'footnotes'
 
     # Genera l'indice
     toc = generate_table_of_contents(thesis.chapters_structure, format)
 
     if format == "txt":
-        # Export TXT con indice
+        # Export TXT con indice e note a piè di pagina come endnotes
+        has_footnotes = cit_style == 'footnotes'
+        processed_content, all_notes, _ = strip_footnotes_for_plain(content) if has_footnotes else (content, [], 1)
         full_content = f"{thesis.title}\n{'=' * len(thesis.title)}\n\n"
         if thesis.description:
             full_content += f"{thesis.description}\n\n"
         full_content += toc
-        full_content += content
+        full_content += processed_content
+        if all_notes:
+            full_content += "\n\n" + "=" * 60 + "\nNOTE\n" + "=" * 60 + "\n\n"
+            for num, note_text in all_notes:
+                full_content += f"[{num}] {note_text}\n"
 
         file_path = config.RESULTS_DIR / f"thesis_{safe_title}_{timestamp}.txt"
         file_path.write_text(full_content, encoding='utf-8')
@@ -1541,12 +1688,18 @@ async def export_thesis(
         )
 
     elif format == "md":
-        # Export Markdown con indice
+        # Export Markdown con indice e note come footnotes
+        has_footnotes = cit_style == 'footnotes'
+        processed_content, all_notes, _ = strip_footnotes_for_plain(content) if has_footnotes else (content, [], 1)
         md_content = f"# {thesis.title}\n\n"
         if thesis.description:
             md_content += f"*{thesis.description}*\n\n---\n\n"
         md_content += toc
-        md_content += content
+        md_content += processed_content
+        if all_notes:
+            md_content += "\n\n---\n\n### Note\n\n"
+            for num, note_text in all_notes:
+                md_content += f"[^{num}]: {note_text}\n\n"
 
         file_path = config.RESULTS_DIR / f"thesis_{safe_title}_{timestamp}.md"
         file_path.write_text(md_content, encoding='utf-8')
@@ -1564,6 +1717,118 @@ async def export_thesis(
         from docx.enum.text import WD_ALIGN_PARAGRAPH
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
+        from lxml import etree
+
+        # Footnote tracking for DOCX
+        docx_footnote_id = [1]  # Mutable counter
+        docx_all_footnotes = []  # Collect all footnotes for endnotes fallback
+
+        def _ensure_footnotes_part(doc):
+            """Crea o ottieni la FootnotesPart per il documento."""
+            from docx.opc.part import Part as OpcPart
+            from docx.opc.packuri import PackURI
+
+            # Cerca se esiste già una relazione footnotes
+            FOOTNOTES_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes"
+            for rel in doc.part.rels.values():
+                if rel.reltype == FOOTNOTES_REL_TYPE:
+                    return rel.target_part
+
+            # Crea la footnotes part
+            footnotes_xml = (
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+                ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                '<w:footnote w:type="separator" w:id="-1">'
+                '<w:p><w:r><w:separator/></w:r></w:p>'
+                '</w:footnote>'
+                '<w:footnote w:type="continuationSeparator" w:id="0">'
+                '<w:p><w:r><w:continuationSeparator/></w:r></w:p>'
+                '</w:footnote>'
+                '</w:footnotes>'
+            )
+            footnotes_part = OpcPart(
+                PackURI('/word/footnotes.xml'),
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml',
+                footnotes_xml.encode('utf-8'),
+                doc.part.package
+            )
+            doc.part.relate_to(footnotes_part, FOOTNOTES_REL_TYPE)
+            return footnotes_part
+
+        def add_footnote(doc, paragraph, footnote_text, footnote_id, fn_font_name="Times New Roman", fn_font_size=10):
+            """Aggiunge una footnote reale al documento DOCX."""
+            try:
+                footnotes_part = _ensure_footnotes_part(doc)
+                fns_element = etree.fromstring(footnotes_part.blob)
+
+                # Crea l'elemento footnote
+                footnote_el = OxmlElement('w:footnote')
+                footnote_el.set(qn('w:id'), str(footnote_id))
+
+                # Paragrafo nella footnote
+                fn_para = OxmlElement('w:p')
+
+                # Run con il numero della footnote (nella footnote stessa)
+                fn_ref_run = OxmlElement('w:r')
+                fn_ref_rPr = OxmlElement('w:rPr')
+                fn_ref_style = OxmlElement('w:rStyle')
+                fn_ref_style.set(qn('w:val'), 'FootnoteReference')
+                fn_ref_rPr.append(fn_ref_style)
+                fn_ref_run.append(fn_ref_rPr)
+                fn_ref_elem = OxmlElement('w:footnoteRef')
+                fn_ref_run.append(fn_ref_elem)
+                fn_para.append(fn_ref_run)
+
+                # Spazio dopo il numero
+                space_run = OxmlElement('w:r')
+                space_t = OxmlElement('w:t')
+                space_t.set(qn('xml:space'), 'preserve')
+                space_t.text = ' '
+                space_run.append(space_t)
+                fn_para.append(space_run)
+
+                # Testo della nota
+                fn_text_run = OxmlElement('w:r')
+                fn_text_rPr = OxmlElement('w:rPr')
+                fn_text_sz = OxmlElement('w:sz')
+                fn_text_sz.set(qn('w:val'), str(fn_font_size * 2))  # half-points
+                fn_text_rPr.append(fn_text_sz)
+                fn_text_szCs = OxmlElement('w:szCs')
+                fn_text_szCs.set(qn('w:val'), str(fn_font_size * 2))
+                fn_text_rPr.append(fn_text_szCs)
+                if fn_font_name:
+                    fn_text_rFonts = OxmlElement('w:rFonts')
+                    fn_text_rFonts.set(qn('w:ascii'), fn_font_name)
+                    fn_text_rFonts.set(qn('w:hAnsi'), fn_font_name)
+                    fn_text_rPr.append(fn_text_rFonts)
+                fn_text_run.append(fn_text_rPr)
+                fn_text_t = OxmlElement('w:t')
+                fn_text_t.set(qn('xml:space'), 'preserve')
+                fn_text_t.text = footnote_text
+                fn_text_run.append(fn_text_t)
+                fn_para.append(fn_text_run)
+
+                footnote_el.append(fn_para)
+                fns_element.append(footnote_el)
+
+                # Aggiorna il blob
+                footnotes_part._blob = etree.tostring(fns_element, xml_declaration=True, encoding='UTF-8', standalone=True)
+
+                # Aggiungi il riferimento nel paragrafo del documento
+                fn_inline_run = OxmlElement('w:r')
+                fn_inline_rPr = OxmlElement('w:rPr')
+                fn_inline_style = OxmlElement('w:rStyle')
+                fn_inline_style.set(qn('w:val'), 'FootnoteReference')
+                fn_inline_rPr.append(fn_inline_style)
+                fn_inline_run.append(fn_inline_rPr)
+                fn_inline_ref = OxmlElement('w:footnoteReference')
+                fn_inline_ref.set(qn('w:id'), str(footnote_id))
+                fn_inline_run.append(fn_inline_ref)
+                paragraph._element.append(fn_inline_run)
+
+            except Exception:
+                raise  # Let the caller handle the fallback
 
         template = get_template_by_id(template_id, db)
         ds = template.get("docx", {})
@@ -1769,7 +2034,7 @@ async def export_thesis(
 
             doc.add_page_break()
 
-        # ── Contenuto con body_alignment ──
+        # ── Contenuto con body_alignment e footnotes ──
         for line in content.split('\n'):
             if line.startswith('# '):
                 h = doc.add_heading(line[2:], level=1)
@@ -1782,13 +2047,48 @@ async def export_thesis(
                 for run in h.runs:
                     run.font.name = font_name
             elif line.strip():
-                para = doc.add_paragraph(line)
-                para.alignment = body_alignment
-                para.paragraph_format.space_after = Pt(para_sp_after)
-                para.paragraph_format.line_spacing = line_sp
-                for run in para.runs:
-                    run.font.name = font_name
-                    run.font.size = Pt(font_sz)
+                footnotes_in_line = extract_footnotes_from_line(line)
+                if footnotes_in_line:
+                    para = doc.add_paragraph()
+                    para.alignment = body_alignment
+                    para.paragraph_format.space_after = Pt(para_sp_after)
+                    para.paragraph_format.line_spacing = line_sp
+
+                    last_end = 0
+                    for fn_start, fn_end, fn_text in footnotes_in_line:
+                        # Testo prima della nota
+                        before_text = line[last_end:fn_start]
+                        if before_text:
+                            run = para.add_run(before_text)
+                            run.font.name = font_name
+                            run.font.size = Pt(font_sz)
+                        # Aggiungi la footnote
+                        try:
+                            add_footnote(doc, para, fn_text, docx_footnote_id[0], font_name, font_sz - 2)
+                            docx_footnote_id[0] += 1
+                        except Exception as e:
+                            # Fallback: aggiungi come testo in apice
+                            sup_run = para.add_run(f"[{docx_footnote_id[0]}]")
+                            sup_run.font.name = font_name
+                            sup_run.font.size = Pt(font_sz - 2)
+                            sup_run.font.superscript = True
+                            docx_footnote_id[0] += 1
+                        last_end = fn_end
+
+                    # Testo dopo l'ultima nota
+                    remaining = line[last_end:]
+                    if remaining:
+                        run = para.add_run(remaining)
+                        run.font.name = font_name
+                        run.font.size = Pt(font_sz)
+                else:
+                    para = doc.add_paragraph(line)
+                    para.alignment = body_alignment
+                    para.paragraph_format.space_after = Pt(para_sp_after)
+                    para.paragraph_format.line_spacing = line_sp
+                    for run in para.runs:
+                        run.font.name = font_name
+                        run.font.size = Pt(font_sz)
             # Righe vuote: non aggiungere nulla (spazio naturale)
 
         doc.save(str(file_path))
@@ -1967,18 +2267,100 @@ async def export_thesis(
         current_page = new_pdf_page()
         y = margin_top
 
-        # Contenuto
-        for line in content.split('\n'):
-            if y + line_height > page_height - margin_bottom:
+        # Footnote tracking for PDF
+        pdf_footnote_num = [1]  # Progressive footnote number
+        page_footnotes = []  # Footnotes for current page
+        fn_font_size = max(font_size - 3, 7)
+        fn_line_height = fn_font_size * 1.3
+        fn_separator_space = 15  # Space for separator line above footnotes
+
+        def get_footnotes_height():
+            """Calcola altezza necessaria per le note a piè di pagina correnti."""
+            if not page_footnotes:
+                return 0
+            return fn_separator_space + len(page_footnotes) * fn_line_height + 5
+
+        def render_page_footnotes():
+            """Renderizza le note raccolte in fondo alla pagina corrente."""
+            if not page_footnotes:
+                return
+            fn_y = page_height - margin_bottom - get_footnotes_height() + fn_separator_space
+            # Linea separatrice
+            current_page.draw_line(
+                fitz.Point(margin_left, fn_y - 8),
+                fitz.Point(margin_left + content_width * 0.3, fn_y - 8),
+                color=(0.5, 0.5, 0.5),
+                width=0.5
+            )
+            for fn_num, fn_text in page_footnotes:
+                fn_label = f"{fn_num} "
+                label_width = fitz.get_text_length(fn_label, fontname=font_body, fontsize=fn_font_size)
+                current_page.insert_text(
+                    (margin_left, fn_y),
+                    fn_label,
+                    fontsize=fn_font_size,
+                    fontname=font_body,
+                    color=(0.3, 0.3, 0.3)
+                )
+                # Wrap footnote text
+                fn_words = fn_text.split()
+                fn_current_line = []
+                fn_x_start = margin_left + label_width
+                fn_content_width = content_width - label_width
+                first_line = True
+                for fw in fn_words:
+                    test = ' '.join(fn_current_line + [fw])
+                    tw = fitz.get_text_length(test, fontname=font_body, fontsize=fn_font_size)
+                    if tw < fn_content_width:
+                        fn_current_line.append(fw)
+                    else:
+                        if fn_current_line:
+                            x_pos = fn_x_start if first_line else margin_left + label_width
+                            if not first_line:
+                                fn_y += fn_line_height
+                            current_page.insert_text(
+                                (x_pos, fn_y if first_line else fn_y),
+                                ' '.join(fn_current_line),
+                                fontsize=fn_font_size,
+                                fontname=font_body,
+                                color=(0.3, 0.3, 0.3)
+                            )
+                            first_line = False
+                        fn_current_line = [fw]
+                if fn_current_line:
+                    x_pos = fn_x_start if first_line else margin_left + label_width
+                    if not first_line:
+                        fn_y += fn_line_height
+                    current_page.insert_text(
+                        (x_pos, fn_y),
+                        ' '.join(fn_current_line),
+                        fontsize=fn_font_size,
+                        fontname=font_body,
+                        color=(0.3, 0.3, 0.3)
+                    )
+                fn_y += fn_line_height
+
+        def get_available_y():
+            """Altezza massima disponibile per il contenuto (sottraendo footnotes)."""
+            return page_height - margin_bottom - get_footnotes_height()
+
+        def check_new_page_needed(needed_height):
+            """Verifica se serve nuova pagina. Se sì, renderizza footnotes e crea nuova pagina."""
+            nonlocal current_page, y, page_footnotes
+            if y + needed_height > get_available_y():
+                render_page_footnotes()
+                page_footnotes = []
                 current_page = new_pdf_page()
                 y = margin_top
+
+        # Contenuto con footnotes
+        for line in content.split('\n'):
+            check_new_page_needed(line_height)
 
             # Gestisci titoli
             if line.startswith('# '):
                 y += chapter_spacing
-                if y + font_chapter_size + 10 > page_height - margin_bottom:
-                    current_page = new_pdf_page()
-                    y = margin_top
+                check_new_page_needed(font_chapter_size + 10)
                 current_page.insert_text(
                     (margin_left, y),
                     line[2:],
@@ -1988,9 +2370,7 @@ async def export_thesis(
                 y += font_chapter_size + 8
             elif line.startswith('## '):
                 y += section_spacing
-                if y + font_section_size + 8 > page_height - margin_bottom:
-                    current_page = new_pdf_page()
-                    y = margin_top
+                check_new_page_needed(font_section_size + 8)
                 current_page.insert_text(
                     (margin_left, y),
                     line[3:],
@@ -1999,6 +2379,25 @@ async def export_thesis(
                 )
                 y += font_section_size + 6
             elif line.strip():
+                # Check for footnotes in line
+                footnotes_in_line = extract_footnotes_from_line(line)
+
+                if footnotes_in_line:
+                    # Process line: strip {{nota:...}} and replace with superscript numbers
+                    processed_line = ""
+                    last_end = 0
+                    line_fn_nums = []
+                    for fn_start, fn_end, fn_text in footnotes_in_line:
+                        processed_line += line[last_end:fn_start]
+                        fn_num = pdf_footnote_num[0]
+                        processed_line += f"[{fn_num}]"
+                        line_fn_nums.append((fn_num, fn_text))
+                        page_footnotes.append((fn_num, fn_text))
+                        pdf_footnote_num[0] += 1
+                        last_end = fn_end
+                    processed_line += line[last_end:]
+                    line = processed_line
+
                 # Wrap text
                 words = line.split()
                 current_line = []
@@ -2009,9 +2408,7 @@ async def export_thesis(
                         current_line.append(word)
                     else:
                         if current_line:
-                            if y + line_height > page_height - margin_bottom:
-                                current_page = new_pdf_page()
-                                y = margin_top
+                            check_new_page_needed(line_height)
                             text_str = ' '.join(current_line)
                             text_x = calc_text_x(text_str, font_size, font_body, body_align)
                             current_page.insert_text(
@@ -2024,9 +2421,7 @@ async def export_thesis(
                         current_line = [word]
 
                 if current_line:
-                    if y + line_height > page_height - margin_bottom:
-                        current_page = new_pdf_page()
-                        y = margin_top
+                    check_new_page_needed(line_height)
                     text_str = ' '.join(current_line)
                     text_x = calc_text_x(text_str, font_size, font_body, body_align)
                     current_page.insert_text(
@@ -2042,6 +2437,9 @@ async def export_thesis(
                     y += paragraph_spacing
             else:
                 y += line_height * 0.5
+
+        # Renderizza le ultime footnotes
+        render_page_footnotes()
 
         # Aggiungi header/footer/numeri pagina a tutte le pagine
         total_pages = len(pdf_doc)

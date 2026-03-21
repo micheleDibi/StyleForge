@@ -445,6 +445,13 @@ export const deleteThesisAttachment = async (thesisId, attachmentId) => {
   return response.data;
 };
 
+export const addThesisUrlAttachments = async (thesisId, urls) => {
+  const response = await api.post(`/api/thesis/${thesisId}/attachments/urls`, { urls }, {
+    timeout: 60000
+  });
+  return response.data;
+};
+
 // Generation phases - timeout estesi per operazioni AI
 export const generateThesisChapters = async (thesisId) => {
   const response = await api.post(`/api/thesis/${thesisId}/generate-chapters`, {}, {

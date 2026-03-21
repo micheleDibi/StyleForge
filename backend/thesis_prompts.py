@@ -8,6 +8,46 @@ della generazione di tesi utilizzando OpenAI o1/o3.
 from typing import Dict, Any, List, Optional
 
 
+def _get_citation_instructions(citation_style: str = "footnotes") -> str:
+    """Restituisce le istruzioni sulle citazioni in base allo stile scelto."""
+    if citation_style == "bibliography":
+        return """CITAZIONI BIBLIOGRAFICHE — SOLO FONTI REALI:
+   - Inserisci almeno 3-5 citazioni bibliografiche nel testo usando il formato [x]
+     dove x è un numero progressivo (es. [1], [2], [3], ecc.)
+   - ⚠️ REQUISITO CRITICO: Cita ESCLUSIVAMENTE opere REALI e VERIFICABILI
+   - Ogni citazione [x] DEVE riferirsi a un'opera che ESISTE REALMENTE:
+     • Libri pubblicati da autori reali con ISBN verificabile
+     • Articoli pubblicati su riviste scientifiche reali
+     • Report di organizzazioni reali (OMS, ISTAT, UE, ecc.)
+     • Pubblicazioni accademiche reali e verificabili
+   - ⚠️ NON INVENTARE MAI fonti, autori, titoli o pubblicazioni
+   - ⚠️ Se non sei sicuro che una fonte esista realmente, NON citarla
+   - Usa le citazioni quando menzioni studi, ricerche, dati, teorie o opinioni di autori
+   - Esempio: "Secondo Kahneman [1], i bias cognitivi influenzano..."
+   - I numeri devono essere progressivi e coerenti all'interno della tesi
+   - Quando citi, includi nel testo abbastanza contesto per identificare la fonte
+     (es. nome autore, anno, titolo abbreviato) così la bibliografia sarà accurata"""
+    else:
+        return """NOTE A PIÈ DI PAGINA — SOLO FONTI REALI:
+   - Inserisci note bibliografiche nel testo usando il formato {{nota: riferimento completo}}
+   - PRIMA CITAZIONE di un'opera: {{nota: Cognome, N. (Anno). Titolo completo. Casa editrice. p.XX}}
+   - STESSA OPERA, STESSA PAGINA della nota immediatamente precedente: {{nota: Ibidem.}}
+   - STESSA OPERA, PAGINA DIVERSA della nota immediatamente precedente: {{nota: Ivi. p.XX}}
+   - OPERA GIÀ CITATA IN PRECEDENZA (non immediatamente): {{nota: Op.cit. Cognome, Anno, p.XX}}
+   - ⚠️ Cita ESCLUSIVAMENTE opere REALI e VERIFICABILI
+   - ⚠️ NON INVENTARE MAI fonti, autori, titoli o pubblicazioni
+   - Inserisci almeno 3-5 note per sezione
+   - Esempio nel testo: "L'inclusione scolastica è un tema di prim'ordine{{nota: Bonura, A. (2021). Legislazione e innovazioni normative. USR SICILIA. p.15}} e il numero degli alunni con BES aumenta{{nota: Ibidem.}}" """
+
+
+def _get_no_citation_instruction(citation_style: str = "footnotes") -> str:
+    """Istruzione per non inserire citazioni (introduzione/conclusione)."""
+    if citation_style == "bibliography":
+        return "NON inserire citazioni bibliografiche [x]"
+    else:
+        return "NON inserire note bibliografiche {{nota:...}}"
+
+
 def build_chapters_prompt(thesis_data: Dict[str, Any], attachments_context: str = "") -> str:
     """
     Costruisce il prompt per la FASE 1: Generazione titoli capitoli.
@@ -56,7 +96,7 @@ CARATTERISTICHE DEL PUBBLICO
 LIVELLO DI CONOSCENZA: {thesis_data.get('knowledge_level_name', 'Intermedio')}
   → Indicazione: {thesis_data.get('knowledge_level_hint', '')}
 
-DIMENSIONE PUBBLICO: {thesis_data.get('audience_size_name', 'Medio')}
+DIMENSIONE PUBBLICO: Commissione di laurea
 SETTORE/INDUSTRIA: {thesis_data.get('industry_name', 'Generale')}
 DESTINATARI: {thesis_data.get('target_audience_name', 'Pubblico Generale')}
   → Indicazione: {thesis_data.get('target_audience_hint', '')}
@@ -339,22 +379,7 @@ ISTRUZIONI DI SCRITTURA
    - Fai riferimento ai materiali dove appropriato
    - Non copiare verbatim, rielabora
 
-6. CITAZIONI BIBLIOGRAFICHE — SOLO FONTI REALI:
-   - Inserisci almeno 3-5 citazioni bibliografiche nel testo usando il formato [x]
-     dove x è un numero progressivo (es. [1], [2], [3], ecc.)
-   - ⚠️ REQUISITO CRITICO: Cita ESCLUSIVAMENTE opere REALI e VERIFICABILI
-   - Ogni citazione [x] DEVE riferirsi a un'opera che ESISTE REALMENTE:
-     • Libri pubblicati da autori reali con ISBN verificabile
-     • Articoli pubblicati su riviste scientifiche reali
-     • Report di organizzazioni reali (OMS, ISTAT, UE, ecc.)
-     • Pubblicazioni accademiche reali e verificabili
-   - ⚠️ NON INVENTARE MAI fonti, autori, titoli o pubblicazioni
-   - ⚠️ Se non sei sicuro che una fonte esista realmente, NON citarla
-   - Usa le citazioni quando menzioni studi, ricerche, dati, teorie o opinioni di autori
-   - Esempio: "Secondo Kahneman [1], i bias cognitivi influenzano..."
-   - I numeri devono essere progressivi e coerenti all'interno della tesi
-   - Quando citi, includi nel testo abbastanza contesto per identificare la fonte
-     (es. nome autore, anno, titolo abbreviato) così la bibliografia sarà accurata
+6. {_get_citation_instructions(thesis_data.get('citation_style', 'footnotes'))}
 
 7. SCRIVI COME UNO STUDENTE UNIVERSITARIO:
    Il testo deve sembrare scritto da uno studente preparato che sta elaborando la propria
@@ -546,7 +571,7 @@ L'introduzione deve:
 5. Contestualizzare il lavoro nel panorama attuale del settore
 6. Essere COINVOLGENTE e motivare il lettore a proseguire
 
-NON inserire citazioni bibliografiche [x] nell'introduzione.
+{_get_no_citation_instruction(thesis_data.get('citation_style', 'footnotes'))} nell'introduzione.
 
 SCRIVI COME UNO STUDENTE UNIVERSITARIO:
 - Usa parole semplici e dirette, evita vocabolario pomposo
@@ -654,7 +679,7 @@ La conclusione deve:
 5. Suggerire possibili SVILUPPI FUTURI e direzioni di ricerca
 6. Chiudere con una riflessione finale significativa
 
-NON inserire citazioni bibliografiche [x] nella conclusione.
+{_get_no_citation_instruction(thesis_data.get('citation_style', 'footnotes'))} nella conclusione.
 NON ripetere verbatim frasi dai capitoli precedenti — rielabora i concetti.
 
 SCRIVI COME UNO STUDENTE UNIVERSITARIO:
@@ -685,43 +710,45 @@ def build_bibliography_prompt(
     """
     Costruisce il prompt per generare la Bibliografia della tesi.
 
-    Analizza il contenuto generato per trovare le citazioni [x]
-    e genera una bibliografia formale.
+    Supporta due stili:
+    - 'bibliography': citazioni [x] con bibliografia numerata
+    - 'footnotes': note {{nota:...}} con bibliografia alfabetica
 
     Args:
         thesis_data: Parametri della tesi
-        all_content: Tutto il contenuto generato (per trovare le citazioni [x])
+        all_content: Tutto il contenuto generato
 
     Returns:
         Prompt completo per la generazione della bibliografia
     """
-    # Estrai le citazioni [x] dal testo
     import re
-    citations = sorted(set(int(m) for m in re.findall(r'\[(\d+)\]', all_content)))
-    citations_str = ", ".join([f"[{c}]" for c in citations]) if citations else "Nessuna citazione trovata"
-    num_citations = len(citations)
 
-    # Estrai contesto per ogni citazione (frase in cui appare)
-    citation_contexts = []
-    for c in citations:
-        # Trova le frasi che contengono questa citazione
-        pattern = rf'[^.]*\[{c}\][^.]*\.'
-        matches = re.findall(pattern, all_content)
-        if matches:
-            context = matches[0].strip()[:300]
-            citation_contexts.append(f"  [{c}] usata nel contesto: \"{context}\"")
-        else:
-            # Fallback: prendi 200 caratteri attorno alla citazione
-            idx = all_content.find(f'[{c}]')
-            if idx >= 0:
-                start = max(0, idx - 100)
-                end = min(len(all_content), idx + 100)
-                context = all_content[start:end].strip()
+    citation_style = thesis_data.get('citation_style', 'footnotes')
+
+    if citation_style == 'bibliography':
+        # Stile classico [x]
+        citations = sorted(set(int(m) for m in re.findall(r'\[(\d+)\]', all_content)))
+        citations_str = ", ".join([f"[{c}]" for c in citations]) if citations else "Nessuna citazione trovata"
+        num_citations = len(citations)
+
+        citation_contexts = []
+        for c in citations:
+            pattern = rf'[^.]*\[{c}\][^.]*\.'
+            matches = re.findall(pattern, all_content)
+            if matches:
+                context = matches[0].strip()[:300]
                 citation_contexts.append(f"  [{c}] usata nel contesto: \"{context}\"")
+            else:
+                idx = all_content.find(f'[{c}]')
+                if idx >= 0:
+                    start = max(0, idx - 100)
+                    end = min(len(all_content), idx + 100)
+                    context = all_content[start:end].strip()
+                    citation_contexts.append(f"  [{c}] usata nel contesto: \"{context}\"")
 
-    contexts_text = "\n".join(citation_contexts) if citation_contexts else "Nessun contesto estratto."
+        contexts_text = "\n".join(citation_contexts) if citation_contexts else "Nessun contesto estratto."
 
-    return f"""Sei un ricercatore accademico esperto. Il tuo compito è compilare la
+        return f"""Sei un ricercatore accademico esperto. Il tuo compito è compilare la
 bibliografia per una tesi, associando a ogni citazione [x] nel testo
 un riferimento bibliografico appropriato.
 
@@ -747,16 +774,7 @@ Come selezionare le fonti:
 2. Identifica l'argomento specifico trattato in quel punto
 3. Dalla tua conoscenza, seleziona un'opera REALE pertinente a quell'argomento
 4. Privilegia opere classiche e fondamentali del campo che CONOSCI CON CERTEZZA
-   (es. per psicologia: Kahneman, Bandura, Piaget; per economia: Keynes, Stiglitz;
-   per informatica: Tanenbaum, Cormen, Knuth; ecc.)
 5. Se il testo menziona esplicitamente un autore o opera, usa QUELLA
-
-Tipologie di fonti da usare:
-- Libri accademici di autori noti (la tipologia più sicura)
-- Manuali universitari classici del settore
-- Report istituzionali (ISTAT, OMS/WHO, OCSE/OECD, Eurostat, Banca d'Italia, ecc.)
-- Articoli da riviste scientifiche note (Nature, Science, The Lancet, ecc.)
-- Normative e leggi (es. D.Lgs., Regolamenti UE)
 
 FORMATO richiesto (APA italiano):
 [x] Cognome, N. (Anno). Titolo dell'opera. Casa editrice.
@@ -774,4 +792,59 @@ REGOLE TASSATIVE:
 8. NON includere il titolo "Bibliografia"
 
 Inizia direttamente con [1] e prosegui fino a [{num_citations}].
+"""
+
+    else:
+        # Stile footnotes {{nota:...}}
+        all_notes = re.findall(r'\{\{nota:\s*(.*?)\}\}', all_content)
+
+        full_refs = []
+        for note in all_notes:
+            note_stripped = note.strip()
+            if not note_stripped.lower().startswith(('ibidem', 'ivi.', 'op.cit')):
+                full_refs.append(note_stripped)
+
+        unique_refs = list(dict.fromkeys(full_refs))
+        num_refs = len(unique_refs)
+
+        refs_list = "\n".join([f"  {i+1}. {ref}" for i, ref in enumerate(unique_refs)]) if unique_refs else "Nessun riferimento trovato."
+
+        return f"""Sei un ricercatore accademico esperto. Il tuo compito è compilare la
+bibliografia finale per una tesi, a partire dalle note a piè di pagina
+inserite nel testo.
+
+TITOLO TESI: {thesis_data.get('title', 'Non specificato')}
+DESCRIZIONE: {thesis_data.get('description', 'Non specificata')}
+SETTORE: {thesis_data.get('industry_name', 'Generale')}
+
+RIFERIMENTI TROVATI NELLE NOTE ({num_refs} unici):
+{refs_list}
+
+CONTENUTO DELLA TESI (per contesto):
+{all_content[:15000]}
+{"[...contenuto troncato...]" if len(all_content) > 15000 else ""}
+
+ISTRUZIONI:
+
+Compila la bibliografia finale ordinata ALFABETICAMENTE per cognome dell'autore.
+Per ogni riferimento trovato nelle note:
+1. Usa il riferimento ESATTAMENTE come appare nelle note (autore, anno, titolo, editore)
+2. Completa eventuali informazioni mancanti (ISBN, città, ecc.) se le conosci
+3. Ordina ALFABETICAMENTE per cognome del primo autore
+4. Se un riferimento è un report istituzionale, ordina per nome organizzazione
+
+FORMATO richiesto:
+Cognome, N. (Anno). Titolo dell'opera. Casa editrice.
+Cognome, N. & Cognome, N. (Anno). Titolo articolo. Nome Rivista, vol(num), pp-pp.
+Organizzazione. (Anno). Titolo report. URL (se noto)
+
+REGOLE TASSATIVE:
+1. Includi SOLO i riferimenti completi che appaiono nelle note (non Op.cit./Ibidem/Ivi)
+2. NON aggiungere fonti che non sono state citate nelle note
+3. NON scrivere messaggi, scuse, avvertenze o disclaimer
+4. NON dire che non puoi farlo — FALLO E BASTA
+5. Output: SOLO la lista delle voci bibliografiche, nient'altro
+6. NON includere il titolo "Bibliografia"
+
+Inizia direttamente con la prima voce bibliografica.
 """

@@ -1,4 +1,4 @@
-import { Users, Building2, GraduationCap, Target } from 'lucide-react';
+import { Building2, GraduationCap, Target } from 'lucide-react';
 
 const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
   const handleChange = (field, value) => {
@@ -38,34 +38,6 @@ const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
             {data.knowledge_level_id && (
               <p className="text-xs text-slate-500 mt-1">
                 {lookupData?.knowledge_levels?.find(l => l.id === data.knowledge_level_id)?.description}
-              </p>
-            )}
-          </div>
-
-          {/* Dimensione Pubblico */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Dimensione del Pubblico <span className="text-red-500">*</span>
-              </div>
-            </label>
-            <select
-              value={data.audience_size_id || ''}
-              onChange={(e) => handleChange('audience_size_id', parseInt(e.target.value) || null)}
-              className="input w-full"
-              required
-            >
-              <option value="">Seleziona dimensione</option>
-              {lookupData?.audience_sizes?.map((size) => (
-                <option key={size.id} value={size.id}>
-                  {size.name}
-                </option>
-              ))}
-            </select>
-            {data.audience_size_id && (
-              <p className="text-xs text-slate-500 mt-1">
-                {lookupData?.audience_sizes?.find(s => s.id === data.audience_size_id)?.description}
               </p>
             )}
           </div>
