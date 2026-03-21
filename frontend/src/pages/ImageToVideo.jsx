@@ -395,9 +395,9 @@ const ImageToVideo = () => {
                       value={prompt}
                       onChange={(e) => updatePrompt(idx, e.target.value)}
                       placeholder={`Descrivi l'animazione desiderata... (es. "La persona sorride e gira la testa lentamente")`}
-                      rows={2}
+                      rows={4}
                       maxLength={2000}
-                      className="input flex-1 resize-none"
+                      className="input flex-1 resize-y min-h-[80px]"
                     />
                     {prompts.length > 1 && (
                       <button onClick={() => removePrompt(idx)} className="btn btn-ghost text-red-400 hover:text-red-600 hover:bg-red-50 self-start mt-1">
