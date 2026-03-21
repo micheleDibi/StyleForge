@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Loader2, Copy, Check, Download, FileDown, AlertCircle,
-  ChevronDown, ChevronUp, Save, X, Eye, Pencil, Link2, Sparkles, Image as ImageIcon
+  ChevronDown, ChevronUp, Save, X, Eye, Pencil, Link2, Sparkles, Image as ImageIcon,
+  MessageSquarePlus, Send
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
-  processCarouselUrl, getCarouselPrompts, updateCarouselPrompt, exportCarouselPdf
+  processCarouselUrl, getCarouselPrompts, updateCarouselPrompt, exportCarouselPdf, refineCarouselContent
 } from '../services/api';
 
 const SECTION_CONFIG = {
@@ -123,6 +124,25 @@ const CarouselCreator = () => {
       setError('Errore durante l\'esportazione PDF');
     }
     setExporting(false);
+  };
+
+  const handleRefine = async (index, instruction) => {
+    const result = results[activeTab][index];
+    if (!result?.content) return;
+
+    try {
+      const data = await refineCarouselContent(result.content, activeTab, instruction);
+      setResults(prev => {
+        const updated = [...prev[activeTab]];
+        updated[index] = { ...updated[index], content: data.content };
+        return { ...prev, [activeTab]: updated };
+      });
+      return true;
+    } catch (e) {
+      const msg = e.response?.data?.detail || 'Errore durante la modifica';
+      setError(msg);
+      return false;
+    }
   };
 
   const handleDownloadImage = (base64, format, title) => {
@@ -320,6 +340,7 @@ const CarouselCreator = () => {
                 index={idx}
                 copiedId={copiedId}
                 onCopy={handleCopy}
+                onRefine={handleRefine}
                 onDownloadImage={handleDownloadImage}
                 formatCarouselForCopy={formatCarouselForCopy}
                 formatPostForCopy={formatPostForCopy}
@@ -335,10 +356,13 @@ const CarouselCreator = () => {
 
 
 const ResultCard = ({
-  result, sectionType, index, copiedId, onCopy,
+  result, sectionType, index, copiedId, onCopy, onRefine,
   onDownloadImage, formatCarouselForCopy, formatPostForCopy, formatCopertinaForCopy
 }) => {
   const [showImages, setShowImages] = useState(false);
+  const [showRefine, setShowRefine] = useState(false);
+  const [refineInput, setRefineInput] = useState('');
+  const [refining, setRefining] = useState(false);
 
   if (result.error) {
     return (
@@ -397,6 +421,56 @@ const ResultCard = ({
       {sectionType === 'copertina' && content && (
         <CopertinaResult content={content} index={index} copiedId={copiedId} onCopy={onCopy} />
       )}
+
+      {/* Refine section */}
+      <div className="mt-4 border-t border-gray-100 pt-4">
+        <button
+          onClick={() => setShowRefine(!showRefine)}
+          className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
+        >
+          <MessageSquarePlus className="w-4 h-4" />
+          Modifica con AI
+          {showRefine ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+
+        {showRefine && (
+          <div className="mt-3">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={refineInput}
+                onChange={e => setRefineInput(e.target.value)}
+                onKeyDown={async e => {
+                  if (e.key === 'Enter' && refineInput.trim() && !refining) {
+                    setRefining(true);
+                    const ok = await onRefine(index, refineInput.trim());
+                    setRefining(false);
+                    if (ok) setRefineInput('');
+                  }
+                }}
+                placeholder='Es. "Rendimi il titolo più corto", "Cambia il tono della slide 3"...'
+                className="input flex-1"
+                disabled={refining}
+              />
+              <button
+                onClick={async () => {
+                  if (!refineInput.trim() || refining) return;
+                  setRefining(true);
+                  const ok = await onRefine(index, refineInput.trim());
+                  setRefining(false);
+                  if (ok) setRefineInput('');
+                }}
+                disabled={!refineInput.trim() || refining}
+                className="btn-primary btn-sm flex items-center gap-1.5 flex-shrink-0"
+              >
+                {refining ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {refining ? 'Modifico...' : 'Applica'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">Descrivi la modifica che vuoi applicare al contenuto generato</p>
+          </div>
+        )}
+      </div>
 
       {/* Image section */}
       {(result.image_original_b64 || result.image_enhanced_b64) && (

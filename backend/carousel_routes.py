@@ -167,6 +167,11 @@ class UpdatePromptRequest(BaseModel):
     section_type: str = Field(..., pattern="^(carousel|post|copertina)$")
     prompt: str = Field(..., min_length=50)
 
+class RefineContentRequest(BaseModel):
+    content: dict = Field(..., description="Contenuto attuale generato")
+    section_type: str = Field(..., pattern="^(carousel|post|copertina)$")
+    instruction: str = Field(..., min_length=3, max_length=500, description="Istruzione di modifica")
+
 class ExportPdfRequest(BaseModel):
     results: List[dict] = Field(..., description="Array di risultati da esportare")
     section_type: str = Field(..., pattern="^(carousel|post|copertina)$")
@@ -555,6 +560,57 @@ async def update_prompt(
         "message": f"Prompt '{request.section_type}' aggiornato con successo",
         "section_type": request.section_type,
     })
+
+
+@router.post("/refine")
+async def refine_content(
+    request: RefineContentRequest,
+    current_user: User = Depends(require_permission('carousel_creator')),
+    db: Session = Depends(get_db),
+):
+    """Raffina il contenuto generato in base a un'istruzione dell'utente."""
+
+    # Stima e deduzione crediti
+    estimation = estimate_credits('carousel_creator', {'include_image': False}, db)
+    credits_needed = estimation['credits_needed']
+    deduct_credits(
+        user=current_user,
+        amount=credits_needed,
+        operation_type='carousel_creator',
+        description=f"Raffinamento contenuto ({request.section_type})",
+        db=db
+    )
+
+    # Costruisci il prompt di raffinamento
+    content_json = json.dumps(request.content, ensure_ascii=False, indent=2)
+
+    refine_prompt = f"""Ecco il contenuto attualmente generato (in formato JSON):
+
+{content_json}
+
+L'utente chiede la seguente modifica:
+"{request.instruction}"
+
+Applica SOLO la modifica richiesta, mantenendo tutto il resto invariato.
+Rispondi ESCLUSIVAMENTE con il JSON aggiornato, stesso formato e stessa struttura dell'originale. Nessun testo aggiuntivo."""
+
+    try:
+        response = _client.messages.create(
+            model=config.CAROUSEL_CLAUDE_MODEL,
+            max_tokens=4096,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": refine_prompt}]
+        )
+        raw_text = response.content[0].text
+        refined_content = _parse_ai_response(raw_text)
+    except Exception as e:
+        logger.error(f"Errore raffinamento contenuto: {e}")
+        raise HTTPException(status_code=500, detail="Errore nella modifica del contenuto AI")
+
+    if "error" in refined_content and "raw" in refined_content:
+        raise HTTPException(status_code=500, detail="Impossibile interpretare la risposta AI")
+
+    return JSONResponse({"content": refined_content})
 
 
 @router.post("/export-pdf")

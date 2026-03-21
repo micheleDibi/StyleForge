@@ -808,6 +808,17 @@ export const updateCarouselPrompt = async (sectionType, prompt) => {
   return response.data;
 };
 
+export const refineCarouselContent = async (content, sectionType, instruction) => {
+  const response = await api.post('/api/carousel/refine', {
+    content,
+    section_type: sectionType,
+    instruction,
+  }, {
+    timeout: 120000,
+  });
+  return response.data;
+};
+
 export const exportCarouselPdf = async (results, sectionType) => {
   const response = await api.post('/api/carousel/export-pdf', {
     results,
