@@ -2133,6 +2133,7 @@ async def export_thesis(
         bg_image_file = ps.get("background_image", "")
         bg_image_mode = ps.get("background_image_mode", "all_pages")
         bg_opacity = ps.get("background_opacity", 0.15)
+        bg_image_fit = ps.get("background_image_fit", "tile")
 
         # Resolve background image path
         bg_image_path = None
@@ -2460,20 +2461,46 @@ async def export_thesis(
             if bg_image_path:
                 apply_bg = (bg_image_mode == "all_pages") or (bg_image_mode == "first_page_only" and page_idx == 0)
                 if apply_bg:
-                    bg_rect = fitz.Rect(0, 0, page_width, page_height)
                     try:
                         from PIL import Image
                         import io as _io
 
                         img = Image.open(bg_image_path).convert("RGBA")
                         if bg_opacity < 1.0:
-                            # Apply opacity by blending with white background
                             white_bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
                             img = Image.blend(white_bg, img, bg_opacity)
-                        img_rgb = img.convert("RGB")
+
+                        pw, ph = int(page_width), int(page_height)
+
+                        if bg_image_fit == "tile":
+                            # Tile: repeat image across the page
+                            canvas = Image.new("RGB", (pw, ph), (255, 255, 255))
+                            iw, ih = img.size
+                            for ty in range(0, ph, ih):
+                                for tx in range(0, pw, iw):
+                                    canvas.paste(img, (tx, ty), img if img.mode == "RGBA" else None)
+                            final_img = canvas
+                        elif bg_image_fit == "original":
+                            # Original size from top-left corner
+                            canvas = Image.new("RGB", (pw, ph), (255, 255, 255))
+                            canvas.paste(img, (0, 0), img if img.mode == "RGBA" else None)
+                            final_img = canvas
+                        elif bg_image_fit == "center":
+                            # Original size centered
+                            canvas = Image.new("RGB", (pw, ph), (255, 255, 255))
+                            iw, ih = img.size
+                            x = (pw - iw) // 2
+                            y = (ph - ih) // 2
+                            canvas.paste(img, (x, y), img if img.mode == "RGBA" else None)
+                            final_img = canvas
+                        else:
+                            # Stretch: fill entire page
+                            final_img = img.convert("RGB").resize((pw, ph), Image.LANCZOS)
+
                         buf = _io.BytesIO()
-                        img_rgb.save(buf, format="PNG")
+                        final_img.save(buf, format="PNG")
                         buf.seek(0)
+                        bg_rect = fitz.Rect(0, 0, page_width, page_height)
                         page.insert_image(bg_rect, stream=buf.read(), overlay=False)
                     except Exception as e:
                         logger.warning(f"Errore inserimento sfondo PDF: {e}")

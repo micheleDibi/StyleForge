@@ -48,6 +48,7 @@ DEFAULT_PDF_SETTINGS = {
     "background_image": "",
     "background_image_mode": "all_pages",
     "background_opacity": 0.15,
+    "background_image_fit": "tile",
 }
 
 DEFAULT_DOCX_SETTINGS = {
@@ -282,6 +283,14 @@ TEMPLATE_PARAM_HELP = {
             "type": "number",
             "min": 0.05, "max": 1.0, "default": 0.15, "step": 0.05,
             "example": "0.15 = molto trasparente (ideale per filigrane). 0.5 = semi-trasparente. 1.0 = immagine piena senza trasparenza."
+        },
+        "background_image_fit": {
+            "label": "Adattamento sfondo",
+            "description": "Come l'immagine di sfondo viene adattata alla pagina.",
+            "type": "select",
+            "options": ["tile", "stretch", "original", "center"],
+            "default": "tile",
+            "example": "tile = ripetuta a piastrella su tutta la pagina. stretch = stirata per coprire l'intera pagina. original = dimensione originale dall'angolo in alto a sinistra. center = dimensione originale centrata nella pagina."
         },
     },
     "docx": {
