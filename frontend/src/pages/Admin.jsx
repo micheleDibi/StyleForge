@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronUp, Edit3, Save, X, Plus, Minus,
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
   Sparkles, Settings, Eye, EyeOff, UserPlus, RotateCcw,
-  AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2
+  AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -14,7 +14,7 @@ import {
   getAdminRoles, updateRolePermissions, getAdminStats,
   adminCreateUser, getAdminCreditCosts, updateAdminCreditCosts,
   resetAdminCreditCosts, getAdminTemplates, updateAdminTemplates,
-  deleteAdminTemplate,
+  deleteAdminTemplate, uploadTemplateBackground, deleteTemplateBackground,
   createApiKey, getApiKeys, revokeApiKey
 } from '../services/api';
 import Logo from '../components/Logo';
@@ -493,6 +493,55 @@ const Admin = () => {
               onChange={(e) => handleTemplateFieldChange(section, fieldKey, e.target.value)}
               placeholder={help.default || ''}
             />
+          ) : help.type === 'image' ? (
+            <div className="flex flex-col gap-2">
+              {value ? (
+                <div className="flex items-center gap-2">
+                  <img
+                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/admin/templates/backgrounds/${value}`}
+                    alt="Sfondo"
+                    className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await deleteTemplateBackground(value);
+                        handleTemplateFieldChange(section, fieldKey, '');
+                      } catch (e) {
+                        console.error('Errore rimozione sfondo:', e);
+                      }
+                    }}
+                    className="text-red-500 hover:text-red-700 p-1"
+                    title="Rimuovi immagine"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors border border-dashed border-gray-300">
+                  <Upload className="w-4 h-4 text-gray-500" />
+                  <span className="text-xs text-gray-600">Carica immagine</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const data = await uploadTemplateBackground(file);
+                        handleTemplateFieldChange(section, fieldKey, data.filename);
+                      } catch (err) {
+                        const detail = err.response?.data?.detail || 'Errore upload immagine';
+                        setTemplateError(detail);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              )}
+            </div>
           ) : (
             <div className="flex items-center gap-1">
               <input

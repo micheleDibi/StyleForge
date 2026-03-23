@@ -45,6 +45,9 @@ DEFAULT_PDF_SETTINGS = {
     "chapter_spacing_before": 20,
     "section_spacing_before": 15,
     "paragraph_spacing": 0,
+    "background_image": "",
+    "background_image_mode": "all_pages",
+    "background_opacity": 0.15,
 }
 
 DEFAULT_DOCX_SETTINGS = {
@@ -257,6 +260,28 @@ TEMPLATE_PARAM_HELP = {
             "type": "number",
             "min": 0, "max": 20, "default": 0, "unit": "pt",
             "example": "0 = nessuno spazio extra (paragrafi separati solo dall'interlinea). 6pt = leggera separazione tra paragrafi."
+        },
+        "background_image": {
+            "label": "Immagine di sfondo",
+            "description": "Immagine da usare come sfondo delle pagine del PDF. Supporta JPG, PNG e WebP.",
+            "type": "image",
+            "default": "",
+            "example": "Carica un'immagine (es. logo, filigrana, texture). L'immagine verra' ridimensionata per coprire l'intera pagina."
+        },
+        "background_image_mode": {
+            "label": "Modalita' sfondo",
+            "description": "Su quali pagine applicare l'immagine di sfondo.",
+            "type": "select",
+            "options": ["all_pages", "first_page_only"],
+            "default": "all_pages",
+            "example": "all_pages = sfondo su tutte le pagine. first_page_only = sfondo solo sulla prima pagina (copertina)."
+        },
+        "background_opacity": {
+            "label": "Opacita' sfondo",
+            "description": "Trasparenza dell'immagine di sfondo. 0 = invisibile, 1 = completamente opaca.",
+            "type": "number",
+            "min": 0.05, "max": 1.0, "default": 0.15, "step": 0.05,
+            "example": "0.15 = molto trasparente (ideale per filigrane). 0.5 = semi-trasparente. 1.0 = immagine piena senza trasparenza."
         },
     },
     "docx": {

@@ -7,7 +7,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
@@ -614,6 +615,74 @@ async def get_template_help(
 ):
     """Restituisce le descrizioni di tutti i parametri dei template per i tooltip."""
     return TEMPLATE_PARAM_HELP
+
+
+@router.post("/templates/background-upload")
+async def upload_template_background(
+    file: UploadFile = File(...),
+    admin_user: User = Depends(get_current_admin_user),
+):
+    """Carica un'immagine di sfondo per i template PDF."""
+    import config
+    import uuid as _uuid
+
+    allowed_types = {"image/jpeg", "image/png", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tipo file non supportato: {file.content_type}. Usa JPG, PNG o WebP."
+        )
+
+    # Max 5MB
+    contents = await file.read()
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File troppo grande (max 5MB).")
+
+    bg_dir = config.UPLOAD_DIR / "template_backgrounds"
+    bg_dir.mkdir(exist_ok=True, parents=True)
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
+    filename = f"bg_{_uuid.uuid4().hex[:12]}.{ext}"
+    file_path = bg_dir / filename
+
+    with open(file_path, "wb") as f:
+        f.write(contents)
+
+    return {"filename": filename, "url": f"/admin/templates/backgrounds/{filename}"}
+
+
+@router.get("/templates/backgrounds/{filename}")
+async def serve_template_background(filename: str):
+    """Serve un'immagine di sfondo per i template."""
+    import config
+
+    # Sanitize filename
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Nome file non valido")
+
+    file_path = config.UPLOAD_DIR / "template_backgrounds" / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Immagine non trovata")
+
+    return FileResponse(file_path)
+
+
+@router.delete("/templates/backgrounds/{filename}")
+async def delete_template_background(
+    filename: str,
+    admin_user: User = Depends(get_current_admin_user),
+):
+    """Elimina un'immagine di sfondo."""
+    import config
+
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Nome file non valido")
+
+    file_path = config.UPLOAD_DIR / "template_backgrounds" / filename
+    if file_path.exists():
+        file_path.unlink()
+
+    return {"ok": True}
 
 
 # ============================================================================

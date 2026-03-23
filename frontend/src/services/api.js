@@ -717,6 +717,20 @@ export const getTemplateHelp = async () => {
   return response.data;
 };
 
+export const uploadTemplateBackground = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/admin/templates/background-upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
+export const deleteTemplateBackground = async (filename) => {
+  const response = await api.delete(`/admin/templates/backgrounds/${filename}`);
+  return response.data;
+};
+
 // ============================================================================
 // TEMPLATE ESPORTAZIONE - PUBBLICO (per selezione utente)
 // ============================================================================

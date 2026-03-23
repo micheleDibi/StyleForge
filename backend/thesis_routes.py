@@ -2130,6 +2130,16 @@ async def export_thesis(
         section_spacing = ps.get("section_spacing_before", 15)
         paragraph_spacing = ps.get("paragraph_spacing", 0)
         toc_separator_color = ps.get("toc_separator_color", [0.7, 0.7, 0.7])
+        bg_image_file = ps.get("background_image", "")
+        bg_image_mode = ps.get("background_image_mode", "all_pages")
+        bg_opacity = ps.get("background_opacity", 0.15)
+
+        # Resolve background image path
+        bg_image_path = None
+        if bg_image_file:
+            candidate = config.UPLOAD_DIR / "template_backgrounds" / bg_image_file
+            if candidate.exists():
+                bg_image_path = str(candidate)
 
         line_height = font_size * line_height_mult
         content_width = page_width - margin_left - margin_right
@@ -2441,10 +2451,32 @@ async def export_thesis(
         # Renderizza le ultime footnotes
         render_page_footnotes()
 
-        # Aggiungi header/footer/numeri pagina a tutte le pagine
+        # Aggiungi sfondo/header/footer/numeri pagina a tutte le pagine
         total_pages = len(pdf_doc)
         for page_idx in range(total_pages):
             page = pdf_doc[page_idx]
+
+            # Background image (behind content)
+            if bg_image_path:
+                apply_bg = (bg_image_mode == "all_pages") or (bg_image_mode == "first_page_only" and page_idx == 0)
+                if apply_bg:
+                    bg_rect = fitz.Rect(0, 0, page_width, page_height)
+                    try:
+                        from PIL import Image
+                        import io as _io
+
+                        img = Image.open(bg_image_path).convert("RGBA")
+                        if bg_opacity < 1.0:
+                            # Apply opacity by blending with white background
+                            white_bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+                            img = Image.blend(white_bg, img, bg_opacity)
+                        img_rgb = img.convert("RGB")
+                        buf = _io.BytesIO()
+                        img_rgb.save(buf, format="PNG")
+                        buf.seek(0)
+                        page.insert_image(bg_rect, stream=buf.read(), overlay=False)
+                    except Exception as e:
+                        logger.warning(f"Errore inserimento sfondo PDF: {e}")
 
             # Header
             if include_header and header_text:
