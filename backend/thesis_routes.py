@@ -2227,23 +2227,55 @@ async def export_thesis(
                 is_special = chapter.get("is_special", False)
 
                 if is_special:
-                    current_page.insert_text(
-                        (margin_left, y),
-                        ch_title,
-                        fontsize=font_size,
-                        fontname=font_body
-                    )
-                    y += line_height
+                    # Word-wrap special chapter titles
+                    toc_text = ch_title
+                    toc_words = toc_text.split()
+                    toc_current_line = []
+                    for toc_word in toc_words:
+                        toc_test_line = ' '.join(toc_current_line + [toc_word])
+                        toc_tw = fitz.get_text_length(toc_test_line, fontname=font_body, fontsize=font_size)
+                        if toc_tw < content_width:
+                            toc_current_line.append(toc_word)
+                        else:
+                            if toc_current_line:
+                                if y + line_height > page_height - margin_bottom:
+                                    current_page = new_pdf_page()
+                                    y = margin_top
+                                current_page.insert_text((margin_left, y), ' '.join(toc_current_line), fontsize=font_size, fontname=font_body)
+                                y += line_height
+                            toc_current_line = [toc_word]
+                    if toc_current_line:
+                        if y + line_height > page_height - margin_bottom:
+                            current_page = new_pdf_page()
+                            y = margin_top
+                        current_page.insert_text((margin_left, y), ' '.join(toc_current_line), fontsize=font_size, fontname=font_body)
+                        y += line_height
                 else:
                     ch_num = chapter.get("chapter_index", ch_idx + 1)
 
-                    current_page.insert_text(
-                        (margin_left, y),
-                        f"Capitolo {ch_num}: {ch_title}",
-                        fontsize=font_size,
-                        fontname=font_body
-                    )
-                    y += line_height
+                    # Word-wrap chapter titles
+                    toc_text = f"Capitolo {ch_num}: {ch_title}"
+                    toc_words = toc_text.split()
+                    toc_current_line = []
+                    for toc_word in toc_words:
+                        toc_test_line = ' '.join(toc_current_line + [toc_word])
+                        toc_tw = fitz.get_text_length(toc_test_line, fontname=font_body, fontsize=font_size)
+                        if toc_tw < content_width:
+                            toc_current_line.append(toc_word)
+                        else:
+                            if toc_current_line:
+                                if y + line_height > page_height - margin_bottom:
+                                    current_page = new_pdf_page()
+                                    y = margin_top
+                                current_page.insert_text((margin_left, y), ' '.join(toc_current_line), fontsize=font_size, fontname=font_body)
+                                y += line_height
+                            toc_current_line = [toc_word]
+                    if toc_current_line:
+                        if y + line_height > page_height - margin_bottom:
+                            current_page = new_pdf_page()
+                            y = margin_top
+                        current_page.insert_text((margin_left, y), ' '.join(toc_current_line), fontsize=font_size, fontname=font_body)
+                        y += line_height
 
                     sections = chapter.get("sections", [])
                     for sec_idx, section in enumerate(sections):
@@ -2254,13 +2286,30 @@ async def export_thesis(
                         sec_num = section.get("index", sec_idx + 1)
                         sec_title = section.get("title", f"Sezione {sec_num}")
 
-                        current_page.insert_text(
-                            (margin_left + 20, y),
-                            f"{ch_num}.{sec_num}: {sec_title}",
-                            fontsize=font_size - 1,
-                            fontname=font_body
-                        )
-                        y += line_height * 0.9
+                        # Word-wrap section titles (indented by 20)
+                        sec_text = f"{ch_num}.{sec_num}: {sec_title}"
+                        sec_available_width = content_width - 20
+                        sec_words = sec_text.split()
+                        sec_current_line = []
+                        for sec_word in sec_words:
+                            sec_test_line = ' '.join(sec_current_line + [sec_word])
+                            sec_tw = fitz.get_text_length(sec_test_line, fontname=font_body, fontsize=font_size - 1)
+                            if sec_tw < sec_available_width:
+                                sec_current_line.append(sec_word)
+                            else:
+                                if sec_current_line:
+                                    if y + line_height > page_height - margin_bottom:
+                                        current_page = new_pdf_page()
+                                        y = margin_top
+                                    current_page.insert_text((margin_left + 20, y), ' '.join(sec_current_line), fontsize=font_size - 1, fontname=font_body)
+                                    y += line_height * 0.9
+                                sec_current_line = [sec_word]
+                        if sec_current_line:
+                            if y + line_height > page_height - margin_bottom:
+                                current_page = new_pdf_page()
+                                y = margin_top
+                            current_page.insert_text((margin_left + 20, y), ' '.join(sec_current_line), fontsize=font_size - 1, fontname=font_body)
+                            y += line_height * 0.9
 
                 y += 5  # Spazio tra capitoli
 
