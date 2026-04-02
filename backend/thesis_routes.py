@@ -2421,23 +2421,48 @@ async def export_thesis(
             if line.startswith('# '):
                 y += chapter_spacing
                 check_new_page_needed(font_chapter_size + 10)
-                current_page.insert_text(
-                    (margin_left, y),
-                    line[2:],
-                    fontsize=font_chapter_size,
-                    fontname=font_body
-                )
-                y += font_chapter_size + 8
+                # Word-wrap chapter title
+                ch_title_text = line[2:]
+                ch_words = ch_title_text.split()
+                ch_current_line = []
+                for ch_word in ch_words:
+                    ch_test_line = ' '.join(ch_current_line + [ch_word])
+                    ch_tw = fitz.get_text_length(ch_test_line, fontname=font_body, fontsize=font_chapter_size)
+                    if ch_tw < content_width:
+                        ch_current_line.append(ch_word)
+                    else:
+                        if ch_current_line:
+                            check_new_page_needed(font_chapter_size + 4)
+                            current_page.insert_text((margin_left, y), ' '.join(ch_current_line), fontsize=font_chapter_size, fontname=font_body)
+                            y += font_chapter_size + 4
+                        ch_current_line = [ch_word]
+                if ch_current_line:
+                    check_new_page_needed(font_chapter_size + 4)
+                    current_page.insert_text((margin_left, y), ' '.join(ch_current_line), fontsize=font_chapter_size, fontname=font_body)
+                    y += font_chapter_size + 4
+                y += 4
             elif line.startswith('## '):
                 y += section_spacing
                 check_new_page_needed(font_section_size + 8)
-                current_page.insert_text(
-                    (margin_left, y),
-                    line[3:],
-                    fontsize=font_section_size,
-                    fontname=font_body
-                )
-                y += font_section_size + 6
+                # Word-wrap section title
+                sec_title_text = line[3:]
+                sec_words = sec_title_text.split()
+                sec_current_line = []
+                for sec_word in sec_words:
+                    sec_test_line = ' '.join(sec_current_line + [sec_word])
+                    sec_tw = fitz.get_text_length(sec_test_line, fontname=font_body, fontsize=font_section_size)
+                    if sec_tw < content_width:
+                        sec_current_line.append(sec_word)
+                    else:
+                        if sec_current_line:
+                            check_new_page_needed(font_section_size + 3)
+                            current_page.insert_text((margin_left, y), ' '.join(sec_current_line), fontsize=font_section_size, fontname=font_body)
+                            y += font_section_size + 3
+                        sec_current_line = [sec_word]
+                if sec_current_line:
+                    check_new_page_needed(font_section_size + 3)
+                    current_page.insert_text((margin_left, y), ' '.join(sec_current_line), fontsize=font_section_size, fontname=font_body)
+                    y += font_section_size + 3
             elif line.strip():
                 # Check for footnotes in line
                 footnotes_in_line = extract_footnotes_from_line(line)
