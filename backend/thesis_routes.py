@@ -2154,7 +2154,25 @@ async def export_thesis(
             elif alignment == "right":
                 text_width = fitz.get_text_length(text, fontname=fontname, fontsize=fontsize)
                 return page_width - margin_right - text_width
-            return margin_left  # left (default)
+            return margin_left  # left / justify (default)
+
+        def insert_justified_line(page, x_start, y_pos, words_list, fontsize, fontname, available_width, is_last_line=False):
+            """Inserisce una riga di testo giustificato distribuendo gli spazi tra le parole."""
+            if is_last_line or len(words_list) <= 1:
+                # Ultima riga o singola parola: allinea a sinistra
+                page.insert_text((x_start, y_pos), ' '.join(words_list), fontsize=fontsize, fontname=fontname)
+                return
+            # Calcola lo spazio extra da distribuire
+            text_no_spaces = ''.join(words_list)
+            text_width = fitz.get_text_length(text_no_spaces, fontname=fontname, fontsize=fontsize)
+            total_space = available_width - text_width
+            space_between = total_space / (len(words_list) - 1)
+            # Inserisci parola per parola
+            cx = x_start
+            for i, word in enumerate(words_list):
+                page.insert_text((cx, y_pos), word, fontsize=fontsize, fontname=fontname)
+                word_w = fitz.get_text_length(word, fontname=fontname, fontsize=fontsize)
+                cx += word_w + space_between
 
         file_path = config.RESULTS_DIR / f"thesis_{safe_title}_{timestamp}.pdf"
 
@@ -2170,15 +2188,27 @@ async def export_thesis(
         current_page = new_pdf_page()
         y = margin_top
 
-        # Titolo principale
-        title_x = calc_text_x(thesis.title, font_title_size, font_body, title_align)
-        current_page.insert_text(
-            (title_x, y + font_title_size),
-            thesis.title,
-            fontsize=font_title_size,
-            fontname=font_body
-        )
-        y += font_title_size + 20
+        # Titolo principale (con word-wrap)
+        title_words = thesis.title.split()
+        title_current_line = []
+        for t_word in title_words:
+            t_test = ' '.join(title_current_line + [t_word])
+            t_tw = fitz.get_text_length(t_test, fontname=font_body, fontsize=font_title_size)
+            if t_tw < content_width:
+                title_current_line.append(t_word)
+            else:
+                if title_current_line:
+                    t_str = ' '.join(title_current_line)
+                    t_x = calc_text_x(t_str, font_title_size, font_body, title_align)
+                    current_page.insert_text((t_x, y + font_title_size), t_str, fontsize=font_title_size, fontname=font_body)
+                    y += font_title_size + 4
+                title_current_line = [t_word]
+        if title_current_line:
+            t_str = ' '.join(title_current_line)
+            t_x = calc_text_x(t_str, font_title_size, font_body, title_align)
+            current_page.insert_text((t_x, y + font_title_size), t_str, fontsize=font_title_size, fontname=font_body)
+            y += font_title_size + 4
+        y += 16
 
         # Descrizione (se presente)
         if thesis.description:
@@ -2486,6 +2516,7 @@ async def export_thesis(
                 # Wrap text
                 words = line.split()
                 current_line = []
+                wrapped_lines = []
                 for word in words:
                     test_line = ' '.join(current_line + [word])
                     text_width = fitz.get_text_length(test_line, fontname=font_body, fontsize=font_size)
@@ -2493,28 +2524,20 @@ async def export_thesis(
                         current_line.append(word)
                     else:
                         if current_line:
-                            check_new_page_needed(line_height)
-                            text_str = ' '.join(current_line)
-                            text_x = calc_text_x(text_str, font_size, font_body, body_align)
-                            current_page.insert_text(
-                                (text_x, y),
-                                text_str,
-                                fontsize=font_size,
-                                fontname=font_body
-                            )
-                            y += line_height
+                            wrapped_lines.append(current_line)
                         current_line = [word]
-
                 if current_line:
+                    wrapped_lines.append(current_line)
+
+                for li, wline in enumerate(wrapped_lines):
                     check_new_page_needed(line_height)
-                    text_str = ' '.join(current_line)
-                    text_x = calc_text_x(text_str, font_size, font_body, body_align)
-                    current_page.insert_text(
-                        (text_x, y),
-                        text_str,
-                        fontsize=font_size,
-                        fontname=font_body
-                    )
+                    is_last = (li == len(wrapped_lines) - 1)
+                    if body_align == "justify" and not is_last and len(wline) > 1:
+                        insert_justified_line(current_page, margin_left, y, wline, font_size, font_body, content_width)
+                    else:
+                        text_str = ' '.join(wline)
+                        text_x = calc_text_x(text_str, font_size, font_body, body_align)
+                        current_page.insert_text((text_x, y), text_str, fontsize=font_size, fontname=font_body)
                     y += line_height
 
                 # Spazio extra tra paragrafi
