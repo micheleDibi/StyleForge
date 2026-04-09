@@ -40,7 +40,7 @@ const COST_OPERATION_LABELS = {
   humanize: { label: 'Umanizzazione', icon: '🤖', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
   thesis_chapters: { label: 'Tesi - Capitoli', icon: '📚', fields: { base: 'Costo base' } },
   thesis_sections: { label: 'Tesi - Sezioni', icon: '📄', fields: { base: 'Costo base' } },
-  thesis_content: { label: 'Tesi - Contenuto', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
+  thesis_content: { label: 'Tesi - Contenuto', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target', per_1000_attachment_chars: 'Per 1000 caratteri allegati' } },
   compilatio_scan: { label: 'Detector AI', icon: '🔍', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
   enhance_image: { label: 'Migliora Immagine', icon: '🖼️', fields: { base: 'Costo base' } },
   carousel_creator: { label: 'Carosello / Post / Copertina', icon: '📱', fields: { base: 'Costo base', image_enhance: 'Enhancement immagine' } }

@@ -263,7 +263,8 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
               params={{
                 num_chapters: data.num_chapters,
                 sections_per_chapter: data.sections_per_chapter,
-                words_per_section: data.words_per_section
+                words_per_section: data.words_per_section,
+                attachment_chars: Math.round((attachmentsTotalSize || 0) * 0.5)
               }}
             />
             {isAdmin && (

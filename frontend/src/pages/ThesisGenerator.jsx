@@ -578,7 +578,8 @@ const ThesisGenerator = () => {
               params={{
                 num_chapters: parametersData.num_chapters,
                 sections_per_chapter: parametersData.sections_per_chapter,
-                words_per_section: parametersData.words_per_section
+                words_per_section: parametersData.words_per_section,
+                attachment_chars: Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5)
               }}
             />
           </div>

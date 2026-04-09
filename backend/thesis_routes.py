@@ -1390,10 +1390,17 @@ async def start_content_generation(
     total_sections = sum(len(c.get("sections", [])) for c in chapters)
 
     # Deduzione crediti per generazione contenuto tesi
+    # Calcola caratteri allegati per stima crediti
+    thesis_attachments = db.query(ThesisAttachment).filter(
+        ThesisAttachment.thesis_id == thesis.id
+    ).all()
+    total_attachment_chars = sum(len(a.extracted_text or '') for a in thesis_attachments)
+
     credit_estimate = estimate_credits('thesis_content', {
         'num_chapters': thesis.num_chapters,
         'sections_per_chapter': thesis.sections_per_chapter,
-        'words_per_section': thesis.words_per_section
+        'words_per_section': thesis.words_per_section,
+        'attachment_chars': total_attachment_chars
     }, db=db)
     deduct_credits(
         user=current_user,
