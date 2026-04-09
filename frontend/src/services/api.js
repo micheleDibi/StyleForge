@@ -698,6 +698,16 @@ export const resetAdminCreditCosts = async () => {
   return response.data;
 };
 
+export const getAdminEurPerCredit = async () => {
+  const response = await api.get('/admin/settings/eur-per-credit');
+  return response.data;
+};
+
+export const updateAdminEurPerCredit = async (value) => {
+  const response = await api.put('/admin/settings/eur-per-credit', { eur_per_credit: value });
+  return response.data;
+};
+
 // ============================================================================
 // ADMIN - TEMPLATE ESPORTAZIONE
 // ============================================================================

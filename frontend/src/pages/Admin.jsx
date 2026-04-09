@@ -13,7 +13,8 @@ import {
   updateUserPermissions, adjustUserCredits, getUserTransactions,
   getAdminRoles, updateRolePermissions, getAdminStats,
   adminCreateUser, getAdminCreditCosts, updateAdminCreditCosts,
-  resetAdminCreditCosts, getAdminTemplates, updateAdminTemplates,
+  resetAdminCreditCosts, getAdminEurPerCredit, updateAdminEurPerCredit,
+  getAdminTemplates, updateAdminTemplates,
   deleteAdminTemplate, uploadTemplateBackground, deleteTemplateBackground,
   createApiKey, getApiKeys, revokeApiKey
 } from '../services/api';
@@ -89,6 +90,8 @@ const Admin = () => {
   const [costsError, setCostsError] = useState('');
   const [costsSuccess, setCostsSuccess] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [eurPerCredit, setEurPerCredit] = useState(0.10);
+  const [eurPerCreditSaved, setEurPerCreditSaved] = useState(0.10);
 
   // Template state
   const [templates, setTemplates] = useState([]);
@@ -136,10 +139,15 @@ const Admin = () => {
         const data = await getAdminStats();
         setStats(data);
       } else if (activeTab === 'settings') {
-        const data = await getAdminCreditCosts();
-        setCreditCosts(data.costs);
-        setEditedCosts(JSON.parse(JSON.stringify(data.costs)));
-        setIsDefaultCosts(data.is_default);
+        const [costsData, eurData] = await Promise.all([
+          getAdminCreditCosts(),
+          getAdminEurPerCredit().catch(() => ({ eur_per_credit: 0.10 }))
+        ]);
+        setCreditCosts(costsData.costs);
+        setEditedCosts(JSON.parse(JSON.stringify(costsData.costs)));
+        setIsDefaultCosts(costsData.is_default);
+        setEurPerCredit(eurData.eur_per_credit);
+        setEurPerCreditSaved(eurData.eur_per_credit);
       } else if (activeTab === 'templates') {
         const data = await getAdminTemplates();
         setTemplates(data.templates || []);
@@ -1217,6 +1225,48 @@ const Admin = () => {
                     {costsSuccess}
                   </div>
                 )}
+
+                {/* EUR per credito */}
+                <div className="glass rounded-2xl p-5">
+                  <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="text-xl">💶</span>
+                    Conversione EUR / Credito
+                  </h3>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="text-sm text-gray-600">1 credito =</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="input w-28 text-center text-sm py-1.5"
+                        value={eurPerCredit}
+                        onChange={(e) => setEurPerCredit(parseFloat(e.target.value) || 0)}
+                      />
+                      <span className="text-sm text-gray-600">EUR</span>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await updateAdminEurPerCredit(eurPerCredit);
+                          setEurPerCreditSaved(eurPerCredit);
+                          setCostsSuccess('Tasso EUR/credito aggiornato!');
+                          setTimeout(() => setCostsSuccess(''), 3000);
+                        } catch (e) {
+                          setCostsError('Errore nel salvataggio del tasso EUR/credito');
+                          setTimeout(() => setCostsError(''), 3000);
+                        }
+                      }}
+                      disabled={eurPerCredit === eurPerCreditSaved}
+                      className="btn btn-primary text-sm disabled:opacity-50"
+                    >
+                      Salva
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Tasso di conversione per implementazioni future (pricing utenti, acquisto crediti).
+                  </p>
+                </div>
 
                 {/* Cost cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
