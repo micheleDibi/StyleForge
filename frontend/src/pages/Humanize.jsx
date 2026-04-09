@@ -5,6 +5,7 @@ import { getSessions, humanizeContent, antiAICorrection, pollJobStatus, estimate
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
 import ApiCostEstimate from '../components/ApiCostEstimate';
+import CreditEstimatePreview from '../components/CreditEstimatePreview';
 import { jsPDF } from 'jspdf';
 
 const Humanize = () => {
@@ -382,6 +383,12 @@ const Humanize = () => {
                 <p className="text-xs text-slate-500 mt-2">
                   {countWords(testoOriginale)} parole - {testoOriginale.length} caratteri
                 </p>
+                {testoOriginale.trim().length >= 50 && (
+                  <CreditEstimatePreview
+                    operationType="humanize"
+                    params={{ text_length: testoOriginale.length }}
+                  />
+                )}
                 {isAdmin && testoOriginale.trim().length >= 50 && (
                   <ApiCostEstimate
                     mode={mode}

@@ -5,6 +5,7 @@ import { getSessions, generateContent, pollJobStatus, getResultText, estimateCre
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
 import ApiCostEstimate from '../components/ApiCostEstimate';
+import CreditEstimatePreview from '../components/CreditEstimatePreview';
 import { jsPDF } from 'jspdf';
 
 const Generate = () => {
@@ -309,6 +310,12 @@ const Generate = () => {
                 />
               </div>
 
+              {selectedSession && argomento.trim() && (
+                <CreditEstimatePreview
+                  operationType="generate"
+                  params={{ numero_parole: numeroParole }}
+                />
+              )}
               {isAdmin && selectedSession && argomento.trim() && (
                 <ApiCostEstimate
                   mode="generate"

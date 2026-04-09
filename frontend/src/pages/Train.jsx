@@ -5,6 +5,7 @@ import { trainSession, pollJobStatus, estimateCredits } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
 import ApiCostEstimate from '../components/ApiCostEstimate';
+import CreditEstimatePreview from '../components/CreditEstimatePreview';
 
 const Train = () => {
   const navigate = useNavigate();
@@ -166,9 +167,10 @@ const Train = () => {
               )}
             </div>
 
-            {isAdmin && file && (
+            {file && (
               <div className="mb-6">
-                <ApiCostEstimate mode="train" maxPages={50} />
+                <CreditEstimatePreview operationType="train" params={{ max_pages: 50 }} />
+                {isAdmin && <ApiCostEstimate mode="train" maxPages={50} />}
               </div>
             )}
 

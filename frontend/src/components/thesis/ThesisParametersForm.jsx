@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Info, ChevronDown, BookOpen, FileText } from 'lucide-react';
 import ApiCostEstimate from '../ApiCostEstimate';
+import CreditEstimatePreview from '../CreditEstimatePreview';
 
 const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, thesisId, attachmentsCount, attachmentsTotalSize }) => {
   const handleChange = (field, value) => {
@@ -257,6 +258,14 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                 </p>
               </div>
             </div>
+            <CreditEstimatePreview
+              operationType="thesis_content"
+              params={{
+                num_chapters: data.num_chapters,
+                sections_per_chapter: data.sections_per_chapter,
+                words_per_section: data.words_per_section
+              }}
+            />
             {isAdmin && (
               <ApiCostEstimate
                 mode="thesis"
