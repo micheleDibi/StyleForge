@@ -513,6 +513,7 @@ const ThesisGenerator = () => {
               isAdmin={isAdmin}
               thesisId={thesisId}
               attachmentsCount={attachmentsData.attachments?.length || 0}
+              attachmentsTotalSize={attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0}
             />
           )}
 
@@ -579,6 +580,7 @@ const ThesisGenerator = () => {
               aiProvider={parametersData.ai_provider}
               thesisId={thesisId}
               attachmentsCount={attachmentsData.attachments?.length || 0}
+              attachmentsTotalSize={attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0}
             />
           </div>
         )}

@@ -51,9 +51,10 @@ const computeLocalEstimate = (props) => {
     const wps = wordsPerSection || 1000;
     const totalSections = nc * spc;
     const provider = aiProvider || 'openai';
-    // Stima token allegati: ~10k token per allegato (media ~25k caratteri)
-    const attCount = props.attachmentsCount || 0;
-    const attachTokens = attCount * 10000;
+    // Stima token allegati da file size: ~500 chars/KB, ~0.4 tok/char, capped a 50k chars
+    const totalBytes = props.attachmentsTotalSize || 0;
+    const estimatedChars = Math.min(Math.round(totalBytes / 1024 * 500), 50000);
+    const attachTokens = Math.round(estimatedChars * 0.4);
     // Gli allegati vengono inclusi in ogni chiamata API
     const chaptersInput = Math.round(500 * TPW) + attachTokens;
     const sectionsInput = Math.round(500 * TPW) + attachTokens;
@@ -104,6 +105,7 @@ const ApiCostEstimate = (props) => {
           words_per_section: props.wordsPerSection || null,
           ai_provider: props.aiProvider || null,
           thesis_id: props.thesisId || null,
+          attachments_total_size: props.attachmentsTotalSize || null,
         };
         const data = await estimateApiCost(body);
         setEstimate({ ...data, is_local: false });

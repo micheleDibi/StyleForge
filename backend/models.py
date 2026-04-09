@@ -479,6 +479,7 @@ class ApiCostEstimateRequest(BaseModel):
     words_per_section: Optional[int] = Field(None, description="Parole per sezione (per mode thesis)")
     ai_provider: Optional[str] = Field(None, description="Provider AI: openai o claude (per mode thesis)")
     thesis_id: Optional[str] = Field(None, description="ID tesi (per caricare allegati nella stima thesis)")
+    attachments_total_size: Optional[int] = Field(None, description="Dimensione totale allegati in bytes (per stima thesis)")
 
 
 class ApiCostEstimateResponse(BaseModel):

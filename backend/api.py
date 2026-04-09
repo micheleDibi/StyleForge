@@ -1064,9 +1064,14 @@ async def estimate_api_cost(
             input_price = config.OPENAI_O3_INPUT_PRICE_USD
             output_price = config.OPENAI_O3_OUTPUT_PRICE_USD
 
-        # Calcola token allegati (se thesis_id presente, leggi dal DB)
+        # Calcola token allegati
         attachments_tokens = 0
-        if request.thesis_id:
+        if request.attachments_total_size and request.attachments_total_size > 0:
+            # Stima da file size: ~500 caratteri per KB (PDF medio), capped a 50k chars
+            estimated_chars = min(int(request.attachments_total_size / 1024 * 500), config.THESIS_MAX_CONTEXT_CHARS)
+            attachments_tokens = int(estimated_chars * 0.4)
+        elif request.thesis_id:
+            # Fallback: leggi testo reale dal DB
             try:
                 from db_models import ThesisAttachment
                 db = next(get_db())
@@ -1074,7 +1079,6 @@ async def estimate_api_cost(
                     ThesisAttachment.thesis_id == request.thesis_id
                 ).all()
                 total_chars = sum(len(a.extracted_text or '') for a in attachments)
-                # Limitato a THESIS_MAX_CONTEXT_CHARS (50000 default)
                 total_chars = min(total_chars, config.THESIS_MAX_CONTEXT_CHARS)
                 attachments_tokens = int(total_chars * 0.4)
                 db.close()
