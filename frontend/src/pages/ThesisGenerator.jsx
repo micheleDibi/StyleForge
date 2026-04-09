@@ -261,9 +261,10 @@ const ThesisGenerator = () => {
   // Generate chapters when moving from step 3 to step 4
   const generateChaptersForThesis = async () => {
     // Prima: stima crediti
+    const attChars = Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5);
     await showCreditConfirmation(
       'thesis_chapters',
-      {},
+      { attachment_chars: attChars },
       'Genera Struttura Capitoli',
       async () => {
         setIsLoading(true);
@@ -298,9 +299,10 @@ const ThesisGenerator = () => {
   // Confirm chapters and generate sections
   const confirmChaptersAndGenerateSections = async () => {
     // Prima: stima crediti per generazione sezioni
+    const secAttChars = Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5);
     await showCreditConfirmation(
       'thesis_sections',
-      {},
+      { attachment_chars: secAttChars },
       'Genera Struttura Sezioni',
       async () => {
         setIsLoading(true);

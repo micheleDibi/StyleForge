@@ -35,6 +35,11 @@ const CreditEstimatePreview = ({ operationType, params }) => {
 
   const needed = estimate?.credits_needed || 0;
   const sufficient = isAdmin || (credits >= needed);
+  const b = estimate?.breakdown || {};
+
+  // Calcola costo generazione (tutto tranne allegati)
+  const attachCredits = b.allegati_crediti || 0;
+  const genCredits = needed - attachCredits;
 
   return (
     <div className={`mt-2 rounded-xl border px-4 py-3 text-xs ${
@@ -42,7 +47,7 @@ const CreditEstimatePreview = ({ operationType, params }) => {
         ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
         : 'bg-red-50 border-red-200 text-red-800'
     }`}>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
           <Coins className="w-3.5 h-3.5" />
           <span className="font-bold text-sm">
@@ -66,6 +71,12 @@ const CreditEstimatePreview = ({ operationType, params }) => {
           </span>
         )}
       </div>
+      {!loading && needed > 0 && (genCredits !== needed || attachCredits > 0) && (
+        <div className="flex gap-4 opacity-75 mt-1">
+          <span>Generazione testo: {genCredits}</span>
+          {attachCredits > 0 && <span>Scansione allegati: {attachCredits}</span>}
+        </div>
+      )}
     </div>
   );
 };

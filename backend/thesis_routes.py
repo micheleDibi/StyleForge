@@ -664,8 +664,12 @@ async def generate_chapters(
             detail=f"Impossibile generare capitoli: stato attuale '{thesis.status}'"
         )
 
+    # Calcola caratteri allegati per crediti
+    ch_attachments = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis.id).all()
+    ch_attachment_chars = sum(len(a.extracted_text or '') for a in ch_attachments)
+
     # Deduzione crediti per generazione capitoli
-    credit_estimate = estimate_credits('thesis_chapters', {}, db=db)
+    credit_estimate = estimate_credits('thesis_chapters', {'attachment_chars': ch_attachment_chars}, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],
@@ -895,8 +899,12 @@ async def generate_sections(
             detail=f"Devi prima confermare i capitoli. Stato attuale: '{thesis.status}'"
         )
 
+    # Calcola caratteri allegati per crediti
+    sec_attachments = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis.id).all()
+    sec_attachment_chars = sum(len(a.extracted_text or '') for a in sec_attachments)
+
     # Deduzione crediti per generazione sezioni
-    credit_estimate = estimate_credits('thesis_sections', {}, db=db)
+    credit_estimate = estimate_credits('thesis_sections', {'attachment_chars': sec_attachment_chars}, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],
