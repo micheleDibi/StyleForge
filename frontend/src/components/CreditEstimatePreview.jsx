@@ -27,7 +27,8 @@ const CreditEstimatePreview = ({ operationType, params, operations }) => {
     timerRef.current = setTimeout(async () => {
       try {
         const promises = ops.map(op => estimateCredits(op.type, op.params || {}));
-        const data = await Promise.all(promises);
+        const settled = await Promise.allSettled(promises);
+        const data = settled.map(r => r.status === 'fulfilled' ? r.value : { credits_needed: 0, breakdown: {} });
         setResults(data);
       } catch {
         setResults(null);
