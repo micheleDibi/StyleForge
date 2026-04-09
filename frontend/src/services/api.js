@@ -592,6 +592,15 @@ export const estimateCredits = async (operationType, params = {}) => {
   return response.data;
 };
 
+export const estimateApiCost = async (mode, wordCount, sessionId = null) => {
+  const response = await api.post('/estimate-api-cost', {
+    mode,
+    word_count: wordCount,
+    session_id: sessionId
+  });
+  return response.data;
+};
+
 // ============================================================================
 // ADMIN - USERS
 // ============================================================================

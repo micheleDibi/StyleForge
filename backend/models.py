@@ -467,6 +467,28 @@ class CreditEstimateResponse(BaseModel):
     sufficient: bool
 
 
+class ApiCostEstimateRequest(BaseModel):
+    """Request per stimare il costo API in EUR (solo admin)."""
+    mode: str = Field(..., description="Modalita': 'correction' o 'full'")
+    word_count: int = Field(..., ge=0, description="Numero di parole del testo")
+    session_id: Optional[str] = Field(None, description="ID sessione (richiesto per mode='full')")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "mode": "correction",
+                "word_count": 1500,
+                "session_id": None
+            }
+        }
+
+
+class ApiCostEstimateResponse(BaseModel):
+    """Response con stima costo API in EUR."""
+    estimated_cost_eur: float
+    breakdown: Dict[str, Any]
+
+
 class CreditTransactionResponse(BaseModel):
     """Response per una singola transazione crediti."""
     id: str

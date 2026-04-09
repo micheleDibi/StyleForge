@@ -4,6 +4,7 @@ import { ArrowLeft, Wand2, Download, Copy, Check, AlertTriangle, RefreshCw, Shie
 import { getSessions, humanizeContent, antiAICorrection, pollJobStatus, estimateCredits, startCompilatioScan, downloadCompilatioReport } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
+import ApiCostEstimate from '../components/ApiCostEstimate';
 import { jsPDF } from 'jspdf';
 
 const Humanize = () => {
@@ -381,6 +382,13 @@ const Humanize = () => {
                 <p className="text-xs text-slate-500 mt-2">
                   {countWords(testoOriginale)} parole - {testoOriginale.length} caratteri
                 </p>
+                {isAdmin && testoOriginale.trim().length >= 50 && (
+                  <ApiCostEstimate
+                    mode={mode}
+                    wordCount={countWords(testoOriginale)}
+                    sessionId={mode === 'full' ? selectedSession : null}
+                  />
+                )}
               </div>
 
               <button

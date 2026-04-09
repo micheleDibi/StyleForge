@@ -97,6 +97,11 @@ MINIMAX_DEFAULT_MODEL = os.getenv("MINIMAX_DEFAULT_MODEL", "MiniMax-Hailuo-2.3")
 VIDEO_MAX_UPLOAD_SIZE = int(os.getenv("VIDEO_MAX_UPLOAD_SIZE", "10")) * 1024 * 1024
 VIDEO_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
+# API Pricing (Claude Opus 4-6) — per stima costi admin
+CLAUDE_OPUS_INPUT_PRICE_USD = 15.0   # $ per 1M input tokens
+CLAUDE_OPUS_OUTPUT_PRICE_USD = 75.0  # $ per 1M output tokens
+USD_TO_EUR_RATE = 0.88               # Tasso di cambio approssimativo
+
 # Versione API
 API_VERSION = "1.0.0"
 API_TITLE = "StyleForge API"

@@ -26,6 +26,7 @@ from models import (
     ErrorResponse, HealthResponse,
     JobStatus, JobType,
     CreditEstimateRequest, CreditEstimateResponse,
+    ApiCostEstimateRequest, ApiCostEstimateResponse,
 )
 from session_manager import session_manager
 from job_manager import job_manager
@@ -987,6 +988,63 @@ async def estimate_operation_credits(
         breakdown=result['breakdown'],
         current_balance=current_balance,
         sufficient=is_admin or current_user.credits >= result['credits_needed']
+    )
+
+
+@app.post("/estimate-api-cost", response_model=ApiCostEstimateResponse, tags=["Credits"])
+async def estimate_api_cost(
+    request: ApiCostEstimateRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Stima il costo API in EUR per una chiamata Claude (solo admin).
+    Usato per mostrare il costo prima di avviare correzione/umanizzazione.
+    """
+    if not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Solo admin")
+
+    word_count = request.word_count
+    TOKENS_PER_WORD = 2.5  # stima per testo italiano
+
+    if request.mode == "correction":
+        # Prompt correzione ~560 parole + testo utente
+        prompt_words = 560
+        input_tokens = int((prompt_words + word_count) * TOKENS_PER_WORD)
+        output_tokens = int(word_count * TOKENS_PER_WORD)
+    elif request.mode == "full":
+        # System prompt ~80 parole -> ~200 token
+        system_tokens = 200
+        # Prompt umanizzazione ~350 parole + testo utente
+        prompt_tokens = int((350 + word_count) * TOKENS_PER_WORD)
+        # Conversation history della sessione addestrata
+        history_tokens = 0
+        if request.session_id:
+            user_id = str(current_user.id)
+            try:
+                client = session_manager.get_session(request.session_id, user_id)
+                for msg in client.conversation_history:
+                    # ~0.4 token per carattere per testo italiano misto
+                    history_tokens += int(len(msg["content"]) * 0.4)
+            except Exception:
+                # Sessione non trovata: stima conservativa
+                history_tokens = 50000
+        input_tokens = system_tokens + history_tokens + prompt_tokens
+        output_tokens = int(word_count * TOKENS_PER_WORD)
+    else:
+        raise HTTPException(status_code=400, detail="mode deve essere 'correction' o 'full'")
+
+    input_cost_usd = (input_tokens / 1_000_000) * config.CLAUDE_OPUS_INPUT_PRICE_USD
+    output_cost_usd = (output_tokens / 1_000_000) * config.CLAUDE_OPUS_OUTPUT_PRICE_USD
+    total_eur = (input_cost_usd + output_cost_usd) * config.USD_TO_EUR_RATE
+
+    return ApiCostEstimateResponse(
+        estimated_cost_eur=round(total_eur, 4),
+        breakdown={
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "input_cost_eur": round(input_cost_usd * config.USD_TO_EUR_RATE, 4),
+            "output_cost_eur": round(output_cost_usd * config.USD_TO_EUR_RATE, 4),
+        }
     )
 
 
