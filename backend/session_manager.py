@@ -328,9 +328,10 @@ class SessionManager:
         try:
             cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
 
-            # Trova sessioni vecchie
+            # Trova sessioni vecchie NON addestrate (le addestrate durano per sempre)
             old_sessions = db.query(SessionModel).filter(
-                SessionModel.last_activity < cutoff
+                SessionModel.last_activity < cutoff,
+                SessionModel.is_trained == False
             ).all()
 
             count = len(old_sessions)
