@@ -164,6 +164,34 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
         <div className="border-t border-slate-200 pt-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">Struttura del Documento</h3>
 
+          {/* Parole totali - auto distribuzione */}
+          <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Parole totali desiderate (opzionale)
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                placeholder="es. 30000"
+                className="input w-48"
+                min="1000"
+                step="1000"
+                onChange={(e) => {
+                  const total = parseInt(e.target.value);
+                  if (!total || total < 1000) return;
+                  // Distribuzione automatica
+                  const chapters = data.num_chapters || 5;
+                  const sections = data.sections_per_chapter || 3;
+                  const wps = Math.round(total / (chapters * sections) / 100) * 100;
+                  handleChange('words_per_section', Math.max(500, Math.min(20000, wps)));
+                }}
+              />
+              <p className="text-xs text-slate-500 flex-1">
+                Inserisci il numero totale di parole e il sistema calcolera automaticamente le parole per sezione in base a capitoli e sezioni impostati.
+              </p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Numero Capitoli */}
             <div>
