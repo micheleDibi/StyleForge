@@ -165,30 +165,37 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
           <h3 className="text-lg font-semibold text-slate-900 mb-4">Struttura del Documento</h3>
 
           {/* Parole totali - auto distribuzione */}
-          <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Parole totali desiderate (opzionale)
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                placeholder="es. 30000"
-                className="input w-48"
-                min="1000"
-                step="1000"
-                onChange={(e) => {
-                  const total = parseInt(e.target.value);
-                  if (!total || total < 1000) return;
-                  // Distribuzione automatica
-                  const chapters = data.num_chapters || 5;
-                  const sections = data.sections_per_chapter || 3;
-                  const wps = Math.round(total / (chapters * sections) / 100) * 100;
-                  handleChange('words_per_section', Math.max(500, Math.min(20000, wps)));
-                }}
-              />
-              <p className="text-xs text-slate-500 flex-1">
-                Inserisci il numero totale di parole e il sistema calcolera automaticamente le parole per sezione in base a capitoli e sezioni impostati.
-              </p>
+          <div className="mb-6 p-5 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-orange-100">
+                <span className="text-lg">🎯</span>
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-semibold text-slate-800 mb-1">
+                  Hai un obiettivo di parole?
+                </label>
+                <p className="text-xs text-slate-500 mb-3">
+                  Inserisci il totale desiderato e distribuiremo automaticamente le parole tra le sezioni.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    placeholder="es. 30000"
+                    className="w-40 px-3 py-2 rounded-lg border border-orange-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400"
+                    min="1000"
+                    step="1000"
+                    onChange={(e) => {
+                      const total = parseInt(e.target.value);
+                      if (!total || total < 1000) return;
+                      const chapters = data.num_chapters || 5;
+                      const sections = data.sections_per_chapter || 3;
+                      const wps = Math.round(total / (chapters * sections) / 100) * 100;
+                      handleChange('words_per_section', Math.max(500, Math.min(20000, wps)));
+                    }}
+                  />
+                  <span className="text-sm text-slate-500">parole totali</span>
+                </div>
+              </div>
             </div>
           </div>
 
