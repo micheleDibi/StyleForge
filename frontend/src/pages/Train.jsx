@@ -108,7 +108,7 @@ const Train = () => {
             Nuovo Training
           </h1>
           <p className="text-slate-600">
-            Carica un PDF per addestrare Claude sul tuo stile di scrittura
+            Carica un PDF per addestrare il modello sul tuo stile di scrittura
           </p>
         </div>
 
