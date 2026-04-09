@@ -152,93 +152,31 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
   };
 
   if (isGenerating) {
-    const numChapters = safeChapters.length || 5;
-    const totalSteps = numChapters * 2;
-    const progressPercent = Math.round((generationStep / totalSteps) * 100);
-
     return (
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">Generazione Sezioni</h2>
           <p className="text-slate-600">
-            L'AI sta generando le sezioni per ogni capitolo della tua tesi...
+            Stiamo generando le sezioni per ogni capitolo della tua tesi.
           </p>
         </div>
 
-        <div className="card">
-          {/* Header con icona animata */}
-          <div className="flex flex-col items-center justify-center py-8">
-            <div className="relative mb-6">
-              <div className="w-24 h-24 bg-gradient-to-br from-orange-100 to-red-100 rounded-full flex items-center justify-center">
-                <FileText className="w-12 h-12 text-orange-500 animate-pulse" />
-              </div>
-              <div className="absolute -top-1 -right-1 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center">
-                <Loader className="w-6 h-6 text-orange-500 animate-spin" />
-              </div>
+        <div className="card py-12">
+          <div className="flex flex-col items-center gap-5">
+            <div className="relative w-14 h-14">
+              <div className="absolute inset-0 rounded-full border-[3px] border-slate-200"></div>
+              <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
             </div>
-
-            <h3 className="text-xl font-semibold text-slate-800 mb-2">Generazione Sezioni in corso...</h3>
-            <p className="text-slate-500 text-center max-w-md">
-              L'AI sta strutturando le sezioni per ogni capitolo del documento
-            </p>
-          </div>
-
-          {/* Progress bar */}
-          <div className="px-4 pb-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-slate-700">
-                Capitolo {currentChapterGen} di {numChapters}
-              </span>
-              <span className="text-sm font-bold text-orange-600">{progressPercent}%</span>
-            </div>
-            <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-              <div
-                className="h-3 rounded-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-            <p className="mt-3 text-sm text-slate-600 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-orange-500" />
-              {generationMessage}
-            </p>
-          </div>
-
-          {/* Chapter progress indicators */}
-          <div className="border-t border-slate-200 px-4 py-4">
-            <p className="text-xs text-slate-500 mb-3">Progresso per capitolo:</p>
-            <div className="grid grid-cols-5 gap-2">
-              {Array.from({ length: numChapters }, (_, i) => (
-                <div
-                  key={i}
-                  className={`h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-all duration-300 ${
-                    i + 1 < currentChapterGen
-                      ? 'bg-green-100 text-green-700 border border-green-300'
-                      : i + 1 === currentChapterGen
-                      ? 'bg-orange-100 text-orange-700 border border-orange-300 animate-pulse'
-                      : 'bg-slate-100 text-slate-400 border border-slate-200'
-                  }`}
-                >
-                  {i + 1 < currentChapterGen ? (
-                    <Check className="w-4 h-4" />
-                  ) : (
-                    `Cap ${i + 1}`
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Info box */}
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-          <div className="flex items-start gap-3">
-            <ListTree className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-800">
-              <p className="font-medium mb-1">Cosa sta succedendo?</p>
-              <p>
-                Per ogni capitolo, l'AI sta generando le sezioni con i relativi punti chiave
-                che verranno sviluppati durante la generazione del contenuto.
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-slate-800 mb-1">Generazione in corso...</h3>
+              <p className="text-sm text-slate-500">
+                {generationMessage || 'Elaborazione delle sezioni'}
               </p>
+              {currentChapterGen > 0 && (
+                <p className="text-xs text-slate-400 mt-2">
+                  Capitolo {currentChapterGen} di {safeChapters.length || '...'}
+                </p>
+              )}
             </div>
           </div>
         </div>

@@ -123,72 +123,20 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
         <div>
           <h2 className="text-2xl font-bold text-slate-900 mb-2">Generazione Capitoli</h2>
           <p className="text-slate-600">
-            L'AI sta analizzando i tuoi parametri e generando la struttura dei capitoli...
+            Stiamo generando la struttura dei capitoli in base ai tuoi parametri.
           </p>
         </div>
 
-        <div className="card">
-          {/* Header con icona animata */}
-          <div className="flex flex-col items-center justify-center py-8">
-            <div className="relative mb-6">
-              <div className="w-24 h-24 bg-gradient-to-br from-orange-100 to-red-100 rounded-full flex items-center justify-center">
-                <Brain className="w-12 h-12 text-orange-500 animate-pulse" />
-              </div>
-              <div className="absolute -top-1 -right-1 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center">
-                <Loader className="w-6 h-6 text-orange-500 animate-spin" />
-              </div>
+        <div className="card py-12">
+          <div className="flex flex-col items-center gap-5">
+            <div className="relative w-14 h-14">
+              <div className="absolute inset-0 rounded-full border-[3px] border-slate-200"></div>
+              <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
             </div>
-
-            <h3 className="text-xl font-semibold text-slate-800 mb-2">Generazione in corso...</h3>
-            <p className="text-slate-500 text-center max-w-md">
-              L'intelligenza artificiale sta elaborando la struttura ottimale per la tua tesi
-            </p>
-          </div>
-
-          {/* Progress bar */}
-          <div className="px-4 pb-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-slate-700">Step {generationStep} di 10</span>
-              <span className="text-sm font-bold text-orange-600">{generationStep * 10}%</span>
-            </div>
-            <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-              <div
-                className="h-3 rounded-full bg-gradient-to-r from-orange-500 to-red-500 transition-all duration-500"
-                style={{ width: `${generationStep * 10}%` }}
-              />
-            </div>
-            <p className="mt-3 text-sm text-slate-600 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-orange-500" />
-              {generationMessage}
-            </p>
-          </div>
-
-          {/* Steps indicator */}
-          <div className="border-t border-slate-200 px-4 py-4">
-            <div className="grid grid-cols-5 gap-2">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((step) => (
-                <div
-                  key={step}
-                  className={`h-2 rounded-full transition-all duration-300 ${
-                    step <= generationStep
-                      ? 'bg-gradient-to-r from-orange-500 to-red-500'
-                      : 'bg-slate-200'
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Info box */}
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-          <div className="flex items-start gap-3">
-            <ListTree className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-800">
-              <p className="font-medium mb-1">Cosa sta succedendo?</p>
-              <p>
-                L'AI sta analizzando il titolo, la descrizione e gli argomenti chiave per creare
-                una struttura di capitoli coerente e ben organizzata per il tuo documento.
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-slate-800 mb-1">Generazione in corso...</h3>
+              <p className="text-sm text-slate-500">
+                {generationMessage || 'Elaborazione della struttura dei capitoli'}
               </p>
             </div>
           </div>
