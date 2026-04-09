@@ -57,34 +57,59 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-slate-950">
-      {/* Background decorativo */}
-      <div className="absolute inset-0">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-gradient-to-b from-orange-500/20 via-orange-600/5 to-transparent rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-gradient-to-tr from-orange-500/10 to-transparent rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 right-0 w-[300px] h-[300px] bg-gradient-to-tl from-purple-500/10 to-transparent rounded-full blur-3xl"></div>
+    <div className="min-h-screen flex relative overflow-hidden">
+      {/* Lato sinistro — pannello decorativo */}
+      <div className="hidden lg:flex lg:w-1/2 relative items-center justify-center bg-gradient-to-br from-orange-500 via-orange-600 to-red-500">
+        {/* Pattern geometrico */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-20 w-40 h-40 border-2 border-white rounded-3xl rotate-12"></div>
+          <div className="absolute top-40 right-32 w-24 h-24 border-2 border-white rounded-full"></div>
+          <div className="absolute bottom-32 left-40 w-32 h-32 border-2 border-white rounded-2xl -rotate-6"></div>
+          <div className="absolute bottom-20 right-20 w-20 h-20 border-2 border-white rounded-full"></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border border-white rounded-full"></div>
+        </div>
+        <div className="relative z-10 text-center px-12">
+          <h2 className="text-5xl font-extrabold text-white mb-4 leading-tight">
+            Style<span className="text-orange-200">Forge</span>
+          </h2>
+          <p className="text-xl text-orange-100 font-medium mb-6">
+            Genera contenuti con il tuo stile unico
+          </p>
+          <div className="flex items-center justify-center gap-3 text-orange-200/80 text-sm">
+            <span className="w-8 h-px bg-orange-200/40"></span>
+            Addestramento AI &middot; Generazione &middot; Umanizzazione &middot; Tesi
+            <span className="w-8 h-px bg-orange-200/40"></span>
+          </div>
+        </div>
       </div>
 
-      <div className={`w-full max-w-sm relative z-10 ${isShaking ? 'animate-shake' : ''}`}>
-        {/* Logo */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg shadow-orange-500/25 mb-5">
-            <span className="text-3xl font-black text-white">S</span>
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">
-            Style<span className="text-orange-400">Forge</span>
-          </h1>
-          <p className="text-slate-400">
-            Accedi al tuo account
-          </p>
+      {/* Lato destro — form */}
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-white">
+        {/* Sfondo sottile solo mobile */}
+        <div className="absolute inset-0 lg:hidden">
+          <div className="absolute -top-32 -right-32 w-80 h-80 bg-orange-100 rounded-full opacity-50 blur-3xl"></div>
+          <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-orange-50 rounded-full opacity-60 blur-3xl"></div>
         </div>
 
-        {/* Card */}
-        <div className="bg-slate-900/80 backdrop-blur-xl rounded-2xl p-7 border border-slate-800 shadow-2xl">
+        <div className={`w-full max-w-sm relative z-10 ${isShaking ? 'animate-shake' : ''}`}>
+          {/* Header mobile */}
+          <div className="text-center mb-10 lg:mb-8">
+            <h1 className="text-3xl font-bold text-slate-900 lg:hidden mb-1">
+              Style<span className="gradient-text">Forge</span>
+            </h1>
+            <h2 className="text-2xl font-bold text-slate-900 hidden lg:block mb-1">
+              Bentornato
+            </h2>
+            <p className="text-slate-500">
+              Accedi al tuo account per continuare
+            </p>
+          </div>
+
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Username */}
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-slate-300 mb-2">
+              <label htmlFor="username" className="block text-sm font-semibold text-slate-700 mb-2">
                 Username o Email
               </label>
               <input
@@ -93,8 +118,8 @@ const Login = () => {
                 type="text"
                 value={formData.username}
                 onChange={handleChange}
-                className={`w-full px-4 py-3 rounded-xl bg-slate-800/80 border text-white placeholder-slate-500 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-500/40 ${
-                  error ? 'border-red-500/50' : 'border-slate-700 focus:border-orange-500'
+                className={`w-full px-4 py-3 rounded-xl border bg-slate-50 text-slate-900 placeholder-slate-400 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:bg-white ${
+                  error ? 'border-red-300' : 'border-slate-200 focus:border-orange-400'
                 }`}
                 placeholder="nome@email.com"
                 autoFocus
@@ -104,7 +129,7 @@ const Login = () => {
 
             {/* Password */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
+              <label htmlFor="password" className="block text-sm font-semibold text-slate-700 mb-2">
                 Password
               </label>
               <div className="relative">
@@ -114,16 +139,16 @@ const Login = () => {
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={handleChange}
-                  className={`w-full px-4 py-3 pr-12 rounded-xl bg-slate-800/80 border text-white placeholder-slate-500 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-500/40 ${
-                    error ? 'border-red-500/50' : 'border-slate-700 focus:border-orange-500'
+                  className={`w-full px-4 py-3 pr-12 rounded-xl border bg-slate-50 text-slate-900 placeholder-slate-400 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:bg-white ${
+                    error ? 'border-red-300' : 'border-slate-200 focus:border-orange-400'
                   }`}
-                  placeholder="Password"
+                  placeholder="La tua password"
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -132,7 +157,7 @@ const Login = () => {
 
             {/* Error */}
             {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">
                 {error}
               </div>
             )}
@@ -141,7 +166,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 shadow-lg shadow-orange-500/20 hover:shadow-orange-500/30 transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <>
@@ -158,17 +183,15 @@ const Login = () => {
           </form>
 
           {/* Register */}
-          <div className="mt-6 pt-5 border-t border-slate-800 text-center">
-            <p className="text-sm text-slate-500">
-              Non hai un account?{' '}
-              <Link
-                to="/register"
-                className="font-semibold text-orange-400 hover:text-orange-300 transition-colors"
-              >
-                Registrati
-              </Link>
-            </p>
-          </div>
+          <p className="mt-8 text-center text-sm text-slate-500">
+            Non hai un account?{' '}
+            <Link
+              to="/register"
+              className="font-semibold text-orange-600 hover:text-orange-700 transition-colors"
+            >
+              Registrati ora
+            </Link>
+          </p>
         </div>
       </div>
     </div>
