@@ -16,76 +16,40 @@ import ImageToVideo from './pages/ImageToVideo';
 import Helper from './components/Helper';
 import Footer from './components/Footer';
 
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50">
+    <div className="flex flex-col items-center gap-4">
+      <div className="relative w-12 h-12">
+        <div className="absolute inset-0 rounded-full border-[3px] border-slate-200"></div>
+        <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
+      </div>
+      <p className="text-sm text-slate-500 font-medium">Caricamento...</p>
+    </div>
+  </div>
+);
+
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="loading-dots text-blue-600">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-      </div>
-    );
-  }
-
+  if (isLoading) return <PageLoader />;
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="loading-dots text-blue-600">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-      </div>
-    );
-  }
-
+  if (isLoading) return <PageLoader />;
   return isAuthenticated ? <Navigate to="/" replace /> : children;
 };
 
 const PermissionRoute = ({ children, permission }) => {
   const { isAuthenticated, isLoading, hasPermission } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="loading-dots text-blue-600">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-      </div>
-    );
-  }
-
+  if (isLoading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return hasPermission(permission) ? children : <Navigate to="/" replace />;
 };
 
 const AdminRoute = ({ children }) => {
   const { isAuthenticated, isLoading, isAdmin } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="loading-dots text-blue-600">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-      </div>
-    );
-  }
-
+  if (isLoading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return isAdmin ? children : <Navigate to="/" replace />;
 };
