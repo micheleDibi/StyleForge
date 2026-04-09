@@ -265,7 +265,45 @@ const Dashboard = () => {
                 </div>
               </section>
             )}
-            {activeJobs.length === 0 && completedJobs.length === 0 && (
+            {/* Tesi recenti */}
+            {theses.length > 0 && (
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Tesi recenti</h3>
+                  {theses.length > 3 && (
+                    <button onClick={() => setActiveTab('theses')} className="text-xs text-orange-600 hover:text-orange-700 font-medium">
+                      Vedi tutte ({theses.length})
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {theses.slice(0, 3).map(thesis => {
+                    const action = getThesisAction(thesis);
+                    const ActionIcon = action.icon;
+                    return (
+                      <div key={thesis.id} className="glass rounded-xl flex items-center gap-3 p-3 hover:bg-white/50 transition-colors">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center flex-shrink-0">
+                          <BookOpen className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-gray-900 text-sm truncate">{thesis.title}</h4>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            {getStatusBadge(thesis.status)}
+                            <span>{thesis.num_chapters} capitoli</span>
+                            <span>{formatDate(thesis.created_at)}</span>
+                          </div>
+                        </div>
+                        <button onClick={() => handleThesisNavigate(thesis)} className="btn btn-secondary btn-sm text-xs">
+                          <ActionIcon className="w-3 h-3" /> {action.label}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {activeJobs.length === 0 && completedJobs.length === 0 && theses.length === 0 && (
               <div className="glass rounded-2xl p-12 text-center">
                 <div className="w-16 h-16 bg-gradient-to-br from-gray-200 to-gray-300 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Zap className="w-8 h-8 text-white" />
