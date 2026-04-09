@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Info, ChevronDown, Cpu, Sparkles, BookOpen, FileText } from 'lucide-react';
+import { Info, ChevronDown, BookOpen, FileText } from 'lucide-react';
 const ThesisParametersForm = ({ data, onChange, lookupData, sessions }) => {
   const handleChange = (field, value) => {
     onChange({ ...data, [field]: value });
@@ -36,19 +36,6 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions }) => {
             placeholder="es. L'Intelligenza Artificiale nel Settore Sanitario"
             required
           />
-        </div>
-
-        {/* Provider AI - solo OpenAI o3 */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Modello AI
-          </label>
-          <div className="flex items-center gap-2 p-4 rounded-xl border-2 border-green-500 bg-green-50 text-green-700">
-            <Cpu className="w-5 h-5" />
-            <div className="text-left">
-              <p className="font-semibold">OpenAI o3</p>
-            </div>
-          </div>
         </div>
 
         {/* Sessione/Addestramento (opzionale) */}
