@@ -166,14 +166,10 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
 
           {/* Parole totali - auto distribuzione */}
           <div className="mb-6 p-5 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl">
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-orange-100">
-                <span className="text-lg">🎯</span>
-              </div>
-              <div className="flex-1">
-                <label className="block text-sm font-semibold text-slate-800 mb-1">
-                  Hai un obiettivo di parole?
-                </label>
+            <div>
+              <label className="block text-sm font-semibold text-slate-800 mb-1">
+                Hai un obiettivo di parole?
+              </label>
                 <p className="text-xs text-slate-500 mb-3">
                   Inserisci il totale desiderato e distribuiremo automaticamente le parole tra le sezioni.
                 </p>
@@ -195,7 +191,6 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                   />
                   <span className="text-sm text-slate-500">parole totali</span>
                 </div>
-              </div>
             </div>
           </div>
 
