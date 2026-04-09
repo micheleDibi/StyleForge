@@ -1313,9 +1313,11 @@ async def chat_with_calcifer(
     Permette all'utente di fare domande e ricevere aiuto da Calcifer.
     """
     try:
+        # Isola la conversazione per utente
+        user_conv_id = f"{current_user.id}_{request.conversation_id}"
         response = calcifer.get_response(
             user_message=request.message,
-            conversation_id=request.conversation_id,
+            conversation_id=user_conv_id,
             context=request.context
         )
 
@@ -1359,7 +1361,8 @@ async def clear_conversation(
     current_user: User = Depends(get_current_active_user)
 ):
     """Cancella la cronologia di una conversazione con Calcifer."""
-    calcifer.clear_conversation(conversation_id)
+    user_conv_id = f"{current_user.id}_{conversation_id}"
+    calcifer.clear_conversation(user_conv_id)
     return {"message": "Conversazione cancellata"}
 
 
