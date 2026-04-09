@@ -441,15 +441,13 @@ const ThesisGenerator = () => {
   // Loading state
   if (isLoading && !lookupData) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50/30">
-        <div className="text-center">
-          <div className="relative inline-block mb-6">
-            <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl flex items-center justify-center shadow-xl">
-              <Sparkles className="w-10 h-10 text-white animate-pulse" />
-            </div>
-            <Loader className="absolute -bottom-2 -right-2 w-8 h-8 text-orange-500 animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-12 h-12">
+            <div className="absolute inset-0 rounded-full border-[3px] border-slate-200"></div>
+            <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
           </div>
-          <p className="text-slate-600 font-medium">Caricamento...</p>
+          <p className="text-sm text-slate-500 font-medium">Caricamento...</p>
         </div>
       </div>
     );
