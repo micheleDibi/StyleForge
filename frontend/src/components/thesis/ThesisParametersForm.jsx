@@ -68,7 +68,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions }) => {
           <textarea
             value={data.description || ''}
             onChange={(e) => handleChange('description', e.target.value)}
-            className="input w-full h-40 resize-y"
+            className="input textarea w-full min-h-40 resize-y"
             placeholder="Descrivi brevemente di cosa tratterà la tesi..."
           />
         </div>
