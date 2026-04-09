@@ -46,6 +46,20 @@ const getQuickSuggestions = (pathname) => {
   return QUICK_SUGGESTIONS[pathname] || QUICK_SUGGESTIONS['/'];
 };
 
+// Renderizza markdown leggero (bold, italic)
+const renderMessage = (text) => {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+    return part;
+  });
+};
+
 const Helper = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
@@ -207,7 +221,7 @@ const Helper = () => {
                     : 'bg-white text-slate-800 border border-slate-200 rounded-bl-md shadow-sm'
                 }`}
               >
-                {msg.content}
+                {renderMessage(msg.content)}
               </div>
             </div>
           ))}
