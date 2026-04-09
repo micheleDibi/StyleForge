@@ -39,46 +39,17 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions }) => {
           />
         </div>
 
-        {/* Provider AI */}
+        {/* Provider AI - solo OpenAI o3 */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
-            Modello AI <span className="text-red-500">*</span>
+            Modello AI
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => handleChange('ai_provider', 'openai')}
-              className={`flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                data.ai_provider === 'openai'
-                  ? 'border-green-500 bg-green-50 text-green-700'
-                  : 'border-slate-200 hover:border-slate-300 text-slate-600'
-              }`}
-            >
-              <Cpu className="w-5 h-5" />
-              <div className="text-left">
-                <p className="font-semibold">OpenAI</p>
-                <p className="text-xs opacity-75">o3</p>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleChange('ai_provider', 'claude')}
-              className={`flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                data.ai_provider === 'claude'
-                  ? 'border-purple-500 bg-purple-50 text-purple-700'
-                  : 'border-slate-200 hover:border-slate-300 text-slate-600'
-              }`}
-            >
-              <Sparkles className="w-5 h-5" />
-              <div className="text-left">
-                <p className="font-semibold">Claude</p>
-                <p className="text-xs opacity-75">Opus 4.6</p>
-              </div>
-            </button>
+          <div className="flex items-center gap-2 p-4 rounded-xl border-2 border-green-500 bg-green-50 text-green-700">
+            <Cpu className="w-5 h-5" />
+            <div className="text-left">
+              <p className="font-semibold">OpenAI o3</p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 mt-2">
-            Seleziona il modello AI da usare per la generazione del contenuto.
-          </p>
         </div>
 
         {/* Sessione/Addestramento (opzionale) */}
@@ -111,7 +82,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions }) => {
           <textarea
             value={data.description || ''}
             onChange={(e) => handleChange('description', e.target.value)}
-            className="input w-full h-24 resize-y"
+            className="input w-full h-40 resize-y"
             placeholder="Descrivi brevemente di cosa tratterà la tesi..."
           />
         </div>
