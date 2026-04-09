@@ -469,18 +469,15 @@ class CreditEstimateResponse(BaseModel):
 
 class ApiCostEstimateRequest(BaseModel):
     """Request per stimare il costo API in EUR (solo admin)."""
-    mode: str = Field(..., description="Modalita': 'correction' o 'full'")
-    word_count: int = Field(..., ge=0, description="Numero di parole del testo")
-    session_id: Optional[str] = Field(None, description="ID sessione (richiesto per mode='full')")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "mode": "correction",
-                "word_count": 1500,
-                "session_id": None
-            }
-        }
+    mode: str = Field(..., description="Modalita': correction, full, train, generate, thesis")
+    word_count: int = Field(0, ge=0, description="Numero di parole del testo")
+    session_id: Optional[str] = Field(None, description="ID sessione (per mode full/generate)")
+    max_pages: Optional[int] = Field(None, description="Pagine PDF (per mode train)")
+    num_words: Optional[int] = Field(None, description="Parole richieste (per mode generate)")
+    num_chapters: Optional[int] = Field(None, description="Numero capitoli (per mode thesis)")
+    sections_per_chapter: Optional[int] = Field(None, description="Sezioni per capitolo (per mode thesis)")
+    words_per_section: Optional[int] = Field(None, description="Parole per sezione (per mode thesis)")
+    ai_provider: Optional[str] = Field(None, description="Provider AI: openai o claude (per mode thesis)")
 
 
 class ApiCostEstimateResponse(BaseModel):

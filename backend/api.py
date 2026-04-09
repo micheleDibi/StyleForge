@@ -997,8 +997,8 @@ async def estimate_api_cost(
     current_user: User = Depends(get_current_active_user),
 ):
     """
-    Stima il costo API in EUR per una chiamata Claude (solo admin).
-    Usato per mostrare il costo prima di avviare correzione/umanizzazione.
+    Stima il costo API in EUR per una chiamata AI (solo admin).
+    Supporta mode: correction, full, train, generate, thesis.
     """
     if not is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Solo admin")
@@ -1006,16 +1006,39 @@ async def estimate_api_cost(
     word_count = request.word_count
     TOKENS_PER_WORD = 2.5  # stima per testo italiano
 
+    # Default: Claude pricing
+    input_price = config.CLAUDE_OPUS_INPUT_PRICE_USD
+    output_price = config.CLAUDE_OPUS_OUTPUT_PRICE_USD
+
     if request.mode == "correction":
-        # Prompt correzione ~560 parole + testo utente
         prompt_words = 560
         input_tokens = int((prompt_words + word_count) * TOKENS_PER_WORD)
         output_tokens = int(word_count * TOKENS_PER_WORD)
+
     elif request.mode == "full":
-        # System prompt ~80 parole -> ~200 token
         system_tokens = 200
-        # Prompt umanizzazione ~350 parole + testo utente
         prompt_tokens = int((350 + word_count) * TOKENS_PER_WORD)
+        history_tokens = 0
+        if request.session_id:
+            user_id = str(current_user.id)
+            try:
+                client = session_manager.get_session(request.session_id, user_id)
+                for msg in client.conversation_history:
+                    history_tokens += int(len(msg["content"]) * 0.4)
+            except Exception:
+                history_tokens = 50000
+        input_tokens = system_tokens + history_tokens + prompt_tokens
+        output_tokens = int(word_count * TOKENS_PER_WORD)
+
+    elif request.mode == "train":
+        max_pages = request.max_pages or 50
+        # Prompt addestramento ~2000 parole + contenuto PDF ~250 parole/pagina
+        input_tokens = int((2000 + 250 * max_pages) * TOKENS_PER_WORD)
+        output_tokens = 4096  # MAX_TOKENS_TRAIN
+
+    elif request.mode == "generate":
+        system_tokens = 200
+        prompt_tokens = int((100 + (request.num_words or 1000)) * TOKENS_PER_WORD)
         # Conversation history della sessione addestrata
         history_tokens = 0
         if request.session_id:
@@ -1023,18 +1046,42 @@ async def estimate_api_cost(
             try:
                 client = session_manager.get_session(request.session_id, user_id)
                 for msg in client.conversation_history:
-                    # ~0.4 token per carattere per testo italiano misto
                     history_tokens += int(len(msg["content"]) * 0.4)
             except Exception:
-                # Sessione non trovata: stima conservativa
                 history_tokens = 50000
         input_tokens = system_tokens + history_tokens + prompt_tokens
-        output_tokens = int(word_count * TOKENS_PER_WORD)
-    else:
-        raise HTTPException(status_code=400, detail="mode deve essere 'correction' o 'full'")
+        output_tokens = int((request.num_words or 1000) * TOKENS_PER_WORD)
 
-    input_cost_usd = (input_tokens / 1_000_000) * config.CLAUDE_OPUS_INPUT_PRICE_USD
-    output_cost_usd = (output_tokens / 1_000_000) * config.CLAUDE_OPUS_OUTPUT_PRICE_USD
+    elif request.mode == "thesis":
+        num_chapters = request.num_chapters or 5
+        spc = request.sections_per_chapter or 3
+        wps = request.words_per_section or 1000
+        total_sections = num_chapters * spc
+
+        # Provider pricing
+        provider = request.ai_provider or "openai"
+        if provider == "openai":
+            input_price = config.OPENAI_O3_INPUT_PRICE_USD
+            output_price = config.OPENAI_O3_OUTPUT_PRICE_USD
+
+        # Chiamata struttura capitoli: prompt ~500 parole, output ~200 parole
+        chapters_input = int(500 * TOKENS_PER_WORD)
+        chapters_output = int(200 * TOKENS_PER_WORD)
+        # Chiamata struttura sezioni: prompt ~500 parole, output ~300 parole
+        sections_input = int(500 * TOKENS_PER_WORD)
+        sections_output = int(300 * TOKENS_PER_WORD)
+        # Chiamate contenuto: 1 per sezione, prompt ~500 parole + contesto, output ~wps parole
+        content_input_per_section = int(800 * TOKENS_PER_WORD)
+        content_output_per_section = int(wps * TOKENS_PER_WORD)
+
+        input_tokens = chapters_input + sections_input + (total_sections * content_input_per_section)
+        output_tokens = chapters_output + sections_output + (total_sections * content_output_per_section)
+
+    else:
+        raise HTTPException(status_code=400, detail=f"mode '{request.mode}' non supportato")
+
+    input_cost_usd = (input_tokens / 1_000_000) * input_price
+    output_cost_usd = (output_tokens / 1_000_000) * output_price
     total_eur = (input_cost_usd + output_cost_usd) * config.USD_TO_EUR_RATE
 
     return ApiCostEstimateResponse(

@@ -4,6 +4,7 @@ import { Upload, ArrowLeft, FileText, CheckCircle, AlertCircle } from 'lucide-re
 import { trainSession, pollJobStatus, estimateCredits } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
+import ApiCostEstimate from '../components/ApiCostEstimate';
 
 const Train = () => {
   const navigate = useNavigate();
@@ -180,6 +181,9 @@ const Train = () => {
               <p className="text-xs text-slate-500 mt-1">
                 Più pagine = più tempo di elaborazione
               </p>
+              {isAdmin && file && (
+                <ApiCostEstimate mode="train" maxPages={maxPages} />
+              )}
             </div>
 
             <button

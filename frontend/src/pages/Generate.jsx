@@ -4,6 +4,7 @@ import { ArrowLeft, Sparkles, Download, Copy, Check, RefreshCw, AlertTriangle, S
 import { getSessions, generateContent, pollJobStatus, getResultText, estimateCredits, startCompilatioScan, downloadCompilatioReport } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
+import ApiCostEstimate from '../components/ApiCostEstimate';
 import { jsPDF } from 'jspdf';
 
 const Generate = () => {
@@ -307,6 +308,14 @@ const Generate = () => {
                   placeholder="Pubblico Generale"
                 />
               </div>
+
+              {isAdmin && selectedSession && argomento.trim() && (
+                <ApiCostEstimate
+                  mode="generate"
+                  numWords={numeroParole}
+                  sessionId={selectedSession}
+                />
+              )}
 
               <button
                 type="submit"

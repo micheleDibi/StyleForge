@@ -102,6 +102,10 @@ CLAUDE_OPUS_INPUT_PRICE_USD = 15.0   # $ per 1M input tokens
 CLAUDE_OPUS_OUTPUT_PRICE_USD = 75.0  # $ per 1M output tokens
 USD_TO_EUR_RATE = 0.88               # Tasso di cambio approssimativo
 
+# API Pricing (OpenAI o3) — per stima costi admin thesis
+OPENAI_O3_INPUT_PRICE_USD = 10.0     # $ per 1M input tokens
+OPENAI_O3_OUTPUT_PRICE_USD = 40.0    # $ per 1M output tokens
+
 # Versione API
 API_VERSION = "1.0.0"
 API_TITLE = "StyleForge API"

@@ -23,7 +23,7 @@ const PERMISSION_LABELS = {
   train: 'Addestra Modello',
   generate: 'Genera Contenuto',
   humanize: 'Umanizza Testo',
-  thesis: 'Tesi / Relazione',
+  thesis: 'Tesi',
   manage_templates: 'Gestione Template',
   compilatio_scan: 'Detector AI',
   enhance_image: 'Migliora Immagine',
