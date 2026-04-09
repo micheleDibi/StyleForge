@@ -51,7 +51,14 @@ const computeLocalEstimate = (props) => {
     const wps = wordsPerSection || 1000;
     const totalSections = nc * spc;
     const provider = aiProvider || 'openai';
-    const input = Math.round(500 * TPW) + Math.round(500 * TPW) + totalSections * Math.round(800 * TPW);
+    // Stima token allegati: ~10k token per allegato (media ~25k caratteri)
+    const attCount = props.attachmentsCount || 0;
+    const attachTokens = attCount * 10000;
+    // Gli allegati vengono inclusi in ogni chiamata API
+    const chaptersInput = Math.round(500 * TPW) + attachTokens;
+    const sectionsInput = Math.round(500 * TPW) + attachTokens;
+    const contentInputPerSection = Math.round(800 * TPW) + attachTokens;
+    const input = chaptersInput + sectionsInput + totalSections * contentInputPerSection;
     const output = Math.round(200 * TPW) + Math.round(300 * TPW) + totalSections * Math.round(wps * TPW);
     return calcCost(input, output, provider);
   }

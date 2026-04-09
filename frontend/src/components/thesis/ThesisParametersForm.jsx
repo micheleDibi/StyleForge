@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Info, ChevronDown, BookOpen, FileText } from 'lucide-react';
 import ApiCostEstimate from '../ApiCostEstimate';
 
-const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, thesisId }) => {
+const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, thesisId, attachmentsCount }) => {
   const handleChange = (field, value) => {
     onChange({ ...data, [field]: value });
   };
@@ -263,6 +263,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                 wordsPerSection={data.words_per_section}
                 aiProvider={data.ai_provider}
                 thesisId={thesisId}
+                attachmentsCount={attachmentsCount || 0}
               />
             )}
           </div>

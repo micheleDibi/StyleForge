@@ -512,6 +512,7 @@ const ThesisGenerator = () => {
               sessions={sessions}
               isAdmin={isAdmin}
               thesisId={thesisId}
+              attachmentsCount={attachmentsData.attachments?.length || 0}
             />
           )}
 
@@ -577,6 +578,7 @@ const ThesisGenerator = () => {
               wordsPerSection={parametersData.words_per_section}
               aiProvider={parametersData.ai_provider}
               thesisId={thesisId}
+              attachmentsCount={attachmentsData.attachments?.length || 0}
             />
           </div>
         )}
