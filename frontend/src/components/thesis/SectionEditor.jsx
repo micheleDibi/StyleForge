@@ -363,20 +363,20 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
       </div>
 
       {/* Confirm Button */}
-      <div className="flex justify-end">
+      <div className="flex justify-end mt-6">
         <button
           onClick={onConfirm}
           disabled={isLoading || safeChapters.length === 0 || safeChapters.some(ch => (ch.sections || []).length === 0)}
-          className="btn-primary"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isLoading ? (
             <>
-              <Loader className="w-5 h-5 mr-2 animate-spin" />
+              <Loader className="w-5 h-5 animate-spin" />
               Salvataggio...
             </>
           ) : (
             <>
-              <Check className="w-5 h-5 mr-2" />
+              <Check className="w-5 h-5" />
               Conferma Sezioni e Genera Contenuto
             </>
           )}
