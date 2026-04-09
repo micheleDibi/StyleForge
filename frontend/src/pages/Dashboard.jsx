@@ -98,19 +98,13 @@ const Dashboard = () => {
   // ─── Loading ───
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="relative inline-block mb-6">
-            <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-xl shadow-orange-500/25">
-              <Sparkles className="w-10 h-10 text-white" />
-            </div>
-            <div className="absolute inset-0 border-[3px] border-orange-200 border-t-orange-500 rounded-2xl animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-12 h-12">
+            <div className="absolute inset-0 rounded-full border-[3px] border-slate-200"></div>
+            <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Style<span className="gradient-text">Forge</span></h1>
-          <p className="text-sm text-gray-400">Caricamento...</p>
-          <div className="mt-5 w-48 mx-auto h-1.5 bg-orange-100 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-orange-400 to-orange-600 rounded-full animate-loading-bar"></div>
-          </div>
+          <p className="text-sm text-slate-500 font-medium">Caricamento...</p>
         </div>
       </div>
     );
