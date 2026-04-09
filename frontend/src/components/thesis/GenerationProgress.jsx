@@ -1,14 +1,48 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Loader, CheckCircle, AlertCircle, ChevronDown, ChevronRight, FileText } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Loader, CheckCircle, AlertCircle, ChevronDown, ChevronRight, FileText, Clock } from 'lucide-react';
+
+const formatTime = (seconds) => {
+  if (seconds < 60) return 'meno di un minuto';
+  const m = Math.round(seconds / 60);
+  if (m === 1) return 'circa 1 minuto';
+  if (m < 60) return `circa ${m} minuti`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `circa ${h}h ${rm}min` : `circa ${h}h`;
+};
 
 const GenerationProgress = ({ status, onComplete }) => {
   const [expandedChapters, setExpandedChapters] = useState({});
+  const startTimeRef = useRef(null);
+  const [eta, setEta] = useState(null);
 
   useEffect(() => {
     if (status?.status === 'completed' && onComplete) {
       onComplete();
     }
   }, [status?.status, onComplete]);
+
+  // Calcola ETA basata sul progresso reale
+  useEffect(() => {
+    const completed = status?.completed_sections ?? 0;
+    const total = status?.total_sections ?? 0;
+
+    if (completed === 0 || total === 0 || status?.status !== 'generating') {
+      if (completed === 0 && total > 0 && !startTimeRef.current) {
+        startTimeRef.current = Date.now();
+      }
+      return;
+    }
+
+    if (!startTimeRef.current) {
+      startTimeRef.current = Date.now();
+    }
+
+    const elapsed = (Date.now() - startTimeRef.current) / 1000;
+    const avgPerSection = elapsed / completed;
+    const remaining = (total - completed) * avgPerSection;
+    setEta(remaining);
+  }, [status?.completed_sections, status?.total_sections, status?.status]);
 
   const toggleChapter = (chapterIndex) => {
     setExpandedChapters(prev => ({ ...prev, [chapterIndex]: !prev[chapterIndex] }));
@@ -108,10 +142,16 @@ const GenerationProgress = ({ status, onComplete }) => {
 
         {/* Stats */}
         {totalSections > 0 && (
-          <div className="flex gap-6 mt-4 text-sm text-slate-600">
+          <div className="flex items-center gap-6 mt-4 text-sm text-slate-600">
             <span><strong className="text-slate-900">{completedSections}</strong> completate</span>
             <span><strong className="text-slate-900">{totalSections - completedSections}</strong> rimanenti</span>
             <span><strong className="text-slate-900">{totalSections}</strong> totali</span>
+            {generationStatus === 'generating' && eta != null && completedSections > 0 && (
+              <span className="flex items-center gap-1 ml-auto text-orange-600">
+                <Clock className="w-3.5 h-3.5" />
+                {formatTime(eta)}
+              </span>
+            )}
           </div>
         )}
 
