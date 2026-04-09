@@ -258,26 +258,30 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                 </p>
               </div>
             </div>
-            <CreditEstimatePreview
-              operations={[
-                { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsTotalSize || 0) * 0.5) }, label: 'Capitoli + allegati' },
-                { type: 'thesis_sections', params: {}, label: 'Sezioni' },
-                { type: 'thesis_content', params: { num_chapters: data.num_chapters, sections_per_chapter: data.sections_per_chapter, words_per_section: data.words_per_section }, label: 'Contenuto' },
-              ]}
-            />
-            {isAdmin && (
-              <ApiCostEstimate
-                mode="thesis"
-                numChapters={data.num_chapters}
-                sectionsPerChapter={data.sections_per_chapter}
-                wordsPerSection={data.words_per_section}
-                aiProvider={data.ai_provider}
-                thesisId={thesisId}
-                attachmentsCount={attachmentsCount || 0}
-                attachmentsTotalSize={attachmentsTotalSize || 0}
-              />
-            )}
           </div>
+
+          {/* Crediti stimati */}
+          <CreditEstimatePreview
+            operations={[
+              { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsTotalSize || 0) * 0.5) }, label: 'Capitoli + allegati' },
+              { type: 'thesis_sections', params: {}, label: 'Sezioni' },
+              { type: 'thesis_content', params: { num_chapters: data.num_chapters, sections_per_chapter: data.sections_per_chapter, words_per_section: data.words_per_section }, label: 'Contenuto' },
+            ]}
+          />
+
+          {/* Costo API - solo admin */}
+          {isAdmin && (
+            <ApiCostEstimate
+              mode="thesis"
+              numChapters={data.num_chapters}
+              sectionsPerChapter={data.sections_per_chapter}
+              wordsPerSection={data.words_per_section}
+              aiProvider={data.ai_provider}
+              thesisId={thesisId}
+              attachmentsCount={attachmentsCount || 0}
+              attachmentsTotalSize={attachmentsTotalSize || 0}
+            />
+          )}
         </div>
 
         {/* Stile Citazioni */}
