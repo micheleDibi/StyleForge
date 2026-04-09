@@ -33,11 +33,20 @@ ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg:/
 
 # Engine sincrono (per Alembic e operazioni sincrone)
 # Usa NullPool per Supabase per evitare problemi con il connection pooling
+# Se usi Supabase pooler (porta 6543), NullPool e' corretto.
+# Se usi connessione diretta (porta 5432), usa il pool locale.
+_use_supabase_pooler = ":6543/" in DATABASE_URL
+
 engine = create_engine(
     DATABASE_URL,
     echo=False,
-    pool_pre_ping=True,  # Verifica connessione prima dell'uso
-    poolclass=NullPool   # Disabilita pooling locale (Supabase ha il suo)
+    pool_pre_ping=True,
+    **({"poolclass": NullPool} if _use_supabase_pooler else {
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_timeout": 30,
+        "pool_recycle": 1800,
+    })
 )
 
 # Engine asincrono (per FastAPI)

@@ -76,10 +76,14 @@ const Footer = () => {
 
         {/* Copyright */}
         <div className="mt-10 pt-8 border-t border-slate-700">
-          <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-sm text-slate-400">
               © {new Date().getFullYear()} <span className="font-semibold text-white">StyleForge</span>. Tutti i diritti riservati.
             </p>
+            <div className="flex gap-4 text-xs text-slate-400">
+              <a href="/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
+              <a href="/terms" className="hover:text-white transition-colors">Termini di Servizio</a>
+            </div>
           </div>
         </div>
       </div>

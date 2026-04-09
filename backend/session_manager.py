@@ -4,9 +4,9 @@ Session Manager per gestire multiple sessioni Claude con persistenza database.
 
 import uuid
 import json
+import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
-from threading import Lock
 from sqlalchemy.orm import Session as DBSession
 
 from claude_client import ClaudeClient
@@ -19,17 +19,40 @@ class SessionManager:
     Gestisce multiple sessioni Claude con persistenza su database.
 
     Mantiene una cache in memoria dei client Claude attivi mentre
-    persiste i metadati sul database PostgreSQL.
+    persiste i metadati sul database PostgreSQL. La conversation history
+    viene salvata automaticamente dopo ogni operazione.
     """
 
     def __init__(self):
         """Inizializza il session manager."""
-        self._clients: Dict[str, ClaudeClient] = {}  # Cache in memoria dei client
-        self._lock = Lock()
+        self._clients: Dict[str, ClaudeClient] = {}
+        self._lock = asyncio.Lock()
 
     def _get_db(self) -> DBSession:
         """Ottiene una sessione database."""
         return SessionLocal()
+
+    def _save_client_to_db(self, session_id: str, db: Optional[DBSession] = None):
+        """Salva lo stato del client in cache nel database."""
+        if session_id not in self._clients:
+            return
+        client = self._clients[session_id]
+        close_db = False
+        if db is None:
+            db = self._get_db()
+            close_db = True
+        try:
+            db_session = db.query(SessionModel).filter(
+                SessionModel.session_id == session_id
+            ).first()
+            if db_session:
+                db_session.conversation_history = json.dumps(client.conversation_history)
+                db_session.is_trained = client.is_trained
+                db_session.last_activity = datetime.utcnow()
+                db.commit()
+        finally:
+            if close_db:
+                db.close()
 
     def create_session(
         self,
@@ -37,138 +60,90 @@ class SessionManager:
         session_id: Optional[str] = None,
         db: Optional[DBSession] = None
     ) -> str:
-        """
-        Crea una nuova sessione Claude.
-
-        Args:
-            user_id: ID dell'utente proprietario.
-            session_id: ID opzionale per la sessione.
-            db: Sessione database opzionale.
-
-        Returns:
-            L'ID della sessione creata.
-        """
+        """Crea una nuova sessione Claude."""
         close_db = False
         if db is None:
             db = self._get_db()
             close_db = True
 
         try:
-            with self._lock:
-                if session_id is None:
-                    session_id = f"session_{uuid.uuid4().hex[:12]}"
+            if session_id is None:
+                session_id = f"session_{uuid.uuid4().hex[:12]}"
 
-                # Verifica che l'ID non esista già
-                existing = db.query(SessionModel).filter(
-                    SessionModel.session_id == session_id
-                ).first()
-                if existing:
-                    raise ValueError(f"Sessione {session_id} già esistente")
+            existing = db.query(SessionModel).filter(
+                SessionModel.session_id == session_id
+            ).first()
+            if existing:
+                raise ValueError(f"Sessione {session_id} gia' esistente")
 
-                # Crea la sessione nel database
-                db_session = SessionModel(
-                    session_id=session_id,
-                    user_id=user_id,
-                    is_trained=False
-                )
-                db.add(db_session)
-                db.commit()
+            db_session = SessionModel(
+                session_id=session_id,
+                user_id=user_id,
+                is_trained=False
+            )
+            db.add(db_session)
+            db.commit()
 
-                # Crea il client Claude in memoria
-                self._clients[session_id] = ClaudeClient()
+            self._clients[session_id] = ClaudeClient()
 
-                return session_id
+            return session_id
         finally:
             if close_db:
                 db.close()
 
     def get_session(self, session_id: str, user_id: Optional[str] = None) -> ClaudeClient:
-        """
-        Ottiene una sessione esistente.
-
-        Args:
-            session_id: ID della sessione.
-            user_id: ID dell'utente (opzionale, per verifica proprietà).
-
-        Returns:
-            Il client Claude della sessione.
-
-        Raises:
-            ValueError: Se la sessione non esiste o non appartiene all'utente.
-        """
+        """Ottiene una sessione esistente. Ricostruisce dalla DB se non in cache."""
         db = self._get_db()
         try:
-            with self._lock:
-                # Verifica che la sessione esista nel database
-                query = db.query(SessionModel).filter(
-                    SessionModel.session_id == session_id
-                )
-                if user_id:
-                    query = query.filter(SessionModel.user_id == user_id)
+            query = db.query(SessionModel).filter(
+                SessionModel.session_id == session_id
+            )
+            if user_id:
+                query = query.filter(SessionModel.user_id == user_id)
 
-                db_session = query.first()
-                if not db_session:
-                    raise ValueError(f"Sessione {session_id} non trovata")
+            db_session = query.first()
+            if not db_session:
+                raise ValueError(f"Sessione {session_id} non trovata")
 
-                # Aggiorna last_activity
-                db_session.last_activity = datetime.utcnow()
-                db.commit()
+            db_session.last_activity = datetime.utcnow()
+            db.commit()
 
-                # Se il client non è in cache, ricrealo
-                if session_id not in self._clients:
-                    client = ClaudeClient()
-                    # Ripristina la conversation history dal database se presente
-                    if db_session.conversation_history:
-                        try:
-                            client.conversation_history = json.loads(db_session.conversation_history)
-                            client.is_trained = db_session.is_trained
-                        except json.JSONDecodeError:
-                            pass
-                    self._clients[session_id] = client
+            if session_id not in self._clients:
+                client = ClaudeClient()
+                if db_session.conversation_history:
+                    try:
+                        client.conversation_history = json.loads(db_session.conversation_history)
+                        client.is_trained = db_session.is_trained
+                    except json.JSONDecodeError:
+                        pass
+                self._clients[session_id] = client
 
-                return self._clients[session_id]
+            return self._clients[session_id]
         finally:
             db.close()
 
     def delete_session(self, session_id: str, user_id: Optional[str] = None) -> None:
-        """
-        Elimina una sessione.
-
-        Args:
-            session_id: ID della sessione da eliminare.
-            user_id: ID dell'utente (opzionale, per verifica proprietà).
-        """
+        """Elimina una sessione."""
         db = self._get_db()
         try:
-            with self._lock:
-                query = db.query(SessionModel).filter(
-                    SessionModel.session_id == session_id
-                )
-                if user_id:
-                    query = query.filter(SessionModel.user_id == user_id)
+            query = db.query(SessionModel).filter(
+                SessionModel.session_id == session_id
+            )
+            if user_id:
+                query = query.filter(SessionModel.user_id == user_id)
 
-                db_session = query.first()
-                if db_session:
-                    db.delete(db_session)
-                    db.commit()
+            db_session = query.first()
+            if db_session:
+                db.delete(db_session)
+                db.commit()
 
-                # Rimuovi dalla cache
-                if session_id in self._clients:
-                    del self._clients[session_id]
+            if session_id in self._clients:
+                del self._clients[session_id]
         finally:
             db.close()
 
     def session_exists(self, session_id: str, user_id: Optional[str] = None) -> bool:
-        """
-        Verifica se una sessione esiste.
-
-        Args:
-            session_id: ID della sessione.
-            user_id: ID dell'utente (opzionale).
-
-        Returns:
-            True se la sessione esiste, False altrimenti.
-        """
+        """Verifica se una sessione esiste."""
         db = self._get_db()
         try:
             query = db.query(SessionModel).filter(
@@ -181,15 +156,7 @@ class SessionManager:
             db.close()
 
     def get_all_sessions(self, user_id: Optional[str] = None) -> Dict[str, dict]:
-        """
-        Ottiene informazioni su tutte le sessioni.
-
-        Args:
-            user_id: Se specificato, filtra per utente.
-
-        Returns:
-            Dizionario con informazioni su tutte le sessioni.
-        """
+        """Ottiene informazioni su tutte le sessioni."""
         db = self._get_db()
         try:
             query = db.query(SessionModel)
@@ -200,10 +167,8 @@ class SessionManager:
             result = {}
 
             for session in sessions:
-                # Ottieni il numero di job dalla relazione
                 jobs = [job.job_id for job in session.jobs]
 
-                # Calcola la lunghezza della conversation history
                 conv_length = 0
                 if session.conversation_history:
                     try:
@@ -227,26 +192,12 @@ class SessionManager:
             db.close()
 
     def get_user_sessions(self, user_id: str) -> List[dict]:
-        """
-        Ottiene tutte le sessioni di un utente.
-
-        Args:
-            user_id: ID dell'utente.
-
-        Returns:
-            Lista di dizionari con informazioni sulle sessioni.
-        """
+        """Ottiene tutte le sessioni di un utente."""
         sessions_dict = self.get_all_sessions(user_id)
         return list(sessions_dict.values())
 
     def set_session_name(self, session_id: str, name: str) -> None:
-        """
-        Imposta il nome descrittivo di una sessione.
-
-        Args:
-            session_id: ID della sessione.
-            name: Nome descrittivo da impostare.
-        """
+        """Imposta il nome descrittivo di una sessione."""
         db = self._get_db()
         try:
             db_session = db.query(SessionModel).filter(
@@ -259,13 +210,7 @@ class SessionManager:
             db.close()
 
     def set_session_trained(self, session_id: str, trained: bool = True) -> None:
-        """
-        Imposta lo stato di training di una sessione.
-
-        Args:
-            session_id: ID della sessione.
-            trained: Stato di training.
-        """
+        """Imposta lo stato di training e salva la conversation history."""
         db = self._get_db()
         try:
             db_session = db.query(SessionModel).filter(
@@ -273,92 +218,25 @@ class SessionManager:
             ).first()
             if db_session:
                 db_session.is_trained = trained
+                # Salva anche la conversation history
+                if session_id in self._clients:
+                    client = self._clients[session_id]
+                    client.is_trained = trained
+                    db_session.conversation_history = json.dumps(client.conversation_history)
                 db.commit()
-
-            # Aggiorna anche il client in cache
-            if session_id in self._clients:
-                self._clients[session_id].is_trained = trained
         finally:
             db.close()
 
     def save_conversation_history(self, session_id: str) -> None:
-        """
-        Salva la conversation history di un client nel database.
-
-        Args:
-            session_id: ID della sessione.
-        """
-        db = self._get_db()
-        try:
-            if session_id in self._clients:
-                client = self._clients[session_id]
-                db_session = db.query(SessionModel).filter(
-                    SessionModel.session_id == session_id
-                ).first()
-                if db_session:
-                    db_session.conversation_history = json.dumps(client.conversation_history)
-                    db_session.is_trained = client.is_trained
-                    db.commit()
-        finally:
-            db.close()
+        """Salva la conversation history di un client nel database."""
+        self._save_client_to_db(session_id)
 
     def add_job_to_session(self, session_id: str, job_id: str) -> None:
-        """
-        Aggiunge un job ID alla lista dei job di una sessione.
-        Questo è gestito automaticamente dalla relazione nel database.
-
-        Args:
-            session_id: ID della sessione.
-            job_id: ID del job da aggiungere.
-        """
-        # La relazione è gestita dal JobManager quando crea il job
-        pass
-
-    def cleanup_old_sessions(self, max_age_hours: int = 24) -> int:
-        """
-        Rimuove le sessioni inattive da più di max_age_hours.
-
-        Args:
-            max_age_hours: Età massima in ore per mantenere una sessione.
-
-        Returns:
-            Numero di sessioni rimosse.
-        """
-        db = self._get_db()
-        try:
-            cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
-
-            # Trova sessioni vecchie NON addestrate (le addestrate durano per sempre)
-            old_sessions = db.query(SessionModel).filter(
-                SessionModel.last_activity < cutoff,
-                SessionModel.is_trained == False
-            ).all()
-
-            count = len(old_sessions)
-
-            with self._lock:
-                for session in old_sessions:
-                    # Rimuovi dalla cache
-                    if session.session_id in self._clients:
-                        del self._clients[session.session_id]
-                    db.delete(session)
-
-                db.commit()
-
-            return count
-        finally:
-            db.close()
+        """Aggiunge un job ID alla lista dei job di una sessione."""
+        pass  # Gestito dalla relazione FK nel database
 
     def get_session_count(self, user_id: Optional[str] = None) -> int:
-        """
-        Restituisce il numero di sessioni.
-
-        Args:
-            user_id: Se specificato, conta solo le sessioni dell'utente.
-
-        Returns:
-            Numero di sessioni.
-        """
+        """Ottiene il numero di sessioni."""
         db = self._get_db()
         try:
             query = db.query(SessionModel)
@@ -368,24 +246,30 @@ class SessionManager:
         finally:
             db.close()
 
-    def get_session_db_model(self, session_id: str) -> Optional[SessionModel]:
-        """
-        Ottiene il modello database della sessione.
-
-        Args:
-            session_id: ID della sessione.
-
-        Returns:
-            Il modello SessionModel o None.
-        """
+    def cleanup_old_sessions(self, max_age_hours: int = 24) -> int:
+        """Rimuove le sessioni non addestrate inattive."""
         db = self._get_db()
         try:
-            return db.query(SessionModel).filter(
-                SessionModel.session_id == session_id
-            ).first()
+            cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
+
+            old_sessions = db.query(SessionModel).filter(
+                SessionModel.last_activity < cutoff,
+                SessionModel.is_trained == False
+            ).all()
+
+            count = len(old_sessions)
+
+            for session in old_sessions:
+                if session.session_id in self._clients:
+                    del self._clients[session.session_id]
+                db.delete(session)
+
+            db.commit()
+
+            return count
         finally:
             db.close()
 
 
-# Singleton instance
+# Istanza globale
 session_manager = SessionManager()

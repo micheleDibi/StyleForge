@@ -249,7 +249,7 @@ class OpenAIClient(BaseAIClient):
             )
 
         from openai import OpenAI
-        self.client = OpenAI(api_key=self.api_key)
+        self.client = OpenAI(api_key=self.api_key, timeout=300.0)
         self.model_id = model_id or DEFAULT_OPENAI_MODEL
         self.max_tokens = MAX_TOKENS
         self.provider = "openai"
@@ -259,7 +259,8 @@ class OpenAIClient(BaseAIClient):
             response = self.client.chat.completions.create(
                 model=self.model_id,
                 messages=[{"role": "user", "content": prompt}],
-                max_completion_tokens=max_tokens or self.max_tokens
+                max_completion_tokens=max_tokens or self.max_tokens,
+                timeout=300.0
             )
             return response.choices[0].message.content
         except InsufficientCreditsError:
@@ -283,7 +284,7 @@ class ClaudeClient(BaseAIClient):
             )
 
         import anthropic
-        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.client = anthropic.Anthropic(api_key=self.api_key, timeout=300.0)
         self.model_id = model_id or DEFAULT_CLAUDE_MODEL
         self.max_tokens = MAX_TOKENS
         self.provider = "claude"
@@ -293,7 +294,8 @@ class ClaudeClient(BaseAIClient):
             message = self.client.messages.create(
                 model=self.model_id,
                 max_tokens=max_tokens or self.max_tokens,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                timeout=300.0
             )
             return message.content[0].text
         except InsufficientCreditsError:

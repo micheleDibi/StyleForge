@@ -13,8 +13,12 @@ import DetectorAI from './pages/DetectorAI';
 import EnhanceImage from './pages/EnhanceImage';
 import CarouselCreator from './pages/CarouselCreator';
 import ImageToVideo from './pages/ImageToVideo';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
 import Helper from './components/Helper';
 import Footer from './components/Footer';
+import ErrorBoundary from './components/ErrorBoundary';
+import OfflineBanner from './components/OfflineBanner';
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50">
@@ -167,6 +171,8 @@ const AppRoutes = () => {
           </AdminRoute>
         }
       />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/terms" element={<TermsOfService />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -174,8 +180,10 @@ const AppRoutes = () => {
 
 function App() {
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <BrowserRouter>
+        <OfflineBanner />
         <div className="min-h-screen flex flex-col">
           <div className="flex-1">
             <AppRoutes />
@@ -185,6 +193,7 @@ function App() {
         <AuthenticatedHelper />
       </BrowserRouter>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

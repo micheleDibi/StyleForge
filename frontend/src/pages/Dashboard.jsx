@@ -33,7 +33,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(() => { if (!editingSessionName) loadData(); }, 10000);
+    const interval = setInterval(() => { if (!editingSessionName) loadData(); }, 30000);
     return () => clearInterval(interval);
   }, [editingSessionName]);
 

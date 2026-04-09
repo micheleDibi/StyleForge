@@ -60,10 +60,19 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS - Configurazione permissiva per sviluppo
+# Rate Limiting
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address, default_limits=[f"{config.RATE_LIMIT_PER_MINUTE}/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS - Usa origini specifiche da config, fallback a * per sviluppo
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permetti tutte le origini in sviluppo
+    allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
