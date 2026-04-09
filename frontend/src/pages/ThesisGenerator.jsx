@@ -30,7 +30,7 @@ import {
 // Auth & Credits
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
-import ApiCostEstimate from '../components/ApiCostEstimate';
+
 
 const STEPS = [
   { id: 1, label: 'Parametri' },
@@ -511,6 +511,7 @@ const ThesisGenerator = () => {
               onChange={setParametersData}
               lookupData={lookupData}
               sessions={sessions}
+              isAdmin={isAdmin}
             />
           )}
 
@@ -565,19 +566,6 @@ const ThesisGenerator = () => {
             />
           )}
         </div>
-
-        {/* API Cost Estimate - Admin Only (visibile in tutti gli step) */}
-        {isAdmin && parametersData.title && (
-          <div className="mt-6">
-            <ApiCostEstimate
-              mode="thesis"
-              numChapters={parametersData.num_chapters}
-              sectionsPerChapter={parametersData.sections_per_chapter}
-              wordsPerSection={parametersData.words_per_section}
-              aiProvider={parametersData.ai_provider}
-            />
-          </div>
-        )}
 
         {/* Navigation Buttons - Migliorati */}
         {currentStep <= 3 && (
