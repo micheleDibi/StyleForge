@@ -10,7 +10,7 @@ const Train = () => {
   const navigate = useNavigate();
   const { user, isAdmin, credits, refreshUser } = useAuth();
   const [file, setFile] = useState(null);
-  const [maxPages, setMaxPages] = useState(50);
+  const maxPages = 50;
   const [uploading, setUploading] = useState(false);
   const [jobStatus, setJobStatus] = useState(null);
   const [error, setError] = useState('');
@@ -166,25 +166,11 @@ const Train = () => {
               )}
             </div>
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Numero massimo di pagine da leggere
-              </label>
-              <input
-                type="number"
-                value={maxPages}
-                onChange={(e) => setMaxPages(parseInt(e.target.value))}
-                min="1"
-                max="500"
-                className="input w-full"
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                Più pagine = più tempo di elaborazione
-              </p>
-              {isAdmin && file && (
-                <ApiCostEstimate mode="train" maxPages={maxPages} />
-              )}
-            </div>
+            {isAdmin && file && (
+              <div className="mb-6">
+                <ApiCostEstimate mode="train" maxPages={50} />
+              </div>
+            )}
 
             <button
               type="submit"
