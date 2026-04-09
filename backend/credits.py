@@ -46,7 +46,6 @@ DEFAULT_CREDIT_COSTS = {
         'per_chapter': 5,   # per capitolo
         'per_section': 3,   # per sezione
         'per_1000_words_target': 1,  # per 1000 parole target per sezione
-        'per_1000_attachment_chars': 1,  # per 1000 caratteri di allegati/link
     },
     'compilatio_scan': {
         'base': 5,           # costo base per scansione Compilatio
@@ -268,15 +267,13 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
         num_chapters = params.get('num_chapters', 5)
         sections_per_chapter = params.get('sections_per_chapter', 3)
         words_per_section = params.get('words_per_section', 5000)
-        attachment_chars = params.get('attachment_chars', 0)
 
         total_sections = num_chapters * sections_per_chapter
         chapter_cost = num_chapters * costs['per_chapter']
         section_cost = total_sections * costs['per_section']
         word_cost = math.ceil(total_sections * words_per_section / 1000 * costs['per_1000_words_target'])
-        attachment_cost = math.ceil(attachment_chars / 1000 * costs.get('per_1000_attachment_chars', 1)) if attachment_chars > 0 else 0
 
-        total = base + chapter_cost + section_cost + word_cost + attachment_cost
+        total = base + chapter_cost + section_cost + word_cost
         breakdown = {
             "base": base,
             "capitoli": f"{num_chapters} capitoli x {costs['per_chapter']} = {chapter_cost}",
@@ -287,9 +284,6 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
             "parole_crediti": word_cost,
             "info": f"{num_chapters} capitoli, {sections_per_chapter} sezioni/capitolo, {words_per_section} parole/sezione"
         }
-        if attachment_cost > 0:
-            breakdown["allegati"] = f"{attachment_chars:,} caratteri x {costs.get('per_1000_attachment_chars', 1)}/1000 = {attachment_cost}"
-            breakdown["allegati_crediti"] = attachment_cost
 
     elif operation_type == 'compilatio_scan':
         base = costs['base']
