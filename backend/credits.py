@@ -40,7 +40,6 @@ DEFAULT_CREDIT_COSTS = {
     },
     'thesis_sections': {
         'base': 5,          # generare struttura sezioni
-        'per_1000_attachment_chars': 1,  # per 1000 caratteri di allegati/link
     },
     'thesis_content': {
         'base': 10,         # costo base generazione contenuto tesi
@@ -258,17 +257,11 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
             breakdown["allegati_crediti"] = attachment_cost
 
     elif operation_type == 'thesis_sections':
-        base = costs['base']
-        attachment_chars = params.get('attachment_chars', 0)
-        attachment_cost = math.ceil(attachment_chars / 1000 * costs.get('per_1000_attachment_chars', 1)) if attachment_chars > 0 else 0
-        total = base + attachment_cost
+        total = costs['base']
         breakdown = {
-            "base": base,
+            "base": total,
             "descrizione": "Generazione struttura sezioni"
         }
-        if attachment_cost > 0:
-            breakdown["allegati"] = f"{attachment_chars:,} caratteri x {costs.get('per_1000_attachment_chars', 1)}/1000 = {attachment_cost}"
-            breakdown["allegati_crediti"] = attachment_cost
 
     elif operation_type == 'thesis_content':
         base = costs['base']

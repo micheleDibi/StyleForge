@@ -899,12 +899,8 @@ async def generate_sections(
             detail=f"Devi prima confermare i capitoli. Stato attuale: '{thesis.status}'"
         )
 
-    # Calcola caratteri allegati per crediti
-    sec_attachments = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis.id).all()
-    sec_attachment_chars = sum(len(a.extracted_text or '') for a in sec_attachments)
-
     # Deduzione crediti per generazione sezioni
-    credit_estimate = estimate_credits('thesis_sections', {'attachment_chars': sec_attachment_chars}, db=db)
+    credit_estimate = estimate_credits('thesis_sections', {}, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],

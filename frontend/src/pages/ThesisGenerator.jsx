@@ -299,10 +299,9 @@ const ThesisGenerator = () => {
   // Confirm chapters and generate sections
   const confirmChaptersAndGenerateSections = async () => {
     // Prima: stima crediti per generazione sezioni
-    const secAttChars = Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5);
     await showCreditConfirmation(
       'thesis_sections',
-      { attachment_chars: secAttChars },
+      {},
       'Genera Struttura Sezioni',
       async () => {
         setIsLoading(true);
