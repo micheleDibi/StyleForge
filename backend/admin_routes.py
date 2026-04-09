@@ -562,6 +562,47 @@ async def reset_credit_costs_settings(
     )
 
 
+@router.get("/settings/eur-per-credit")
+async def get_eur_per_credit(
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Recupera il tasso di conversione EUR per credito."""
+    setting = db.query(SystemSetting).filter(SystemSetting.key == 'eur_per_credit').first()
+    value = float(setting.value) if setting and setting.value else 0.10
+    return {"eur_per_credit": value}
+
+
+@router.put("/settings/eur-per-credit")
+async def update_eur_per_credit(
+    request: dict,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Aggiorna il tasso di conversione EUR per credito."""
+    from datetime import datetime
+    value = request.get("eur_per_credit")
+    if value is None or not isinstance(value, (int, float)) or value < 0:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Valore deve essere un numero >= 0")
+
+    setting = db.query(SystemSetting).filter(SystemSetting.key == 'eur_per_credit').first()
+    if setting:
+        setting.value = str(value)
+        setting.updated_at = datetime.utcnow()
+        setting.updated_by = admin_user.id
+    else:
+        setting = SystemSetting(
+            key='eur_per_credit',
+            value=str(value),
+            updated_at=datetime.utcnow(),
+            updated_by=admin_user.id
+        )
+        db.add(setting)
+    db.commit()
+    return {"eur_per_credit": value}
+
+
 # ============================================================================
 # TEMPLATE ESPORTAZIONE
 # ============================================================================

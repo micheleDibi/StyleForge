@@ -511,6 +511,7 @@ const ThesisGenerator = () => {
               lookupData={lookupData}
               sessions={sessions}
               isAdmin={isAdmin}
+              thesisId={thesisId}
             />
           )}
 
@@ -575,6 +576,7 @@ const ThesisGenerator = () => {
               sectionsPerChapter={parametersData.sections_per_chapter}
               wordsPerSection={parametersData.words_per_section}
               aiProvider={parametersData.ai_provider}
+              thesisId={thesisId}
             />
           </div>
         )}

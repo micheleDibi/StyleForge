@@ -1064,14 +1064,31 @@ async def estimate_api_cost(
             input_price = config.OPENAI_O3_INPUT_PRICE_USD
             output_price = config.OPENAI_O3_OUTPUT_PRICE_USD
 
-        # Chiamata struttura capitoli: prompt ~500 parole, output ~200 parole
-        chapters_input = int(500 * TOKENS_PER_WORD)
+        # Calcola token allegati (se thesis_id presente, leggi dal DB)
+        attachments_tokens = 0
+        if request.thesis_id:
+            try:
+                from db_models import ThesisAttachment
+                db = next(get_db())
+                attachments = db.query(ThesisAttachment).filter(
+                    ThesisAttachment.thesis_id == request.thesis_id
+                ).all()
+                total_chars = sum(len(a.extracted_text or '') for a in attachments)
+                # Limitato a THESIS_MAX_CONTEXT_CHARS (50000 default)
+                total_chars = min(total_chars, config.THESIS_MAX_CONTEXT_CHARS)
+                attachments_tokens = int(total_chars * 0.4)
+                db.close()
+            except Exception:
+                attachments_tokens = 0
+
+        # Chiamata struttura capitoli: prompt ~500 parole + allegati, output ~200 parole
+        chapters_input = int(500 * TOKENS_PER_WORD) + attachments_tokens
         chapters_output = int(200 * TOKENS_PER_WORD)
-        # Chiamata struttura sezioni: prompt ~500 parole, output ~300 parole
-        sections_input = int(500 * TOKENS_PER_WORD)
+        # Chiamata struttura sezioni: prompt ~500 parole + allegati, output ~300 parole
+        sections_input = int(500 * TOKENS_PER_WORD) + attachments_tokens
         sections_output = int(300 * TOKENS_PER_WORD)
-        # Chiamate contenuto: 1 per sezione, prompt ~500 parole + contesto, output ~wps parole
-        content_input_per_section = int(800 * TOKENS_PER_WORD)
+        # Chiamate contenuto: 1 per sezione, prompt ~500 parole + allegati, output ~wps parole
+        content_input_per_section = int(800 * TOKENS_PER_WORD) + attachments_tokens
         content_output_per_section = int(wps * TOKENS_PER_WORD)
 
         input_tokens = chapters_input + sections_input + (total_sections * content_input_per_section)

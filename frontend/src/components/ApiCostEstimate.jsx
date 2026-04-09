@@ -96,6 +96,7 @@ const ApiCostEstimate = (props) => {
           sections_per_chapter: props.sectionsPerChapter || null,
           words_per_section: props.wordsPerSection || null,
           ai_provider: props.aiProvider || null,
+          thesis_id: props.thesisId || null,
         };
         const data = await estimateApiCost(body);
         setEstimate({ ...data, is_local: false });
