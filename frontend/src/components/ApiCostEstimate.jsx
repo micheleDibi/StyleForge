@@ -111,23 +111,25 @@ const ApiCostEstimate = (props) => {
 
   if (!estimate) return null;
 
-  const fmt = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
+  const fmt = (n) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
   const needsApprox = estimate.is_local && ['full', 'generate'].includes(mode);
+  const b = estimate.breakdown;
 
   return (
-    <div className={`mt-2 rounded-lg border px-3 py-2 text-xs ${THEME[mode] || THEME.train}`}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <DollarSign className="w-3 h-3 flex-shrink-0" />
-        <span className="font-semibold">
-          Costo API stimato: ~{estimate.estimated_cost_eur.toFixed(4)} EUR
-        </span>
-        {loading && <Loader className="w-3 h-3 animate-spin opacity-50" />}
-        <span className="text-[10px] opacity-70">
-          Input: ~{fmt(estimate.breakdown.input_tokens)} tok ({estimate.breakdown.input_cost_eur.toFixed(4)} EUR)
-          {' | '}
-          Output: ~{fmt(estimate.breakdown.output_tokens)} tok ({estimate.breakdown.output_cost_eur.toFixed(4)} EUR)
-          {needsApprox ? ' (stima approssimativa)' : ''}
-        </span>
+    <div className={`mt-2 rounded-xl border px-4 py-3 text-xs ${THEME[mode] || THEME.train}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <DollarSign className="w-3.5 h-3.5" />
+          <span className="font-bold text-sm">
+            Costo API stimato: ~{estimate.estimated_cost_eur.toFixed(4)} EUR
+          </span>
+          {loading && <Loader className="w-3 h-3 animate-spin opacity-50" />}
+        </div>
+        {needsApprox && <span className="text-[10px] opacity-60 italic">stima approssimativa</span>}
+      </div>
+      <div className="flex gap-4 opacity-75">
+        <span>Input: ~{fmt(b.input_tokens)} tok ({b.input_cost_eur.toFixed(4)} EUR)</span>
+        <span>Output: ~{fmt(b.output_tokens)} tok ({b.output_cost_eur.toFixed(4)} EUR)</span>
       </div>
     </div>
   );
