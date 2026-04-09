@@ -245,37 +245,12 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions }) => {
         {/* Stile Citazioni */}
         <div className="border-t border-slate-200 pt-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">Stile Citazioni</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => handleChange('citation_style', 'footnotes')}
-              className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
-                data.citation_style === 'footnotes'
-                  ? 'border-orange-500 bg-orange-50 text-orange-700'
-                  : 'border-slate-200 hover:border-slate-300 text-slate-600'
-              }`}
-            >
-              <BookOpen className="w-5 h-5 flex-shrink-0" />
-              <div>
-                <p className="font-semibold">Note a piè di pagina</p>
-                <p className="text-xs opacity-75">Stile accademico italiano con Ibidem, Ivi, Op.cit.</p>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleChange('citation_style', 'bibliography')}
-              className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
-                data.citation_style === 'bibliography'
-                  ? 'border-orange-500 bg-orange-50 text-orange-700'
-                  : 'border-slate-200 hover:border-slate-300 text-slate-600'
-              }`}
-            >
-              <FileText className="w-5 h-5 flex-shrink-0" />
-              <div>
-                <p className="font-semibold">Bibliografia [x]</p>
-                <p className="text-xs opacity-75">Citazioni numerate con bibliografia finale</p>
-              </div>
-            </button>
+          <div className="flex items-center gap-3 p-4 rounded-xl border-2 border-orange-500 bg-orange-50 text-orange-700">
+            <BookOpen className="w-5 h-5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold">Note a pie di pagina</p>
+              <p className="text-xs opacity-75">Stile accademico italiano con Ibidem, Ivi, Op.cit.</p>
+            </div>
           </div>
         </div>
       </div>
