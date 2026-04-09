@@ -566,15 +566,17 @@ const ThesisGenerator = () => {
           )}
         </div>
 
-        {/* API Cost Estimate - Admin Only */}
-        {isAdmin && currentStep <= 3 && parametersData.title && (
-          <ApiCostEstimate
-            mode="thesis"
-            numChapters={parametersData.num_chapters}
-            sectionsPerChapter={parametersData.sections_per_chapter}
-            wordsPerSection={parametersData.words_per_section}
-            aiProvider={parametersData.ai_provider}
-          />
+        {/* API Cost Estimate - Admin Only (visibile in tutti gli step) */}
+        {isAdmin && parametersData.title && (
+          <div className="mt-6">
+            <ApiCostEstimate
+              mode="thesis"
+              numChapters={parametersData.num_chapters}
+              sectionsPerChapter={parametersData.sections_per_chapter}
+              wordsPerSection={parametersData.words_per_section}
+              aiProvider={parametersData.ai_provider}
+            />
+          </div>
         )}
 
         {/* Navigation Buttons - Migliorati */}

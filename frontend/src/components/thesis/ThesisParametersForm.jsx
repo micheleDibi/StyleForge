@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Info, ChevronDown, Cpu, Sparkles, BookOpen, FileText } from 'lucide-react';
-
 const ThesisParametersForm = ({ data, onChange, lookupData, sessions }) => {
   const handleChange = (field, value) => {
     onChange({ ...data, [field]: value });
@@ -253,6 +252,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions }) => {
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );
