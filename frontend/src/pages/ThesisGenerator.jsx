@@ -107,10 +107,18 @@ const ThesisGenerator = () => {
   const handleApiError = (err, fallbackMessage) => {
     if (err.isInsufficientCredits || err.response?.status === 402) {
       const msg = err.creditErrorMessage || err.response?.data?.detail || 'Crediti AI insufficienti.';
-      setError(msg);
+      setError(typeof msg === 'string' ? msg : fallbackMessage);
       setIsCreditError(true);
     } else {
-      setError(err.response?.data?.detail || fallbackMessage);
+      const detail = err.response?.data?.detail;
+      // Pydantic 422 restituisce un array di errori di validazione
+      let msg = fallbackMessage;
+      if (typeof detail === 'string') {
+        msg = detail;
+      } else if (Array.isArray(detail)) {
+        msg = detail.map(e => e.msg || JSON.stringify(e)).join(', ');
+      }
+      setError(msg);
       setIsCreditError(false);
     }
   };
