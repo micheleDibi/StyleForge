@@ -3,26 +3,34 @@ import { Coins, Loader } from 'lucide-react';
 import { estimateCredits } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-const CreditEstimatePreview = ({ operationType, params }) => {
+/**
+ * Preview crediti. Accetta:
+ * - operationType + params (singola operazione)
+ * - operations: [{ type, params, label }] (multiple operazioni, somma totale)
+ */
+const CreditEstimatePreview = ({ operationType, params, operations }) => {
   const { isAdmin, credits } = useAuth();
-  const [estimate, setEstimate] = useState(null);
+  const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const timerRef = useRef(null);
 
-  const depsKey = JSON.stringify({ operationType, params });
+  // Normalizza: singola operazione -> array
+  const ops = operations || [{ type: operationType, params: params || {}, label: null }];
+  const depsKey = JSON.stringify(ops);
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
 
-    if (!operationType) { setEstimate(null); return; }
+    if (!ops[0]?.type) { setResults(null); return; }
 
     setLoading(true);
     timerRef.current = setTimeout(async () => {
       try {
-        const data = await estimateCredits(operationType, params || {});
-        setEstimate(data);
+        const promises = ops.map(op => estimateCredits(op.type, op.params || {}));
+        const data = await Promise.all(promises);
+        setResults(data);
       } catch {
-        setEstimate(null);
+        setResults(null);
       } finally {
         setLoading(false);
       }
@@ -31,15 +39,10 @@ const CreditEstimatePreview = ({ operationType, params }) => {
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [depsKey]);
 
-  if (!estimate && !loading) return null;
+  if (!results && !loading) return null;
 
-  const needed = estimate?.credits_needed || 0;
-  const sufficient = isAdmin || (credits >= needed);
-  const b = estimate?.breakdown || {};
-
-  // Calcola costo generazione (tutto tranne allegati)
-  const attachCredits = b.allegati_crediti || 0;
-  const genCredits = needed - attachCredits;
+  const totalNeeded = results ? results.reduce((sum, r) => sum + (r.credits_needed || 0), 0) : 0;
+  const sufficient = isAdmin || (credits >= totalNeeded);
 
   return (
     <div className={`mt-2 rounded-xl border px-4 py-3 text-xs ${
@@ -57,7 +60,7 @@ const CreditEstimatePreview = ({ operationType, params }) => {
                 Calcolo crediti...
               </span>
             ) : (
-              <>Crediti necessari: {needed}</>
+              <>Crediti necessari: {totalNeeded}</>
             )}
           </span>
         </div>
@@ -71,10 +74,20 @@ const CreditEstimatePreview = ({ operationType, params }) => {
           </span>
         )}
       </div>
-      {!loading && needed > 0 && (genCredits !== needed || attachCredits > 0) && (
+      {!loading && results && ops.length > 1 && (
         <div className="flex gap-4 opacity-75 mt-1">
-          <span>Generazione testo: {genCredits}</span>
-          {attachCredits > 0 && <span>Scansione allegati: {attachCredits}</span>}
+          {results.map((r, i) => {
+            const label = ops[i].label || ops[i].type;
+            return r.credits_needed > 0 ? (
+              <span key={i}>{label}: {r.credits_needed}</span>
+            ) : null;
+          })}
+        </div>
+      )}
+      {!loading && results && ops.length === 1 && (results[0]?.breakdown?.allegati_crediti > 0) && (
+        <div className="flex gap-4 opacity-75 mt-1">
+          <span>Generazione testo: {totalNeeded - results[0].breakdown.allegati_crediti}</span>
+          <span>Scansione allegati: {results[0].breakdown.allegati_crediti}</span>
         </div>
       )}
     </div>

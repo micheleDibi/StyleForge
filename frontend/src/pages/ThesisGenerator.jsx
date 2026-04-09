@@ -583,12 +583,11 @@ const ThesisGenerator = () => {
         {currentStep >= 2 && currentStep <= 6 && parametersData.title && (
           <div className="mt-4">
             <CreditEstimatePreview
-              operationType="thesis_content"
-              params={{
-                num_chapters: parametersData.num_chapters,
-                sections_per_chapter: parametersData.sections_per_chapter,
-                words_per_section: parametersData.words_per_section
-              }}
+              operations={[
+                { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5) }, label: 'Capitoli + allegati' },
+                { type: 'thesis_sections', params: {}, label: 'Sezioni' },
+                { type: 'thesis_content', params: { num_chapters: parametersData.num_chapters, sections_per_chapter: parametersData.sections_per_chapter, words_per_section: parametersData.words_per_section }, label: 'Contenuto' },
+              ]}
             />
           </div>
         )}

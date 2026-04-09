@@ -259,12 +259,11 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
               </div>
             </div>
             <CreditEstimatePreview
-              operationType="thesis_content"
-              params={{
-                num_chapters: data.num_chapters,
-                sections_per_chapter: data.sections_per_chapter,
-                words_per_section: data.words_per_section
-              }}
+              operations={[
+                { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsTotalSize || 0) * 0.5) }, label: 'Capitoli + allegati' },
+                { type: 'thesis_sections', params: {}, label: 'Sezioni' },
+                { type: 'thesis_content', params: { num_chapters: data.num_chapters, sections_per_chapter: data.sections_per_chapter, words_per_section: data.words_per_section }, label: 'Contenuto' },
+              ]}
             />
             {isAdmin && (
               <ApiCostEstimate
