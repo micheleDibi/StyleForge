@@ -1709,8 +1709,6 @@ async def export_thesis(
         has_footnotes = cit_style == 'footnotes'
         processed_content, all_notes, _ = strip_footnotes_for_plain(content) if has_footnotes else (content, [], 1)
         full_content = f"{thesis.title}\n{'=' * len(thesis.title)}\n\n"
-        if thesis.description:
-            full_content += f"{thesis.description}\n\n"
         full_content += toc
         full_content += processed_content
         if all_notes:
@@ -1732,8 +1730,6 @@ async def export_thesis(
         has_footnotes = cit_style == 'footnotes'
         processed_content, all_notes, _ = strip_footnotes_for_plain(content) if has_footnotes else (content, [], 1)
         md_content = f"# {thesis.title}\n\n"
-        if thesis.description:
-            md_content += f"*{thesis.description}*\n\n---\n\n"
         md_content += toc
         md_content += processed_content
         if all_notes:
@@ -2025,14 +2021,7 @@ async def export_thesis(
             run.font.name = font_name
             run.font.size = Pt(font_title_sz)
 
-        # Descrizione
-        if thesis.description:
-            desc_para = doc.add_paragraph()
-            desc_run = desc_para.add_run(thesis.description)
-            desc_run.italic = True
-            desc_run.font.name = font_name
-            desc_para.alignment = title_alignment
-            doc.add_paragraph()  # Spazio
+        doc.add_paragraph()  # Spazio dopo titolo
 
         # Indice
         chapters_for_toc = thesis.chapters_structure.get("chapters", []) if thesis.chapters_structure else []
@@ -2249,18 +2238,6 @@ async def export_thesis(
             current_page.insert_text((t_x, y + font_title_size), t_str, fontsize=font_title_size, fontname=font_body)
             y += font_title_size + 4
         y += 16
-
-        # Descrizione (se presente)
-        if thesis.description:
-            desc_size = font_size + 1
-            desc_x = calc_text_x(thesis.description, desc_size, font_body, title_align)
-            current_page.insert_text(
-                (desc_x, y + desc_size),
-                thesis.description,
-                fontsize=desc_size,
-                fontname=font_body
-            )
-            y += desc_size + 25
 
         # Separatore
         y += 20
