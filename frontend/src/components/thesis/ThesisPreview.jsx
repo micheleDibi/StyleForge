@@ -484,16 +484,16 @@ const ThesisPreview = ({ thesis, content, isAdmin }) => {
               <button
                 onClick={handleExport}
                 disabled={isExporting}
-                className="btn-primary w-full py-4 text-lg"
+                className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-base"
               >
                 {isExporting ? (
                   <>
-                    <Loader className="w-5 h-5 mr-2 animate-spin" />
+                    <Loader className="w-5 h-5 animate-spin" />
                     Preparazione download...
                   </>
                 ) : (
                   <>
-                    <Download className="w-5 h-5 mr-2" />
+                    <Download className="w-5 h-5" />
                     Scarica come {exportFormat.toUpperCase()}
                   </>
                 )}
@@ -508,29 +508,10 @@ const ThesisPreview = ({ thesis, content, isAdmin }) => {
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex justify-between items-center">
-        <p className="text-sm text-slate-500">
-          Tesi generata con StyleForge AI
-        </p>
-        <button
-          onClick={handleExport}
-          disabled={isExporting}
-          className="btn-primary"
-        >
-          {isExporting ? (
-            <>
-              <Loader className="w-5 h-5 mr-2 animate-spin" />
-              Download...
-            </>
-          ) : (
-            <>
-              <Download className="w-5 h-5 mr-2" />
-              Download {exportFormat.toUpperCase()}
-            </>
-          )}
-        </button>
-      </div>
+      {/* Footer */}
+      <p className="text-sm text-slate-500 text-center">
+        Tesi generata con StyleForge AI
+      </p>
     </div>
   );
 };
