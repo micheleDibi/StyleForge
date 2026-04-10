@@ -381,31 +381,58 @@ ISTRUZIONI DI SCRITTURA
 
 6. {_get_citation_instructions(thesis_data.get('citation_style', 'footnotes'))}
 
-7. SCRIVI COME UNO STUDENTE UNIVERSITARIO:
-   Il testo deve sembrare scritto da uno studente preparato che sta elaborando la propria
-   tesi, NON da un'intelligenza artificiale. Segui queste regole:
+7. SCRIVI COME UNO STUDENTE UNIVERSITARIO REALE:
+   Il testo DEVE sembrare scritto da uno studente preparato, NON da un'AI.
+   Questo e' il requisito piu' importante. Segui TUTTE queste regole:
 
-   VOCABOLARIO:
-   - Usa parole semplici e dirette: "usa" non "utilizza", "mostra" non "evidenzia",
-     "aiuta" non "contribuisce a", "serve" non "risulta necessario"
-   - Preferisci verbi concreti: "cresce", "cala", "cambia", "funziona", "dipende"
-   - NON usare: "fondamentale", "significativo", "cruciale", "rilevante", "sottolineare",
-     "evidenziare", "emergere", "inoltre", "pertanto", "dunque", "tuttavia",
-     "rappresenta", "costituisce", "in questo contesto", "paradigma"
+   ═══ VOCABOLARIO ═══
+   - Usa parole normali: "usa" non "utilizza", "mostra" non "evidenzia",
+     "aiuta" non "contribuisce a", "serve" non "risulta necessario",
+     "molti" non "numerosi", "pochi" non "limitati", "grande" non "significativo"
+   - PAROLE VIETATE (non usarle MAI): fondamentale, significativo, cruciale,
+     rilevante, sottolineare, evidenziare, emergere, inoltre, pertanto, dunque,
+     tuttavia, rappresenta, costituisce, paradigma, panorama, scenario,
+     nell'ambito di, in questo contesto, in tal senso, in ultima analisi,
+     a tal proposito, e' opportuno, occorre, risulta, si configura,
+     assume un ruolo, riveste importanza, gioca un ruolo, e' doveroso,
+     si evince, si denota, e' possibile affermare, appare evidente
+   - Preferisci costruzioni dirette con soggetto-verbo-oggetto
+   - Usa "questo", "quello", "qui" per riferimenti, non "suddetto", "il quale"
 
-   FRASI:
-   - Lunghezze MOLTO variabili: alcune corte (8-12 parole), altre medie (18-25),
-     qualcuna lunga con subordinate (30-40 parole)
-   - NON iniziare due paragrafi consecutivi allo stesso modo
-   - NON usare strutture simmetriche ("da un lato... dall'altro")
-   - NON usare triadi ripetute ("X, Y e Z")
-   - A volte collega frasi con "e" o "ma" semplici
+   ═══ STRUTTURA DELLE FRASI ═══
+   - Lunghezze IRREGOLARI: alterna frasi da 6-10 parole con frasi da 25-40 parole
+   - Alcune frasi siano deliberatamente piu' semplici del necessario
+   - NON iniziare mai due frasi consecutive con la stessa struttura grammaticale
+   - NON iniziare piu' di 2 frasi per paragrafo con articoli (Il, La, Lo, I, Le, Gli)
+   - Inizia almeno 3 frasi per sezione con congiunzioni: "E", "Ma", "Pero'", "Anche"
+   - Includi almeno 2 frasi per sezione che iniziano con un complemento spostato:
+     "In Sicilia, ...", "Dopo il 2015, ...", "Con queste premesse, ..."
+   - Spezza frasi lunghe: usa il punto e virgola o ricomincia con "Questo perche'..."
 
-   STRUTTURA:
-   - Paragrafi di lunghezze diverse (da 3-4 frasi a 8-10 frasi)
-   - NON chiudere paragrafi con frasi a effetto o massime
-   - NON iniziare frasi con "È importante notare", "Va sottolineato", "Occorre precisare"
-   - NON usare domande retoriche seguite dalla risposta
+   ═══ STRUTTURA DEI PARAGRAFI ═══
+   - Paragrafi MOLTO diversi tra loro: alcuni da 3 frasi, altri da 8-10
+   - NON chiudere paragrafi con frasi riassuntive o a effetto
+   - NON aprire paragrafi con "Per quanto riguarda", "In merito a", "Relativamente a"
+   - A volte chiudi un paragrafo a meta' di un ragionamento e continua nel successivo
+   - Lascia qualche passaggio logico implicito (non spiegare ogni collegamento)
+
+   ═══ PATTERN DA EVITARE ASSOLUTAMENTE ═══
+   - MAI liste di 3 elementi simmetrici ("X, Y e Z")
+   - MAI coppie antitetiche ("da un lato... dall'altro", "non solo... ma anche")
+   - MAI frasi del tipo "E' importante notare/sottolineare/evidenziare che..."
+   - MAI domande retoriche seguite dalla risposta
+   - MAI aprire con "In un contesto/mondo/scenario in cui..."
+   - MAI chiudere sezioni con "In conclusione/In sintesi/Per concludere"
+   - MAI usare piu' di 2 virgole nella stessa frase (spezza in frasi diverse)
+   - MAI ripetere la stessa struttura di transizione tra paragrafi
+
+   ═══ NATURALEZZA ═══
+   - Ogni tanto una frase puo' essere leggermente meno precisa del necessario
+   - Usa occasionalmente espressioni come "per certi versi", "in qualche modo"
+   - Permetti qualche ripetizione di vocabolo a distanza (gli umani lo fanno)
+   - Non tutte le affermazioni hanno bisogno di una fonte o giustificazione
+   - Qualche volta fai un'osservazione personale breve senza citazioni
+   - Varia il ritmo: dopo 2-3 paragrafi densi, inserisci uno piu' leggero
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT
@@ -573,22 +600,28 @@ L'introduzione deve:
 
 {_get_no_citation_instruction(thesis_data.get('citation_style', 'footnotes'))} nell'introduzione.
 
-SCRIVI COME UNO STUDENTE UNIVERSITARIO:
-- Usa parole semplici e dirette, evita vocabolario pomposo
-- NON usare: "fondamentale", "significativo", "cruciale", "rilevante", "evidenziare",
-  "emergere", "inoltre", "pertanto", "dunque", "tuttavia", "rappresenta", "costituisce"
-- Frasi di lunghezze variabili: corte, medie e lunghe mescolate
-- NON usare strutture simmetriche ("da un lato... dall'altro", "non solo... ma anche")
-- NON iniziare due paragrafi allo stesso modo
-- NON chiudere paragrafi con frasi a effetto o massime
-- Paragrafi di lunghezze diverse tra loro
+SCRIVI COME UNO STUDENTE UNIVERSITARIO REALE:
+- Usa parole normali, evita vocabolario pomposo
+- PAROLE VIETATE: fondamentale, significativo, cruciale, rilevante, sottolineare,
+  evidenziare, emergere, inoltre, pertanto, dunque, tuttavia, rappresenta,
+  costituisce, paradigma, panorama, scenario, nell'ambito di, in questo contesto,
+  risulta, si configura, appare evidente, e' possibile affermare
+- Frasi di lunghezze IRREGOLARI: alterna corte (6-10 parole) e lunghe (25-40)
+- NON iniziare mai due frasi consecutive con la stessa struttura
+- NON iniziare piu' di 2 frasi per paragrafo con articoli (Il, La, Lo)
+- Inizia almeno 3 frasi con congiunzioni: "E", "Ma", "Pero'"
+- NON usare strutture simmetriche ("da un lato... dall'altro")
+- MAI liste di 3 elementi simmetrici ("X, Y e Z")
+- NON chiudere paragrafi con frasi a effetto o riassuntive
+- Paragrafi di lunghezze MOLTO diverse (da 3 frasi a 10 frasi)
+- Qualche passaggio logico puo' restare implicito
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT
 ═══════════════════════════════════════════════════════════════════════════════
 
 Scrivi SOLO il contenuto dell'introduzione.
-NON includere il titolo "Introduzione" (verrà aggiunto separatamente).
+NON includere il titolo "Introduzione" (verra' aggiunto separatamente).
 NON includere meta-commenti o note.
 Il testo deve essere pronto per la pubblicazione.
 """
@@ -682,22 +715,26 @@ La conclusione deve:
 {_get_no_citation_instruction(thesis_data.get('citation_style', 'footnotes'))} nella conclusione.
 NON ripetere verbatim frasi dai capitoli precedenti — rielabora i concetti.
 
-SCRIVI COME UNO STUDENTE UNIVERSITARIO:
-- Usa parole semplici e dirette, evita vocabolario pomposo
-- NON usare: "fondamentale", "significativo", "cruciale", "rilevante", "evidenziare",
-  "emergere", "inoltre", "pertanto", "dunque", "tuttavia", "rappresenta", "costituisce"
-- Frasi di lunghezze variabili: corte, medie e lunghe mescolate
-- NON usare strutture simmetriche ("da un lato... dall'altro", "non solo... ma anche")
-- NON iniziare due paragrafi allo stesso modo
-- NON chiudere paragrafi con frasi a effetto o massime
-- Il tono deve essere riflessivo e conclusivo ma naturale
+SCRIVI COME UNO STUDENTE UNIVERSITARIO REALE:
+- Usa parole normali, evita vocabolario pomposo
+- PAROLE VIETATE: fondamentale, significativo, cruciale, rilevante, sottolineare,
+  evidenziare, emergere, inoltre, pertanto, dunque, tuttavia, rappresenta,
+  costituisce, paradigma, panorama, scenario, nell'ambito di, in questo contesto,
+  risulta, si configura, appare evidente, e' possibile affermare
+- Frasi di lunghezze IRREGOLARI: alterna corte (6-10 parole) e lunghe (25-40)
+- NON iniziare mai due frasi consecutive con la stessa struttura
+- Inizia almeno 2 frasi con "E", "Ma", "Pero'"
+- MAI liste di 3 elementi simmetrici ("X, Y e Z")
+- NON chiudere paragrafi con frasi a effetto o riassuntive
+- Paragrafi di lunghezze MOLTO diverse tra loro
+- Il tono sia riflessivo ma naturale, non magniloquente
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT
 ═══════════════════════════════════════════════════════════════════════════════
 
 Scrivi SOLO il contenuto della conclusione.
-NON includere il titolo "Conclusione" (verrà aggiunto separatamente).
+NON includere il titolo "Conclusione" (verra' aggiunto separatamente).
 NON includere meta-commenti o note.
 Il testo deve essere pronto per la pubblicazione.
 """
