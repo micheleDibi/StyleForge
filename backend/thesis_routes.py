@@ -989,23 +989,59 @@ async def confirm_sections(
 
 
 def _humanize_content(content: str, trained_session_client, section_name: str = "Sezione") -> str:
-    """Helper per umanizzare il contenuto con fallback."""
+    """
+    Per la tesi, NON applica l'anti-AI processor.
+    Il contenuto accademico deve restare formale e pulito, senza incisi
+    informali, trattini o parentetiche tipiche dell'anti-AI.
+    Se c'e' una sessione addestrata, applica solo lo stile dell'autore
+    tramite Claude (senza post-processing anti-AI).
+    """
+    if not trained_session_client:
+        # Nessuna sessione addestrata: restituisce il contenuto originale
+        return content
+
     try:
-        if trained_session_client:
-            logger.info(f"Umanizzazione con sessione addestrata per: {section_name}")
-            return trained_session_client.umanizzazione(content)
-        else:
-            logger.info(f"Umanizzazione con Claude per: {section_name}")
-            return humanize_text_with_claude(content)
-    except InsufficientCreditsError:
-        raise  # Non fare fallback per errori di crediti — l'utente deve saperlo
-    except Exception as e:
-        logger.warning(f"Errore umanizzazione Claude: {e}, uso fallback algoritmico")
+        logger.info(f"Applicazione stile autore per: {section_name}")
+        # Usa il client Claude della sessione per riscrivere nello stile appreso,
+        # ma senza il post-processing anti-AI
+        client = trained_session_client
+        word_count = len(content.split())
+        estimated_tokens = int(word_count * 2.5) + 2000
+        dynamic_max_tokens = max(estimated_tokens, 8192)
+
+        style_prompt = f"""Riscrivi il seguente testo accademico applicando lo stile di scrittura
+che hai appreso durante l'addestramento. Mantieni il registro formale e accademico.
+NON aggiungere incisi informali, trattini, parentetiche colloquiali o espressioni come
+"almeno", "diciamo", "va detto", "cioè". Il testo deve restare professionale.
+Mantieni INTATTE tutte le citazioni e i riferimenti bibliografici.
+Output SOLO il testo riscritto.
+
+---
+{content}
+---"""
+
+        client.conversation_history.append({"role": "user", "content": style_prompt})
+
         try:
-            from anti_ai_processor import humanize_text_post_processing
-            return humanize_text_post_processing(content)
+            from anthropic import Anthropic
+            response = client.client.messages.create(
+                model=client.MODEL_ID,
+                max_tokens=dynamic_max_tokens,
+                system=client.system_prompt,
+                messages=client.conversation_history,
+                timeout=300.0
+            )
+            result = response.content[0].text
+            client.conversation_history.append({"role": "assistant", "content": result})
+            return result
         except Exception:
+            client.conversation_history.pop()
             return content
+    except InsufficientCreditsError:
+        raise
+    except Exception as e:
+        logger.warning(f"Errore applicazione stile: {e}, uso contenuto originale")
+        return content
 
 
 def _ensure_word_count(client, content: str, target_words: int, context_info: str, max_tokens: int) -> str:
