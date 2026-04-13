@@ -207,7 +207,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                 onChange={(e) => handleChange('num_chapters', parseInt(e.target.value) || 5)}
                 className="input w-full"
                 min="1"
-                max="20"
+                max="100"
               />
               <p className="text-xs text-slate-500 mt-1">Default: 5</p>
             </div>
@@ -223,7 +223,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                 onChange={(e) => handleChange('sections_per_chapter', parseInt(e.target.value) || 3)}
                 className="input w-full"
                 min="1"
-                max="10"
+                max="30"
               />
               <p className="text-xs text-slate-500 mt-1">Default: 3</p>
             </div>
