@@ -58,13 +58,20 @@ DEFAULT_CREDIT_COSTS = {
         'base': 3,           # costo base per link processato
         'image_enhance': 3,  # costo aggiuntivo per enhancement immagine
     },
+    'research_search': {
+        'base': 3,           # costo base per ricerca multi-provider
+        'per_source': 1,     # aggiuntivo per ogni fonte interrogata oltre la prima
+    },
+    'research_summary': {
+        'base': 3,           # costo base per riassunto AI di un paper
+    },
 }
 
 # Alias per compatibilita' con import esistenti
 CREDIT_COSTS = DEFAULT_CREDIT_COSTS
 
 # Lista codici permesso disponibili
-PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'enhance_image', 'carousel_creator']
+PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'enhance_image', 'carousel_creator', 'research']
 
 
 # ============================================================================
@@ -301,6 +308,27 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
         breakdown = {
             "base": total,
             "descrizione": "Miglioramento immagine con AI"
+        }
+
+    elif operation_type == 'research_search':
+        base = costs['base']
+        num_sources = max(1, params.get('num_sources', 3))
+        per_source = costs.get('per_source', 1)
+        extra = max(0, num_sources - 1) * per_source
+        total = base + extra
+        breakdown = {
+            "base": base,
+            "descrizione": "Ricerca accademica multi-provider",
+        }
+        if extra > 0:
+            breakdown["fonti"] = f"{num_sources} fonti x {per_source} (extra) = {extra}"
+            breakdown["fonti_crediti"] = extra
+
+    elif operation_type == 'research_summary':
+        total = costs['base']
+        breakdown = {
+            "base": total,
+            "descrizione": "Riassunto AI di un paper accademico"
         }
 
     elif operation_type == 'carousel_creator':

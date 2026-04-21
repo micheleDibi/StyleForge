@@ -13,6 +13,7 @@ import DetectorAI from './pages/DetectorAI';
 import EnhanceImage from './pages/EnhanceImage';
 import CarouselCreator from './pages/CarouselCreator';
 import ImageToVideo from './pages/ImageToVideo';
+import ResearchSearch from './pages/ResearchSearch';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import Helper from './components/Helper';
@@ -144,6 +145,14 @@ const AppRoutes = () => {
         element={
           <PermissionRoute permission="carousel_creator">
             <CarouselCreator />
+          </PermissionRoute>
+        }
+      />
+      <Route
+        path="/research"
+        element={
+          <PermissionRoute permission="research">
+            <ResearchSearch />
           </PermissionRoute>
         }
       />

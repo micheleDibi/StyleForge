@@ -916,6 +916,47 @@ export const getVideoProxyUrl = (videoUrl) => {
 };
 
 // ============================================================================
+// ACADEMIC RESEARCH
+// ============================================================================
+
+export const listResearchSources = async () => {
+  const response = await api.get('/api/research/sources');
+  return response.data;
+};
+
+export const searchResearch = async ({
+  topic,
+  sources = null,
+  filters = null,
+  sortBy = 'composite',
+  perProviderLimit = 30,
+  finalLimit = 40,
+}) => {
+  const response = await api.post(
+    '/api/research/search',
+    {
+      topic,
+      sources,
+      filters,
+      sort_by: sortBy,
+      per_provider_limit: perProviderLimit,
+      final_limit: finalLimit,
+    },
+    { timeout: 60000 }
+  );
+  return response.data;
+};
+
+export const summarizePaper = async (paper) => {
+  const response = await api.post(
+    '/api/research/summarize',
+    { paper },
+    { timeout: 120000 }
+  );
+  return response.data;
+};
+
+// ============================================================================
 // ADMIN - API KEYS
 // ============================================================================
 

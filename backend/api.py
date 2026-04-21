@@ -40,6 +40,7 @@ from image_enhance_routes import router as image_enhance_router
 from carousel_routes import router as carousel_router
 from external_api_routes import router as external_api_router
 from video_routes import router as video_router
+from research_routes import router as research_router
 from db_models import User
 from database import init_db, get_db
 from ai_exceptions import InsufficientCreditsError
@@ -98,6 +99,9 @@ app.include_router(external_api_router)
 
 # Registra router video generation
 app.include_router(video_router)
+
+# Registra router ricerca accademica
+app.include_router(research_router)
 
 
 # ============================================================================

@@ -5,7 +5,8 @@ import {
   Clock, CheckCircle2, AlertCircle, Zap, User, Settings,
   Layers, Brain, BookOpen, Calendar, Download,
   ChevronDown, Eye, Play, Coins, Shield, Pencil, Search,
-  ArrowUpRight, ScanSearch, FileDown, BarChart3, ImagePlus, LayoutGrid, Film
+  ArrowUpRight, ScanSearch, FileDown, BarChart3, ImagePlus, LayoutGrid, Film,
+  BookMarked
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, downloadCompilatioReport } from '../services/api';
@@ -116,6 +117,7 @@ const Dashboard = () => {
     hasPermission('generate') && { key: 'gen', icon: FileText, label: 'Genera', desc: 'Crea contenuti con il tuo stile', gradient: 'from-blue-400 to-blue-600', path: '/generate' },
     hasPermission('humanize') && { key: 'hum', icon: Wand2, label: 'Umanizza', desc: 'Bypassa AI detection', gradient: 'from-purple-400 to-purple-600', path: '/humanize' },
     hasPermission('thesis') && { key: 'thesis', icon: BookOpen, label: 'Tesi', desc: 'Genera documenti completi', gradient: 'from-green-400 to-green-600', path: '/thesis' },
+    hasPermission('research') && { key: 'research', icon: BookMarked, label: 'Ricerca Accademica', desc: 'Paper e riviste su un argomento', gradient: 'from-amber-400 to-orange-600', path: '/research' },
     hasPermission('enhance_image') && { key: 'enhance', icon: ImagePlus, label: 'Migliora Immagine', desc: 'Migliora qualita foto con AI', gradient: 'from-cyan-400 to-teal-600', path: '/enhance-image' },
     hasPermission('carousel_creator') && { key: 'carousel', icon: LayoutGrid, label: 'Carosello / Post', desc: 'Crea contenuti Instagram da articoli', gradient: 'from-pink-400 to-orange-500', path: '/carousel' },
     isAdmin && { key: 'i2v', icon: Film, label: 'Image to Video', desc: 'Genera video da immagini con AI', gradient: 'from-violet-400 to-indigo-600', path: '/image-to-video' },

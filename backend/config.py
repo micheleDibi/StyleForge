@@ -67,6 +67,12 @@ PROMPT_ADDESTRAMENTO_PATH = Path(os.getenv("PROMPT_ADDESTRAMENTO_PATH", "prompt_
 # CORS
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 
+# Email di contatto per il "polite pool" delle API accademiche (OpenAlex, Crossref)
+CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "")
+
+# Opzionale: API key Semantic Scholar (aumenta i rate limit)
+SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "")
+
 # Rate Limiting (requests per minute)
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 
