@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BookOpen, ExternalLink, Quote, Users, Calendar, Sparkles, ChevronDown, ChevronUp, Loader, Database } from 'lucide-react';
 import { summarizePaper as apiSummarizePaper } from '../../services/api';
 import PaperSummary from './PaperSummary';
+import ScoreExplainer from './ScoreExplainer';
 
 const SOURCE_LABELS = {
   openalex: 'OpenAlex',
@@ -43,10 +44,6 @@ const PaperCard = ({ paper, onCreditsChanged }) => {
   const authorsDisplay = paper.authors?.length > 5
     ? `${paper.authors.slice(0, 5).join(', ')} et al.`
     : (paper.authors || []).join(', ');
-
-  const scorePct = paper.composite_score != null
-    ? Math.round(Math.max(0, Math.min(1, paper.composite_score)) * 100)
-    : null;
 
   return (
     <article className="card space-y-3">
@@ -97,18 +94,10 @@ const PaperCard = ({ paper, onCreditsChanged }) => {
           </div>
         </div>
 
-        {scorePct != null && (
-          <div className="flex flex-col items-end gap-1 flex-shrink-0">
-            <div className="text-xs text-slate-500">Rilevanza</div>
-            <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-orange-400 to-orange-600"
-                style={{ width: `${scorePct}%` }}
-              />
-            </div>
-            <div className="text-xs font-semibold text-slate-700">{scorePct}</div>
-          </div>
-        )}
+        <ScoreExplainer
+          score={paper.composite_score}
+          breakdown={paper.score_breakdown}
+        />
       </header>
 
       <div className="flex flex-wrap gap-2">

@@ -2,7 +2,7 @@
 Modello base per paper accademici e interfaccia provider.
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -24,6 +24,10 @@ class UnifiedPaper(BaseModel):
     relevance_rank: Optional[int] = Field(None, description="Posizione 1-based nel risultato della prima fonte: usato per relevance score")
     relevance_raw: Optional[float] = Field(None, description="Score di rilevanza nativo del provider (se disponibile)")
     composite_score: Optional[float] = Field(None, description="Punteggio composito 0-1 calcolato dopo dedup")
+    score_breakdown: Optional[Dict[str, float]] = Field(
+        None,
+        description="Componenti normalizzate 0-1 del composite_score: relevance, citations, recency, abstract, open_access, venue",
+    )
 
 
 class ProviderError(Exception):

@@ -135,6 +135,16 @@ def _venue_quality_norm(paper: UnifiedPaper, venue_citation_max: Dict[str, int],
     return math.log10(1 + v_max) / math.log10(1 + overall_max)
 
 
+SCORE_WEIGHTS = {
+    "relevance": 0.35,
+    "citations": 0.25,
+    "recency": 0.15,
+    "abstract": 0.10,
+    "open_access": 0.05,
+    "venue": 0.10,
+}
+
+
 def compute_composite_scores(papers: List[UnifiedPaper]) -> List[UnifiedPaper]:
     if not papers:
         return papers
@@ -150,21 +160,17 @@ def compute_composite_scores(papers: List[UnifiedPaper]) -> List[UnifiedPaper]:
     overall_venue_max = max(venue_citation_max.values()) if venue_citation_max else 0
 
     for p in papers:
-        rel = _relevance_norm(p.relevance_rank, total)
-        cit = _citation_norm(p.citation_count, max_citations)
-        rec = _recency_decay(p.year)
-        abs_present = 1.0 if p.abstract else 0.0
-        oa = 1.0 if p.open_access else 0.0
-        venue_q = _venue_quality_norm(p, venue_citation_max, overall_venue_max)
-
+        components = {
+            "relevance": _relevance_norm(p.relevance_rank, total),
+            "citations": _citation_norm(p.citation_count, max_citations),
+            "recency": _recency_decay(p.year),
+            "abstract": 1.0 if p.abstract else 0.0,
+            "open_access": 1.0 if p.open_access else 0.0,
+            "venue": _venue_quality_norm(p, venue_citation_max, overall_venue_max),
+        }
+        p.score_breakdown = {k: round(v, 4) for k, v in components.items()}
         p.composite_score = round(
-            0.35 * rel
-            + 0.25 * cit
-            + 0.15 * rec
-            + 0.10 * abs_present
-            + 0.05 * oa
-            + 0.10 * venue_q,
-            4,
+            sum(SCORE_WEIGHTS[k] * v for k, v in components.items()), 4
         )
     return papers
 
