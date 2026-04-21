@@ -66,6 +66,15 @@ Procedura guidata in 7 step:
 6. Generazione: il contenuto viene generato sezione per sezione con barra di avanzamento
 7. Download: visualizza anteprima e esporta in PDF, DOCX, TXT o Markdown
 
+**RICERCA ACCADEMICA** (pagina "/research"):
+- Cerca pubblicazioni scientifiche, paper e riviste su un argomento specifico
+- I risultati arrivano da piu' database accademici in parallelo: OpenAlex, Semantic Scholar, Crossref
+- Puoi selezionare quali fonti interrogare e applicare filtri (anno min/max, solo open access, citazioni minime, venue/autore)
+- I paper duplicati vengono fusi automaticamente e ordinati per un punteggio di rilevanza composito (rilevanza, citazioni, data di pubblicazione, open access, qualita' della rivista)
+- Per ogni paper puoi generare un riassunto AI con un click: riassunto breve, riassunto tecnico, parole chiave e limiti dello studio
+- I risultati NON vengono salvati, sono disponibili solo durante la sessione corrente
+- Richiede il permesso "research" (attivo di default per gli admin, va richiesto per gli altri utenti)
+
 **DETTAGLIO SESSIONE** (pagina "/sessions/:id"):
 - Visualizza dettagli di una sessione specifica
 - Monitora i job di training e generazione associati
@@ -233,6 +242,7 @@ def get_contextual_tip(page: str, context: Optional[Dict] = None) -> str:
             "generate": "Scegli una sessione addestrata, scrivi un argomento e il numero di parole per generare contenuti nel tuo stile.",
             "humanize": "Puoi usare la Correzione Anti-AI (senza sessione) o l'Umanizzazione completa (con sessione addestrata).",
             "thesis": "Genera una tesi completa in 7 step: dai parametri fino all'esportazione in PDF, DOCX, TXT o Markdown.",
+            "research": "Cerca paper accademici da OpenAlex, Semantic Scholar e Crossref in parallelo. Per ogni risultato puoi generare un riassunto AI con un click.",
             "session": "Da qui puoi gestire la sessione: fare training aggiuntivi, generare contenuti o vedere i job associati."
         }
 

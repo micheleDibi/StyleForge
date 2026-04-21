@@ -277,7 +277,13 @@ const ResultsHeader = ({ results }) => (
     {results.failed_sources?.length > 0 && (
       <span className="flex items-center gap-1 text-amber-700">
         <AlertTriangle className="w-3.5 h-3.5" />
-        Fonti non disponibili: {results.failed_sources.map((f) => f.source).join(', ')}
+        Fonti non disponibili:{' '}
+        {results.failed_sources.map((f, i) => (
+          <span key={f.source}>
+            {i > 0 && ', '}
+            {f.source}{f.error === 'rate_limit' ? ' (rate limit)' : ''}
+          </span>
+        ))}
       </span>
     )}
   </div>

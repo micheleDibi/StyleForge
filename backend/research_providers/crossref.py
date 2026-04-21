@@ -9,7 +9,7 @@ from typing import List, Optional
 
 import httpx
 
-from .base import BaseProvider, UnifiedPaper
+from .base import BaseProvider, ProviderError, RateLimitError, UnifiedPaper
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,12 @@ class CrossrefProvider(BaseProvider):
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             r = await client.get(CROSSREF_API, params=params, headers=headers)
-            r.raise_for_status()
+            if r.status_code == 429:
+                raise RateLimitError(self.name)
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                raise ProviderError(self.name, f"HTTP {e.response.status_code}")
             data = r.json()
 
         items = (data.get("message") or {}).get("items") or []

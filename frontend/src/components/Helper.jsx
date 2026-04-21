@@ -22,6 +22,7 @@ const PAGE_NAMES = {
   '/thesis': 'Generazione Tesi',
   '/enhance-image': 'Migliora Immagine',
   '/carousel': 'Carosello Instagram',
+  '/research': 'Ricerca Accademica',
   '/admin': 'Pannello Admin',
 };
 
@@ -38,6 +39,7 @@ const QUICK_SUGGESTIONS = {
   '/generate': ['Come scelgo la sessione giusta?', 'Quante parole posso generare?', 'Come scarico il risultato?'],
   '/humanize': ['Che differenza tra Correzione e Umanizzazione?', 'Serve una sessione addestrata?', 'Come funziona la Correzione Anti-AI?'],
   '/thesis': ['Come funziona il generatore di tesi?', 'Posso allegare materiale di riferimento?', 'In quali formati posso esportare?'],
+  '/research': ['Come funziona la ricerca accademica?', 'Quali fonti posso interrogare?', 'Come genero un riassunto di un paper?'],
 };
 
 const getQuickSuggestions = (pathname) => {

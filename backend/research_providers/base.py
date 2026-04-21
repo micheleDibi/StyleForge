@@ -26,6 +26,22 @@ class UnifiedPaper(BaseModel):
     composite_score: Optional[float] = Field(None, description="Punteggio composito 0-1 calcolato dopo dedup")
 
 
+class ProviderError(Exception):
+    """Errore generico sollevato da un provider di ricerca accademica."""
+
+    def __init__(self, provider: str, message: str):
+        self.provider = provider
+        self.message = message
+        super().__init__(f"[{provider}] {message}")
+
+
+class RateLimitError(ProviderError):
+    """Il provider ha risposto 429 (rate limit superato)."""
+
+    def __init__(self, provider: str):
+        super().__init__(provider, "rate limit raggiunto (HTTP 429) — riprova piu' tardi o configura l'API key")
+
+
 class BaseProvider:
     """
     Interfaccia che ogni provider deve implementare.

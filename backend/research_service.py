@@ -13,6 +13,8 @@ from research_providers import (
     BaseProvider,
     CrossrefProvider,
     OpenAlexProvider,
+    ProviderError,
+    RateLimitError,
     SemanticScholarProvider,
     UnifiedPaper,
 )
@@ -252,9 +254,21 @@ async def search_all(
     failed: List[dict] = []
 
     for provider, res in zip(providers, results):
+        if isinstance(res, RateLimitError):
+            logger.info("Provider %s rate-limited (HTTP 429) — saltato", provider.name)
+            failed.append({
+                "source": provider.name,
+                "error": "rate_limit",
+                "message": "Rate limit raggiunto. Riprova tra qualche minuto o configura un'API key.",
+            })
+            continue
+        if isinstance(res, ProviderError):
+            logger.warning("Provider %s errore: %s", provider.name, res.message)
+            failed.append({"source": provider.name, "error": "provider_error", "message": res.message})
+            continue
         if isinstance(res, Exception):
-            logger.warning(f"Provider {provider.name} fallito: {res}")
-            failed.append({"source": provider.name, "error": str(res)[:200]})
+            logger.warning("Provider %s fallito: %s", provider.name, str(res)[:200])
+            failed.append({"source": provider.name, "error": "unknown", "message": str(res)[:200]})
             continue
         all_papers.extend(res)
         used.append(provider.name)
