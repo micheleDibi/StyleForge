@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, ExternalLink, Quote, Users, Calendar, Sparkles, ChevronDown, ChevronUp, Loader, Database } from 'lucide-react';
+import { BookOpen, ExternalLink, Quote, Users, Calendar, Sparkles, ChevronDown, ChevronUp, Loader, Database, Check } from 'lucide-react';
 import { summarizePaper as apiSummarizePaper } from '../../services/api';
 import PaperSummary from './PaperSummary';
 import ScoreExplainer from './ScoreExplainer';
@@ -16,9 +16,20 @@ const SOURCE_COLORS = {
   crossref: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
 
-const PaperCard = ({ paper, onCreditsChanged }) => {
+const PaperCard = ({
+  paper,
+  onCreditsChanged,
+  // Modalità di selezione (usata nel wizard tesi)
+  selectable = false,
+  selected = false,
+  onToggleSelect,
+  // Riassunto controllato (usato dal wizard per cache cross-card)
+  initialSummary = null,
+  onSummaryGenerated,
+  summarizeFn = apiSummarizePaper,
+}) => {
   const [abstractOpen, setAbstractOpen] = useState(false);
-  const [summary, setSummary] = useState(null);
+  const [summary, setSummary] = useState(initialSummary);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
 
@@ -26,8 +37,9 @@ const PaperCard = ({ paper, onCreditsChanged }) => {
     setLoadingSummary(true);
     setSummaryError(null);
     try {
-      const data = await apiSummarizePaper(paper);
+      const data = await summarizeFn(paper);
       setSummary(data);
+      if (onSummaryGenerated) onSummaryGenerated(data);
       if (onCreditsChanged) onCreditsChanged();
     } catch (e) {
       if (e.isInsufficientCredits) {
@@ -46,51 +58,68 @@ const PaperCard = ({ paper, onCreditsChanged }) => {
     : (paper.authors || []).join(', ');
 
   return (
-    <article className="card space-y-3">
+    <article className={`card space-y-3 ${selectable && selected ? 'ring-2 ring-orange-400 border-orange-300' : ''}`}>
       <header className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <h3 className="text-base md:text-lg font-semibold text-slate-900 leading-snug">
-            {titleHref ? (
-              <a
-                href={titleHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-orange-600 inline-flex items-baseline gap-1 group"
-              >
-                <span>{paper.title}</span>
-                <ExternalLink className="w-3.5 h-3.5 translate-y-0.5 opacity-0 group-hover:opacity-70 transition-opacity flex-shrink-0" />
-              </a>
-            ) : paper.title}
-          </h3>
-
-          {authorsDisplay && (
-            <p className="mt-1 text-sm text-slate-600 flex items-start gap-1.5">
-              <Users className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-slate-400" />
-              <span>{authorsDisplay}</span>
-            </p>
+        <div className="flex-1 min-w-0 flex items-start gap-3">
+          {selectable && (
+            <button
+              type="button"
+              onClick={() => onToggleSelect && onToggleSelect(paper)}
+              className={`flex-shrink-0 mt-0.5 w-5 h-5 rounded-md border-2 transition-colors flex items-center justify-center ${
+                selected
+                  ? 'bg-orange-500 border-orange-500 text-white'
+                  : 'bg-white border-slate-300 hover:border-orange-400'
+              }`}
+              aria-label={selected ? 'Deseleziona paper' : 'Seleziona paper'}
+              aria-pressed={selected}
+            >
+              {selected && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+            </button>
           )}
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base md:text-lg font-semibold text-slate-900 leading-snug">
+              {titleHref ? (
+                <a
+                  href={titleHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-orange-600 inline-flex items-baseline gap-1 group"
+                >
+                  <span>{paper.title}</span>
+                  <ExternalLink className="w-3.5 h-3.5 translate-y-0.5 opacity-0 group-hover:opacity-70 transition-opacity flex-shrink-0" />
+                </a>
+              ) : paper.title}
+            </h3>
 
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-            {paper.year && (
-              <span className="inline-flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-slate-400" />{paper.year}
-              </span>
+            {authorsDisplay && (
+              <p className="mt-1 text-sm text-slate-600 flex items-start gap-1.5">
+                <Users className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-slate-400" />
+                <span>{authorsDisplay}</span>
+              </p>
             )}
-            {paper.venue && (
-              <span className="inline-flex items-center gap-1 truncate max-w-xs">
-                <BookOpen className="w-3 h-3 text-slate-400" />{paper.venue}
-              </span>
-            )}
-            {paper.citation_count != null && (
-              <span className="inline-flex items-center gap-1">
-                <Quote className="w-3 h-3 text-slate-400" />{paper.citation_count.toLocaleString()} citazioni
-              </span>
-            )}
-            {paper.doi && (
-              <span className="inline-flex items-center gap-1 font-mono text-slate-500">
-                DOI: {paper.doi}
-              </span>
-            )}
+
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+              {paper.year && (
+                <span className="inline-flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-slate-400" />{paper.year}
+                </span>
+              )}
+              {paper.venue && (
+                <span className="inline-flex items-center gap-1 truncate max-w-xs">
+                  <BookOpen className="w-3 h-3 text-slate-400" />{paper.venue}
+                </span>
+              )}
+              {paper.citation_count != null && (
+                <span className="inline-flex items-center gap-1">
+                  <Quote className="w-3 h-3 text-slate-400" />{paper.citation_count.toLocaleString()} citazioni
+                </span>
+              )}
+              {paper.doi && (
+                <span className="inline-flex items-center gap-1 font-mono text-slate-500">
+                  DOI: {paper.doi}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -115,6 +144,12 @@ const PaperCard = ({ paper, onCreditsChanged }) => {
             {SOURCE_LABELS[s] || s}
           </span>
         ))}
+        {summary && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-orange-50 text-orange-700 border-orange-200">
+            <Sparkles className="w-3 h-3" />
+            Riassunto AI pronto
+          </span>
+        )}
       </div>
 
       {paper.abstract && (

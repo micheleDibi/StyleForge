@@ -360,6 +360,53 @@ class ThesisAttachmentsListResponse(BaseModel):
     total: int
 
 
+class ThesisResearchFilters(BaseModel):
+    year_min: Optional[int] = None
+    year_max: Optional[int] = None
+    open_access_only: bool = False
+    min_citations: Optional[int] = Field(None, ge=0)
+    venue_contains: Optional[str] = None
+    author_contains: Optional[str] = None
+
+
+class ThesisResearchSearchRequest(BaseModel):
+    """Request per cercare paper accademici dentro il wizard tesi."""
+    topic: str = Field(..., min_length=2, max_length=500)
+    sources: Optional[List[str]] = None
+    filters: Optional[ThesisResearchFilters] = None
+    sort_by: str = Field("composite", pattern="^(composite|citations|recency|title)$")
+    per_provider_limit: int = Field(30, ge=5, le=50)
+    final_limit: int = Field(40, ge=1, le=100)
+
+
+class ThesisResearchSummarizeRequest(BaseModel):
+    """Request per generare il riassunto AI di un paper dal wizard tesi."""
+    paper: Dict[str, Any] = Field(..., description="UnifiedPaper serializzato")
+
+
+class ThesisAddPaperItem(BaseModel):
+    """Singolo paper da aggiungere come fonte alla tesi.
+
+    Se `summary` viene passato (perché l'utente l'ha già richiesto manualmente),
+    il backend lo riusa senza riaddebitare crediti. Se assente, lo genera.
+    """
+    paper: Dict[str, Any] = Field(..., description="UnifiedPaper serializzato")
+    summary: Optional[Dict[str, Any]] = Field(None, description="SummaryResult serializzato (opzionale)")
+
+
+class ThesisAddPapersRequest(BaseModel):
+    """Request per salvare paper selezionati come allegati di tesi."""
+    items: List[ThesisAddPaperItem] = Field(..., min_length=1, max_length=50)
+
+
+class ThesisAddPapersResponse(BaseModel):
+    """Response dell'aggiunta paper: include gli attachment creati e il riepilogo crediti."""
+    attachments: List[ThesisAttachmentResponse]
+    total: int
+    summarized_count: int = Field(0, description="Numero di riassunti AI generati al volo")
+    credits_consumed: int = Field(0, description="Crediti totali consumati per i riassunti AI")
+
+
 class GenerateChaptersResponse(BaseModel):
     """Response per la generazione dei capitoli."""
     thesis_id: str

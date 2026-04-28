@@ -452,6 +452,49 @@ export const addThesisUrlAttachments = async (thesisId, urls) => {
   return response.data;
 };
 
+// Thesis: ricerca paper accademici dentro il wizard (gated dal permesso 'thesis')
+export const searchResearchForThesis = async (thesisId, {
+  topic,
+  sources = null,
+  filters = null,
+  sortBy = 'composite',
+  perProviderLimit = 30,
+  finalLimit = 40,
+}) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/research/search`,
+    {
+      topic,
+      sources,
+      filters,
+      sort_by: sortBy,
+      per_provider_limit: perProviderLimit,
+      final_limit: finalLimit,
+    },
+    { timeout: 60000 }
+  );
+  return response.data;
+};
+
+export const summarizePaperForThesis = async (thesisId, paper) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/research/summarize`,
+    { paper },
+    { timeout: 120000 }
+  );
+  return response.data;
+};
+
+// items: [{ paper, summary?: SummaryResult }]
+export const addPaperAttachments = async (thesisId, items) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/attachments/papers`,
+    { items },
+    { timeout: 180000 }
+  );
+  return response.data;
+};
+
 // Generation phases - timeout estesi per operazioni AI
 export const generateThesisChapters = async (thesisId) => {
   const response = await api.post(`/api/thesis/${thesisId}/generate-chapters`, {}, {

@@ -29,7 +29,9 @@ from models import (
     WritingStyleResponse, ContentDepthResponse,
     AudienceKnowledgeLevelResponse, AudienceSizeResponse,
     IndustryResponse, TargetAudienceResponse,
-    ThesisStatus, ChapterInfo, ThesisUrlAttachmentRequest
+    ThesisStatus, ChapterInfo, ThesisUrlAttachmentRequest,
+    ThesisResearchSearchRequest, ThesisResearchSummarizeRequest,
+    ThesisAddPapersRequest, ThesisAddPapersResponse,
 )
 from db_models import (
     User, Thesis, ThesisAttachment, ThesisGenerationJob,
@@ -47,7 +49,18 @@ from ai_client import get_ai_client, humanize_text_with_claude
 from ai_exceptions import InsufficientCreditsError
 from session_manager import session_manager
 from template_service import get_template_by_id, get_page_dimensions, get_export_templates
+from research_providers import UnifiedPaper
+from research_service import DEFAULT_SOURCES, PROVIDER_REGISTRY, run_search_pipeline
+from research_summarizer import (
+    SummaryResult,
+    paper_to_attachment_text,
+    render_paper_with_summary,
+    summarize_paper,
+)
 import config
+
+# Mime type convenzionale per allegati di tipo "paper accademico"
+PAPER_MIME_TYPE = "application/x-research-paper"
 
 # Router
 router = APIRouter(prefix="/api/thesis", tags=["Thesis Generation"])
@@ -556,6 +569,199 @@ async def add_url_attachments(
     return ThesisAttachmentsListResponse(
         attachments=uploaded,
         total=len(uploaded)
+    )
+
+
+# ============================================================================
+# RESEARCH ENDPOINTS (paper accademici dentro il flusso tesi)
+# ============================================================================
+
+@router.post("/{thesis_id}/research/search")
+async def thesis_research_search(
+    thesis_id: str,
+    request: ThesisResearchSearchRequest,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Cerca paper accademici per una tesi specifica.
+    Stesso motore di /api/research/search ma gated dal permesso 'thesis'.
+    """
+    # Verifica ownership della tesi
+    get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    sources = request.sources
+    if sources:
+        invalid = [s for s in sources if s not in PROVIDER_REGISTRY]
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Fonti non valide: {', '.join(invalid)}",
+            )
+    else:
+        sources = DEFAULT_SOURCES
+
+    credit_estimate = estimate_credits("research_search", {"num_sources": len(sources)}, db=db)
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate["credits_needed"],
+        operation_type="research_search",
+        description=f"Ricerca paper per tesi: {request.topic[:80]}",
+        db=db,
+    )
+
+    import httpx as _httpx
+    try:
+        result = await run_search_pipeline(
+            topic=request.topic.strip(),
+            sources=sources,
+            filters=request.filters.model_dump() if request.filters else None,
+            sort_by=request.sort_by,
+            per_provider_limit=request.per_provider_limit,
+            final_limit=request.final_limit,
+            contact_email=(config.CONTACT_EMAIL or None),
+            semantic_scholar_api_key=(config.SEMANTIC_SCHOLAR_API_KEY or None),
+        )
+    except _httpx.RequestError as e:
+        logger.error("Errore di rete nella ricerca paper per tesi: %s", e)
+        raise HTTPException(status_code=502, detail="Errore di rete nel contattare i provider accademici")
+    except Exception as e:
+        logger.exception("Errore imprevisto nella ricerca paper per tesi")
+        raise HTTPException(status_code=500, detail=f"Errore nella ricerca: {str(e)[:200]}")
+
+    return result
+
+
+@router.post("/{thesis_id}/research/summarize", response_model=SummaryResult)
+async def thesis_research_summarize(
+    thesis_id: str,
+    request: ThesisResearchSummarizeRequest,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Genera un riassunto AI per un paper, dentro il wizard tesi.
+    """
+    get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    try:
+        paper = UnifiedPaper(**request.paper)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Paper non valido")
+
+    credit_estimate = estimate_credits("research_summary", {}, db=db)
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate["credits_needed"],
+        operation_type="research_summary",
+        description=f"Riassunto paper per tesi: {paper.title[:80]}",
+        db=db,
+    )
+
+    try:
+        summary = await summarize_paper(paper)
+    except Exception as e:
+        logger.exception("Errore riassunto paper (tesi)")
+        raise HTTPException(status_code=500, detail=f"Errore nel riassunto: {str(e)[:200]}")
+
+    return summary
+
+
+@router.post("/{thesis_id}/attachments/papers", response_model=ThesisAddPapersResponse)
+async def add_paper_attachments(
+    thesis_id: str,
+    request: ThesisAddPapersRequest,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Salva i paper selezionati come allegati della tesi.
+    Per ogni paper privo di summary in input, genera il riassunto AI
+    server-side (consumando 'research_summary' in crediti).
+    L'extracted_text combina sempre paper completo + riassunto AI.
+    """
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    existing_count = db.query(ThesisAttachment).filter(
+        ThesisAttachment.thesis_id == thesis.id
+    ).count()
+
+    if existing_count + len(request.items) > config.THESIS_MAX_ATTACHMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Superato il limite di {config.THESIS_MAX_ATTACHMENTS} allegati",
+        )
+
+    summary_cost = estimate_credits("research_summary", {}, db=db)["credits_needed"]
+    summarized_count = 0
+    credits_consumed = 0
+
+    created: List[ThesisAttachmentResponse] = []
+
+    for item in request.items:
+        try:
+            paper = UnifiedPaper(**item.paper)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Paper non valido nel payload")
+
+        # Riusa summary fornito o generalo (a costo di crediti)
+        summary: Optional[SummaryResult] = None
+        if item.summary is not None:
+            try:
+                summary = SummaryResult(**item.summary)
+            except Exception:
+                summary = None
+
+        if summary is None:
+            # Deduce crediti PRIMA di chiamare il provider (pattern coerente col resto del codice)
+            deduct_credits(
+                user=current_user,
+                amount=summary_cost,
+                operation_type="research_summary",
+                description=f"Riassunto paper aggiunto a tesi: {paper.title[:80]}",
+                db=db,
+            )
+            try:
+                summary = await summarize_paper(paper)
+            except Exception:
+                logger.exception("Riassunto fallito per paper '%s', salvo solo metadati", paper.title[:80])
+                summary = None  # Salvo comunque l'attachment con solo metadati
+            else:
+                summarized_count += 1
+                credits_consumed += summary_cost
+
+        extracted_text = render_paper_with_summary(paper, summary)
+
+        # Placeholder per file_path (la colonna è NOT NULL)
+        if paper.full_text_url:
+            file_path = paper.full_text_url
+        elif paper.doi:
+            file_path = f"doi:{paper.doi}"
+        else:
+            file_path = f"paper:{paper.id}"
+
+        title = (paper.title or "Paper accademico")[:500]
+
+        attachment = ThesisAttachment(
+            thesis_id=thesis.id,
+            filename=f"paper_{uuid.uuid4().hex[:8]}.txt",
+            original_filename=title,
+            file_path=file_path,
+            file_size=len(extracted_text),
+            mime_type=PAPER_MIME_TYPE,
+            extracted_text=extracted_text,
+        )
+        db.add(attachment)
+        db.commit()
+        db.refresh(attachment)
+
+        created.append(ThesisAttachmentResponse(**attachment.to_dict()))
+
+    return ThesisAddPapersResponse(
+        attachments=created,
+        total=len(created),
+        summarized_count=summarized_count,
+        credits_consumed=credits_consumed,
     )
 
 

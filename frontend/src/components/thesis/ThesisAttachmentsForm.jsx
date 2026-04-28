@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
-import { Upload, FileText, Link2, Trash2, Info, Loader, CheckCircle } from 'lucide-react';
+import { Upload, FileText, Link2, Trash2, Info, Loader, CheckCircle, BookMarked } from 'lucide-react';
 import { uploadThesisAttachments, deleteThesisAttachment, addThesisUrlAttachments } from '../../services/api';
+
+const PAPER_MIME_TYPE = 'application/x-research-paper';
 
 const formatFileSize = (bytes) => {
   if (bytes === 0) return '0 Bytes';
@@ -245,8 +247,16 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
                 className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200"
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${att.mime_type === 'text/html' ? 'bg-blue-100' : 'bg-orange-100'}`}>
-                    {att.mime_type === 'text/html' ? (
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    att.mime_type === PAPER_MIME_TYPE
+                      ? 'bg-orange-100'
+                      : att.mime_type === 'text/html'
+                        ? 'bg-blue-100'
+                        : 'bg-orange-100'
+                  }`}>
+                    {att.mime_type === PAPER_MIME_TYPE ? (
+                      <BookMarked className="w-5 h-5 text-orange-600" />
+                    ) : att.mime_type === 'text/html' ? (
                       <Link2 className="w-5 h-5 text-blue-600" />
                     ) : (
                       <FileText className="w-5 h-5 text-orange-600" />
@@ -254,7 +264,12 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
                   </div>
                   <div>
                     <p className="font-medium text-slate-900">{att.original_filename}</p>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-slate-500 flex items-center gap-2">
+                      {att.mime_type === PAPER_MIME_TYPE ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200">
+                          Paper
+                        </span>
+                      ) : null}
                       {formatFileSize(att.file_size)}
                     </p>
                   </div>

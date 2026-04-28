@@ -27,7 +27,11 @@ class SummaryResult(BaseModel):
     )
 
 
-def _build_prompt(paper: UnifiedPaper) -> str:
+def paper_to_attachment_text(paper: UnifiedPaper) -> str:
+    """
+    Rendering testuale di un paper come fonte di contesto.
+    Usato sia dal prompt del summarizer sia dal flusso tesi (extracted_text).
+    """
     has_abstract = bool(paper.abstract and paper.abstract.strip())
     authors_str = ", ".join(paper.authors[:8]) if paper.authors else "(autori non riportati)"
     venue_str = paper.venue or "(rivista/venue non riportata)"
@@ -35,10 +39,31 @@ def _build_prompt(paper: UnifiedPaper) -> str:
     citations_str = str(paper.citation_count) if paper.citation_count is not None else "n/d"
 
     abstract_block = (
-        f"ABSTRACT ORIGINALE:\n{paper.abstract.strip()}\n"
+        f"ABSTRACT ORIGINALE:\n{paper.abstract.strip()}"
         if has_abstract
-        else "ABSTRACT: non disponibile. Basati SOLO sui metadati; se non puoi inferire con ragionevole certezza, scrivi esplicitamente che l'informazione non è deducibile dai metadati.\n"
+        else "ABSTRACT: non disponibile."
     )
+
+    return (
+        "METADATI DEL PAPER:\n"
+        f"- Titolo: {paper.title}\n"
+        f"- Autori: {authors_str}\n"
+        f"- Anno: {year_str}\n"
+        f"- Venue: {venue_str}\n"
+        f"- Citazioni: {citations_str}\n"
+        f"- DOI: {paper.doi or 'n/d'}\n"
+        f"\n{abstract_block}"
+    )
+
+
+def _build_prompt(paper: UnifiedPaper) -> str:
+    has_abstract = bool(paper.abstract and paper.abstract.strip())
+    paper_block = paper_to_attachment_text(paper)
+    if not has_abstract:
+        paper_block = paper_block.replace(
+            "ABSTRACT: non disponibile.",
+            "ABSTRACT: non disponibile. Basati SOLO sui metadati; se non puoi inferire con ragionevole certezza, scrivi esplicitamente che l'informazione non è deducibile dai metadati.",
+        )
 
     return f"""Sei un assistente scientifico. Ti fornisco i metadati di un paper accademico.
 Genera un riassunto strutturato in italiano.
@@ -53,17 +78,34 @@ REGOLE:
 - keywords: array di 4-8 parole chiave brevi (1-3 parole ciascuna), rilevanti per l'argomento.
 - limits: array di 1-4 stringhe con limiti plausibili dello studio (ambito, metodologia, generalizzabilità). Se non deducibili, lascia un array con una sola stringa "Non deducibili dai metadati disponibili".
 
-METADATI DEL PAPER:
-- Titolo: {paper.title}
-- Autori: {authors_str}
-- Anno: {year_str}
-- Venue: {venue_str}
-- Citazioni: {citations_str}
-- DOI: {paper.doi or "n/d"}
-
-{abstract_block}
+{paper_block}
 
 Rispondi ora con il JSON:"""
+
+
+def render_paper_with_summary(paper: UnifiedPaper, summary: Optional["SummaryResult"]) -> str:
+    """
+    Combina il rendering testuale del paper con il riassunto AI (se presente)
+    per formare l'extracted_text di un ThesisAttachment di tipo paper.
+    """
+    base = paper_to_attachment_text(paper)
+    if not summary:
+        return base
+
+    keywords = ", ".join(summary.keywords) if summary.keywords else ""
+    limits_block = ""
+    if summary.limits:
+        limits_block = "\nLIMITI:\n" + "\n".join(f"- {l}" for l in summary.limits)
+
+    summary_block = (
+        "\n\n=== RIASSUNTO AI ===\n"
+        f"Sintesi divulgativa: {summary.summary_short}\n\n"
+        f"Sintesi tecnica: {summary.summary_technical}"
+    )
+    if keywords:
+        summary_block += f"\n\nKeywords: {keywords}"
+    summary_block += limits_block
+    return base + summary_block
 
 
 async def summarize_paper(paper: UnifiedPaper) -> SummaryResult:

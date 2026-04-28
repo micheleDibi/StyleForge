@@ -57,14 +57,15 @@ CALCIFER_SYSTEM_PROMPT = """Sei Calcifer, l'assistente di StyleForge. Il tuo UNI
 - Il risultato puo' essere copiato o scaricato come PDF
 
 **GENERAZIONE TESI** (pagina "/thesis"):
-Procedura guidata in 7 step:
+Procedura guidata in 8 step:
 1. Parametri: titolo, descrizione, argomenti chiave, stile di scrittura, profondita', struttura (capitoli, sezioni, parole per sezione), provider AI (OpenAI o Claude), stile citazione, sessione addestrata opzionale
 2. Pubblico: livello di conoscenza del lettore, settore, destinatari
-3. Allegati: carica PDF, DOCX o TXT come materiale di riferimento (max 10 file, 50MB ciascuno)
-4. Capitoli: l'AI genera i titoli dei capitoli, puoi modificarli prima di confermare
-5. Sezioni: l'AI genera le sezioni per ogni capitolo, puoi modificarle
-6. Generazione: il contenuto viene generato sezione per sezione con barra di avanzamento
-7. Download: visualizza anteprima e esporta in PDF, DOCX, TXT o Markdown
+3. Paper scientifici: cerca paper accademici da OpenAlex, Semantic Scholar, Crossref e selezionane alcuni come fonti per la tesi. Per ogni paper aggiunto viene generato automaticamente un riassunto AI che entra nel contesto della generazione. Step opzionale, puoi saltarlo.
+4. Allegati: carica PDF, DOCX o TXT come materiale di riferimento (max 10 file, 50MB ciascuno). I paper aggiunti allo step precedente compaiono qui con un badge dedicato.
+5. Capitoli: l'AI genera i titoli dei capitoli, puoi modificarli prima di confermare
+6. Sezioni: l'AI genera le sezioni per ogni capitolo, puoi modificarle
+7. Generazione: il contenuto viene generato sezione per sezione con barra di avanzamento
+8. Download: visualizza anteprima e esporta in PDF, DOCX, TXT o Markdown
 
 **RICERCA ACCADEMICA** (pagina "/research"):
 - Cerca pubblicazioni scientifiche, paper e riviste su un argomento specifico
@@ -74,6 +75,7 @@ Procedura guidata in 7 step:
 - Per ogni paper puoi generare un riassunto AI con un click: riassunto breve, riassunto tecnico, parole chiave e limiti dello studio
 - I risultati NON vengono salvati, sono disponibili solo durante la sessione corrente
 - Richiede il permesso "research" (attivo di default per gli admin, va richiesto per gli altri utenti)
+- La stessa ricerca e' integrata anche nel wizard di Generazione Tesi (step 3): chi ha il permesso "thesis" puo' cercare e selezionare paper come fonti, anche senza il permesso "research"
 
 **DETTAGLIO SESSIONE** (pagina "/sessions/:id"):
 - Visualizza dettagli di una sessione specifica
@@ -241,7 +243,7 @@ def get_contextual_tip(page: str, context: Optional[Dict] = None) -> str:
             "train": "Carica un PDF con il tuo stile di scrittura per addestrare il modello. Le sessioni addestrate restano per sempre!",
             "generate": "Scegli una sessione addestrata, scrivi un argomento e il numero di parole per generare contenuti nel tuo stile.",
             "humanize": "Puoi usare la Correzione Anti-AI (senza sessione) o l'Umanizzazione completa (con sessione addestrata).",
-            "thesis": "Genera una tesi completa in 7 step: dai parametri fino all'esportazione in PDF, DOCX, TXT o Markdown.",
+            "thesis": "Genera una tesi completa in 8 step: oltre a parametri, pubblico, allegati e capitoli, allo step 3 puoi cercare paper accademici e includerli come fonti con riassunto AI automatico.",
             "research": "Cerca paper accademici da OpenAlex, Semantic Scholar e Crossref in parallelo. Per ogni risultato puoi generare un riassunto AI con un click.",
             "session": "Da qui puoi gestire la sessione: fare training aggiuntivi, generare contenuti o vedere i job associati."
         }

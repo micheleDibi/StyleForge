@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight, Loader, Sparkles, Home } from 'lucide-react';
 import StepIndicator from '../components/thesis/StepIndicator';
 import ThesisParametersForm from '../components/thesis/ThesisParametersForm';
 import ThesisAudienceForm from '../components/thesis/ThesisAudienceForm';
+import ThesisPapersForm from '../components/thesis/ThesisPapersForm';
 import ThesisAttachmentsForm from '../components/thesis/ThesisAttachmentsForm';
 import ChapterEditor from '../components/thesis/ChapterEditor';
 import SectionEditor from '../components/thesis/SectionEditor';
@@ -37,11 +38,12 @@ import CreditEstimatePreview from '../components/CreditEstimatePreview';
 const STEPS = [
   { id: 1, label: 'Parametri' },
   { id: 2, label: 'Pubblico' },
-  { id: 3, label: 'Allegati' },
-  { id: 4, label: 'Capitoli' },
-  { id: 5, label: 'Sezioni' },
-  { id: 6, label: 'Generazione' },
-  { id: 7, label: 'Download' }
+  { id: 3, label: 'Paper' },
+  { id: 4, label: 'Allegati' },
+  { id: 5, label: 'Capitoli' },
+  { id: 6, label: 'Sezioni' },
+  { id: 7, label: 'Generazione' },
+  { id: 8, label: 'Download' }
 ];
 
 const ThesisGenerator = () => {
@@ -173,9 +175,9 @@ const ThesisGenerator = () => {
         const status = thesisData.status;
         if (status === 'completed') {
           setGeneratedContent(thesisData.generated_content || '');
-          setCurrentStep(7);
+          setCurrentStep(8);
         } else if (status === 'generating') {
-          setCurrentStep(6);
+          setCurrentStep(7);
           // Start polling
           pollThesisGenerationStatus(
             thesisData.id,
@@ -189,18 +191,18 @@ const ThesisGenerator = () => {
             1800000
           );
         } else if (status === 'failed') {
-          setCurrentStep(6);
+          setCurrentStep(7);
           setGenerationStatus({ status: 'failed', error: thesisData.error || 'Generazione fallita' });
         } else if (status === 'sections_pending' || status === 'sections_confirmed') {
           if (thesisData.chapters) {
             setSectionsData(thesisData.chapters);
           }
-          setCurrentStep(5);
+          setCurrentStep(6);
         } else if (status === 'chapters_pending' || status === 'chapters_confirmed') {
           if (thesisData.chapters) {
             setChapters(thesisData.chapters.map(c => ({ title: c.title, description: c.description })));
           }
-          setCurrentStep(4);
+          setCurrentStep(5);
         } else {
           // draft or other early status
           setCurrentStep(1);
@@ -258,7 +260,7 @@ const ThesisGenerator = () => {
     setPendingCreditAction(null);
   };
 
-  // Generate chapters when moving from step 3 to step 4
+  // Generate chapters when moving from step 4 (Allegati) to step 5 (Capitoli)
   const generateChaptersForThesis = async () => {
     // Prima: stima crediti
     const attChars = Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5);
@@ -274,8 +276,8 @@ const ThesisGenerator = () => {
         try {
           const currentThesisId = await ensureThesisCreated();
 
-          // Move to step 4 and generate chapters
-          setCurrentStep(4);
+          // Move to step 5 (Capitoli) and generate chapters
+          setCurrentStep(5);
           setIsGeneratingChapters(true);
 
           const chaptersResponse = await generateThesisChapters(currentThesisId);
@@ -311,8 +313,8 @@ const ThesisGenerator = () => {
         try {
           await confirmThesisChapters(thesisId, chapters);
 
-          // Move to step 5 and generate sections
-          setCurrentStep(5);
+          // Move to step 6 (Sezioni) and generate sections
+          setCurrentStep(6);
           setIsGeneratingSections(true);
 
           const sectionsResponse = await generateThesisSections(thesisId);
@@ -354,8 +356,8 @@ const ThesisGenerator = () => {
         try {
           await confirmThesisSections(thesisId, sectionsData);
 
-          // Move to step 6
-          setCurrentStep(6);
+          // Move to step 7 (Generazione)
+          setCurrentStep(7);
 
           // Start content generation
           await startThesisContentGeneration(thesisId);
@@ -388,7 +390,7 @@ const ThesisGenerator = () => {
       const completedThesis = await getThesis(thesisId);
       setThesis(completedThesis);
       setGeneratedContent(completedThesis.generated_content || '');
-      setCurrentStep(7);
+      setCurrentStep(8);
     } catch (err) {
       console.error('Errore caricamento tesi completata:', err);
     }
@@ -400,7 +402,7 @@ const ThesisGenerator = () => {
       const completedThesis = await getThesis(id);
       setThesis(completedThesis);
       setGeneratedContent(completedThesis.generated_content || '');
-      setCurrentStep(7);
+      setCurrentStep(8);
     } catch (err) {
       console.error('Errore caricamento tesi completata:', err);
     }
@@ -409,10 +411,10 @@ const ThesisGenerator = () => {
   // Navigation
   const handleNext = async () => {
     if (currentStep === 2) {
-      // Create thesis before entering step 3 so thesisId is available for uploads
+      // Create thesis before entering step 3 so thesisId is available for paper/uploads
       setIsLoading(true);
       setError(null);
-    setIsCreditError(false);
+      setIsCreditError(false);
       try {
         await ensureThesisCreated();
         setCurrentStep(3);
@@ -423,6 +425,10 @@ const ThesisGenerator = () => {
         setIsLoading(false);
       }
     } else if (currentStep === 3) {
+      // Paper scientifici → Allegati (step opzionale, nessuna chiamata)
+      setCurrentStep(4);
+    } else if (currentStep === 4) {
+      // Allegati → genera Capitoli
       generateChaptersForThesis();
     } else if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1);
@@ -430,7 +436,7 @@ const ThesisGenerator = () => {
   };
 
   const handleBack = () => {
-    if (currentStep > 1 && currentStep <= 3) {
+    if (currentStep > 1 && currentStep <= 4) {
       setCurrentStep(currentStep - 1);
     }
   };
@@ -442,6 +448,8 @@ const ThesisGenerator = () => {
       case 2:
         return true; // Audience is optional
       case 3:
+        return true; // Papers are optional
+      case 4:
         return true; // Attachments are optional
       default:
         return false;
@@ -536,6 +544,15 @@ const ThesisGenerator = () => {
           )}
 
           {currentStep === 3 && (
+            <ThesisPapersForm
+              data={attachmentsData}
+              onChange={setAttachmentsData}
+              thesisId={thesisId}
+              onCreditsChanged={refreshUser}
+            />
+          )}
+
+          {currentStep === 4 && (
             <ThesisAttachmentsForm
               data={attachmentsData}
               onChange={setAttachmentsData}
@@ -543,7 +560,7 @@ const ThesisGenerator = () => {
             />
           )}
 
-          {currentStep === 4 && (
+          {currentStep === 5 && (
             <ChapterEditor
               chapters={chapters}
               onChange={setChapters}
@@ -553,7 +570,7 @@ const ThesisGenerator = () => {
             />
           )}
 
-          {currentStep === 5 && (
+          {currentStep === 6 && (
             <SectionEditor
               chapters={sectionsData}
               onChange={setSectionsData}
@@ -563,14 +580,14 @@ const ThesisGenerator = () => {
             />
           )}
 
-          {currentStep === 6 && (
+          {currentStep === 7 && (
             <GenerationProgress
               status={generationStatus}
               onComplete={loadCompletedThesis}
             />
           )}
 
-          {currentStep === 7 && thesis && (
+          {currentStep === 8 && thesis && (
             <ThesisPreview
               thesis={thesis}
               content={generatedContent}
@@ -579,8 +596,8 @@ const ThesisGenerator = () => {
           )}
         </div>
 
-        {/* Credit + API Cost Estimate (step 2-6) */}
-        {currentStep >= 2 && currentStep <= 6 && parametersData.title && (
+        {/* Credit + API Cost Estimate (step 2-7) */}
+        {currentStep >= 2 && currentStep <= 7 && parametersData.title && (
           <div className="mt-4">
             <CreditEstimatePreview
               operations={[
@@ -591,7 +608,7 @@ const ThesisGenerator = () => {
             />
           </div>
         )}
-        {isAdmin && currentStep >= 2 && currentStep <= 6 && parametersData.title && (
+        {isAdmin && currentStep >= 2 && currentStep <= 7 && parametersData.title && (
           <div className="mt-1">
             <ApiCostEstimate
               mode="thesis"
@@ -607,7 +624,7 @@ const ThesisGenerator = () => {
         )}
 
         {/* Navigation Buttons - Migliorati */}
-        {currentStep <= 3 && (
+        {currentStep <= 4 && (
           <div className="mt-10 pb-8">
             <div className="flex items-center justify-between gap-4 p-4 bg-white rounded-2xl shadow-lg border border-slate-200">
               {/* Pulsante Indietro */}
@@ -650,7 +667,7 @@ const ThesisGenerator = () => {
                     <Loader className="w-5 h-5 animate-spin" />
                     <span>Elaborazione...</span>
                   </>
-                ) : currentStep === 3 ? (
+                ) : currentStep === 4 ? (
                   <>
                     <Sparkles className="w-5 h-5" />
                     <span>Genera Capitoli</span>

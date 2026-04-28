@@ -1,14 +1,15 @@
-import { Check, Settings, Users, Paperclip, List, FileText, Sparkles, Download } from 'lucide-react';
+import { Check, Settings, Users, Paperclip, List, FileText, Sparkles, Download, BookMarked } from 'lucide-react';
 
-const StepIndicator = ({ currentStep, totalSteps = 7 }) => {
+const StepIndicator = ({ currentStep, totalSteps = 8 }) => {
   const steps = [
     { num: 1, label: 'Parametri', icon: Settings },
     { num: 2, label: 'Pubblico', icon: Users },
-    { num: 3, label: 'Allegati', icon: Paperclip },
-    { num: 4, label: 'Capitoli', icon: List },
-    { num: 5, label: 'Sezioni', icon: FileText },
-    { num: 6, label: 'Generazione', icon: Sparkles },
-    { num: 7, label: 'Download', icon: Download }
+    { num: 3, label: 'Paper', icon: BookMarked },
+    { num: 4, label: 'Allegati', icon: Paperclip },
+    { num: 5, label: 'Capitoli', icon: List },
+    { num: 6, label: 'Sezioni', icon: FileText },
+    { num: 7, label: 'Generazione', icon: Sparkles },
+    { num: 8, label: 'Download', icon: Download }
   ];
 
   return (
