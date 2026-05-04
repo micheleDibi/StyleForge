@@ -9,9 +9,14 @@ from typing import Dict, Any, List, Optional
 
 
 def _get_citation_instructions(citation_style: str = "footnotes") -> str:
-    """Restituisce le istruzioni sulle citazioni in base allo stile scelto."""
+    """Restituisce le istruzioni sulle citazioni in base allo stile scelto.
+
+    Tutti i formati seguono lo stile APA italiano:
+       Cognome, N. (Anno). *Titolo dell'opera*. Città: Casa editrice.
+    Il titolo va in corsivo (Markdown: *titolo*) con la prima lettera maiuscola.
+    """
     if citation_style == "bibliography":
-        return """CITAZIONI BIBLIOGRAFICHE — SOLO FONTI REALI:
+        return """CITAZIONI BIBLIOGRAFICHE — SOLO FONTI REALI (stile APA italiano):
    - Inserisci almeno 3-5 citazioni bibliografiche nel testo usando il formato [x]
      dove x è un numero progressivo (es. [1], [2], [3], ecc.)
    - ⚠️ REQUISITO CRITICO: Cita ESCLUSIVAMENTE opere REALI e VERIFICABILI
@@ -23,21 +28,32 @@ def _get_citation_instructions(citation_style: str = "footnotes") -> str:
    - ⚠️ NON INVENTARE MAI fonti, autori, titoli o pubblicazioni
    - ⚠️ Se non sei sicuro che una fonte esista realmente, NON citarla
    - Usa le citazioni quando menzioni studi, ricerche, dati, teorie o opinioni di autori
-   - Esempio: "Secondo Kahneman [1], i bias cognitivi influenzano..."
+   - Esempio inline: "Secondo Kahneman [1], i bias cognitivi influenzano..."
    - I numeri devono essere progressivi e coerenti all'interno della tesi
    - Quando citi, includi nel testo abbastanza contesto per identificare la fonte
-     (es. nome autore, anno, titolo abbreviato) così la bibliografia sarà accurata"""
+     (es. nome autore, anno, titolo abbreviato) così la bibliografia sarà accurata
+   - La voce bibliografica corrispondente seguirà il formato APA italiano:
+     LIBRO:    Cognome, N. (Anno). *Titolo dell'opera*. Città: Casa editrice.
+     ARTICOLO: Cognome, N. (Anno). Titolo articolo. *Nome Rivista*, vol(num), pp-pp.
+     REPORT:   Organizzazione. (Anno). *Titolo report*. Città: Editore."""
     else:
-        return """NOTE A PIÈ DI PAGINA — SOLO FONTI REALI:
+        return """NOTE A PIÈ DI PAGINA — SOLO FONTI REALI (stile APA italiano):
    - Inserisci note bibliografiche nel testo usando il formato {{nota: riferimento completo}}
-   - PRIMA CITAZIONE di un'opera: {{nota: Cognome, N. (Anno). Titolo completo. Casa editrice. p.XX}}
+   - PRIMA CITAZIONE di un libro: {{nota: Cognome, N. (Anno). *Titolo dell'opera*. Città: Casa editrice. p.XX}}
+   - PRIMA CITAZIONE di un articolo: {{nota: Cognome, N. (Anno). Titolo articolo. *Nome Rivista*, vol(num), pp.XX-XX}}
+   - PRIMA CITAZIONE di un report: {{nota: Organizzazione. (Anno). *Titolo report*. Città: Editore. p.XX}}
    - STESSA OPERA, STESSA PAGINA della nota immediatamente precedente: {{nota: Ibidem.}}
    - STESSA OPERA, PAGINA DIVERSA della nota immediatamente precedente: {{nota: Ivi. p.XX}}
    - OPERA GIÀ CITATA IN PRECEDENZA (non immediatamente): {{nota: Op.cit. Cognome, Anno, p.XX}}
+   - ⚠️ FORMATO APA OBBLIGATORIO: Cognome dell'autore, virgola, iniziale del nome puntata,
+     anno tra parentesi, punto, *Titolo in corsivo* con prima lettera maiuscola, punto,
+     città di pubblicazione, due punti, casa editrice, punto, eventuale numero di pagina.
+   - ⚠️ Il titolo dell'opera (libro/report) va SEMPRE in corsivo (Markdown: *titolo*).
+     Per gli articoli su rivista, il corsivo va sul *Nome Rivista*, NON sul titolo dell'articolo.
    - ⚠️ Cita ESCLUSIVAMENTE opere REALI e VERIFICABILI
    - ⚠️ NON INVENTARE MAI fonti, autori, titoli o pubblicazioni
    - Inserisci almeno 3-5 note per sezione
-   - Esempio nel testo: "L'inclusione scolastica è un tema di prim'ordine{{nota: Bonura, A. (2021). Legislazione e innovazioni normative. USR SICILIA. p.15}} e il numero degli alunni con BES aumenta{{nota: Ibidem.}}" """
+   - Esempio nel testo: "L'inclusione scolastica è un tema di prim'ordine{{nota: Bonura, A. (2021). *Legislazione e innovazioni normative*. Palermo: USR Sicilia. p.15}} e il numero degli alunni con BES aumenta{{nota: Ibidem.}}" """
 
 
 def _get_no_citation_instruction(citation_style: str = "footnotes") -> str:
@@ -813,22 +829,47 @@ Come selezionare le fonti:
 4. Privilegia opere classiche e fondamentali del campo che CONOSCI CON CERTEZZA
 5. Se il testo menziona esplicitamente un autore o opera, usa QUELLA
 
-FORMATO richiesto (APA italiano):
-[x] Cognome, N. (Anno). Titolo dell'opera. Casa editrice.
-[x] Cognome, N. & Cognome, N. (Anno). Titolo articolo. Nome Rivista, vol(num), pp-pp.
-[x] Organizzazione. (Anno). Titolo report. URL (se noto)
+FORMATO richiesto — STILE APA ITALIANO (RIGOROSO):
+Schema generale:
+   Cognome, N. (Anno). *Titolo in corsivo con prima lettera maiuscola*. Città di pubblicazione: Casa editrice.
+
+Casi specifici:
+[x] LIBRO con un autore:
+    Cognome, N. (Anno). *Titolo dell'opera*. Città: Casa editrice.
+[x] LIBRO con due o più autori:
+    Cognome, N. & Cognome, N. (Anno). *Titolo dell'opera*. Città: Casa editrice.
+[x] ARTICOLO su rivista (titolo articolo NON in corsivo, *Nome Rivista* SI):
+    Cognome, N. (Anno). Titolo dell'articolo. *Nome Rivista*, vol(num), pp-pp.
+[x] CAPITOLO in libro a cura di:
+    Cognome, N. (Anno). Titolo capitolo. In Cognome Curatore, N. (a cura di), *Titolo libro* (pp. XX-XX). Città: Casa editrice.
+[x] REPORT istituzionale:
+    Organizzazione. (Anno). *Titolo del report*. Città: Editore. URL (se noto)
+
+REGOLE DI FORMATTAZIONE APA OBBLIGATORIE:
+- Cognome dell'autore PRIMA, poi virgola, poi iniziale del nome puntata.
+- Anno tra parentesi tonde, seguito da un punto.
+- Titolo dei LIBRI / REPORT in corsivo Markdown (*titolo*) con SOLO prima lettera maiuscola
+  (e nomi propri); NON usare maiuscolo a inizio di ogni parola.
+- Per gli ARTICOLI: il titolo dell'articolo NON va in corsivo, va in corsivo *Nome Rivista*.
+- Dopo il titolo: punto, città di pubblicazione, due punti, casa editrice, punto.
+- Per autori italiani: usa la forma "Cognome, N." anche se nei dati il nome appare per esteso.
+- Il punto finale è obbligatorio.
 
 REGOLE TASSATIVE:
 1. Genera ESATTAMENTE {num_citations} voci, una per ogni citazione
 2. Numeri in ordine crescente: [1], [2], [3]...
 3. Ogni fonte deve essere pertinente al contesto in cui [x] appare
-4. NON scrivere messaggi, scuse, avvertenze o disclaimer
-5. NON dire che non puoi farlo — FALLO E BASTA
-6. NON aggiungere note come "verificare", "controllare", "potrebbe non essere reale"
-7. Output: SOLO la lista delle voci bibliografiche, nient'altro
-8. NON includere il titolo "Bibliografia"
+4. La città di pubblicazione DEVE essere specificata per libri e report.
+5. NON scrivere messaggi, scuse, avvertenze o disclaimer
+6. NON dire che non puoi farlo — FALLO E BASTA
+7. NON aggiungere note come "verificare", "controllare", "potrebbe non essere reale"
+8. Output: SOLO la lista delle voci bibliografiche, nient'altro
+9. NON includere il titolo "Bibliografia"
 
 Inizia direttamente con [1] e prosegui fino a [{num_citations}].
+
+Esempio della voce attesa:
+   [1] Bonura, A. (2021). *Legislazione e innovazioni normative*. Palermo: USR Sicilia.
 """
 
     else:
@@ -870,18 +911,44 @@ Per ogni riferimento trovato nelle note:
 3. Ordina ALFABETICAMENTE per cognome del primo autore
 4. Se un riferimento è un report istituzionale, ordina per nome organizzazione
 
-FORMATO richiesto:
-Cognome, N. (Anno). Titolo dell'opera. Casa editrice.
-Cognome, N. & Cognome, N. (Anno). Titolo articolo. Nome Rivista, vol(num), pp-pp.
-Organizzazione. (Anno). Titolo report. URL (se noto)
+FORMATO richiesto — STILE APA ITALIANO (RIGOROSO):
+Schema generale:
+   Cognome, N. (Anno). *Titolo in corsivo con prima lettera maiuscola*. Città di pubblicazione: Casa editrice.
+
+Casi specifici:
+LIBRO con un autore:
+   Cognome, N. (Anno). *Titolo dell'opera*. Città: Casa editrice.
+LIBRO con due o più autori:
+   Cognome, N. & Cognome, N. (Anno). *Titolo dell'opera*. Città: Casa editrice.
+ARTICOLO su rivista (titolo articolo NON in corsivo, *Nome Rivista* SI):
+   Cognome, N. (Anno). Titolo dell'articolo. *Nome Rivista*, vol(num), pp-pp.
+CAPITOLO in libro a cura di:
+   Cognome, N. (Anno). Titolo capitolo. In Cognome Curatore, N. (a cura di), *Titolo libro* (pp. XX-XX). Città: Casa editrice.
+REPORT istituzionale:
+   Organizzazione. (Anno). *Titolo del report*. Città: Editore. URL (se noto)
+
+REGOLE DI FORMATTAZIONE APA OBBLIGATORIE:
+- Cognome dell'autore PRIMA, poi virgola, poi iniziale del nome puntata.
+- Anno tra parentesi tonde, seguito da un punto.
+- Titolo dei LIBRI / REPORT in corsivo Markdown (*titolo*) con SOLO prima lettera maiuscola
+  (e nomi propri); NON usare maiuscolo a inizio di ogni parola.
+- Per gli ARTICOLI: il titolo dell'articolo NON va in corsivo, va in corsivo *Nome Rivista*.
+- Dopo il titolo: punto, città di pubblicazione, due punti, casa editrice, punto.
+- Per autori italiani: usa la forma "Cognome, N." anche se nei dati il nome appare per esteso.
+- Il punto finale è obbligatorio.
 
 REGOLE TASSATIVE:
 1. Includi SOLO i riferimenti completi che appaiono nelle note (non Op.cit./Ibidem/Ivi)
-2. NON aggiungere fonti che non sono state citate nelle note
-3. NON scrivere messaggi, scuse, avvertenze o disclaimer
-4. NON dire che non puoi farlo — FALLO E BASTA
-5. Output: SOLO la lista delle voci bibliografiche, nient'altro
-6. NON includere il titolo "Bibliografia"
+2. Mantieni il formato APA esatto: se una nota era già conforme APA, riportala così com'è;
+   se era incompleta (manca città / editore), completala con dati REALI verificabili.
+3. NON aggiungere fonti che non sono state citate nelle note
+4. NON scrivere messaggi, scuse, avvertenze o disclaimer
+5. NON dire che non puoi farlo — FALLO E BASTA
+6. Output: SOLO la lista delle voci bibliografiche, nient'altro
+7. NON includere il titolo "Bibliografia"
+
+Esempio della voce attesa:
+   Bonura, A. (2021). *Legislazione e innovazioni normative*. Palermo: USR Sicilia.
 
 Inizia direttamente con la prima voce bibliografica.
 """

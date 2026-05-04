@@ -77,7 +77,7 @@ const Login = () => {
           </p>
           <div className="flex items-center justify-center gap-3 text-orange-200/80 text-sm">
             <span className="w-8 h-px bg-orange-200/40"></span>
-            Addestramento AI &middot; Generazione &middot; Umanizzazione &middot; Tesi
+            Addestramento AI &middot; Generazione &middot; Umanizzazione &middot; Testi
             <span className="w-8 h-px bg-orange-200/40"></span>
           </div>
         </div>

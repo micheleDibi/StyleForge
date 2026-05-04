@@ -1491,11 +1491,15 @@ def generate_content_task(thesis_id: str, user_id: str):
             logger.warning("Bibliografia: rilevato rifiuto AI, ritento con prompt diretto")
             # Ritenta con un prompt più diretto
             fallback_prompt = (
-                f"Genera {len(raw_citations)} voci bibliografiche in formato APA per una tesi su: "
+                f"Genera {len(raw_citations)} voci bibliografiche in formato APA italiano per una tesi su: "
                 f"{thesis_data.get('title', '')}. "
                 f"Settore: {thesis_data.get('industry_name', 'Generale')}. "
-                f"Usa autori e opere reali e note nel campo. "
-                f"Formato: [1] Cognome, N. (Anno). Titolo. Editore.\n"
+                f"Usa autori e opere REALI e note nel campo, niente fonti inventate.\n"
+                f"FORMATO APA OBBLIGATORIO (titolo in corsivo Markdown *titolo*, città: editore):\n"
+                f"  LIBRO:    [1] Cognome, N. (Anno). *Titolo dell'opera*. Città: Casa editrice.\n"
+                f"  ARTICOLO: [2] Cognome, N. (Anno). Titolo articolo. *Nome Rivista*, vol(num), pp-pp.\n"
+                f"  REPORT:   [3] Organizzazione. (Anno). *Titolo report*. Città: Editore.\n"
+                f"Esempio: [1] Bonura, A. (2021). *Legislazione e innovazioni normative*. Palermo: USR Sicilia.\n"
                 f"Output SOLO la lista, da [1] a [{len(raw_citations)}]."
             )
             bibliography_content = bib_client.generate_text(fallback_prompt)
@@ -1772,6 +1776,30 @@ async def get_generation_status(
 import re as _re
 
 _FOOTNOTE_PATTERN = _re.compile(r'\{\{nota:\s*(.*?)\}\}')
+# Markdown italic: *testo* (non greedy), evita ** che è bold
+_ITALIC_PATTERN = _re.compile(r'(?<!\*)\*(?!\*)([^\*\n]+?)\*(?!\*)')
+
+
+def iter_italic_segments(text: str):
+    """Splitta `text` in tuple (segment, italic_bool) basandosi sul markdown *italic*.
+
+    Esempio: "Cognome, N. (2021). *Titolo*. Roma: X." →
+        [("Cognome, N. (2021). ", False), ("Titolo", True), (". Roma: X.", False)]
+    Se non ci sono asterischi, yield un singolo segmento non-italic.
+    """
+    last = 0
+    for m in _ITALIC_PATTERN.finditer(text):
+        if m.start() > last:
+            yield text[last:m.start()], False
+        yield m.group(1), True
+        last = m.end()
+    if last < len(text):
+        yield text[last:], False
+
+
+def strip_italic_markers(text: str) -> str:
+    """Rimuove i marker Markdown *italic* lasciando solo il testo (per export non-Markdown)."""
+    return _ITALIC_PATTERN.sub(lambda m: m.group(1), text)
 
 
 def extract_footnotes_from_line(line: str) -> list:
@@ -1914,13 +1942,15 @@ async def export_thesis(
         # Export TXT con indice e note a piè di pagina come endnotes
         has_footnotes = cit_style == 'footnotes'
         processed_content, all_notes, _ = strip_footnotes_for_plain(content) if has_footnotes else (content, [], 1)
+        # In plain text gli asterischi del corsivo Markdown non hanno senso → rimuovi
+        processed_content = strip_italic_markers(processed_content)
         full_content = f"{thesis.title}\n{'=' * len(thesis.title)}\n\n"
         full_content += toc
         full_content += processed_content
         if all_notes:
             full_content += "\n\n" + "=" * 60 + "\nNOTE\n" + "=" * 60 + "\n\n"
             for num, note_text in all_notes:
-                full_content += f"[{num}] {note_text}\n"
+                full_content += f"[{num}] {strip_italic_markers(note_text)}\n"
 
         file_path = config.RESULTS_DIR / f"thesis_{safe_title}_{timestamp}.txt"
         file_path.write_text(full_content, encoding='utf-8')
@@ -2030,26 +2060,32 @@ async def export_thesis(
                 space_run.append(space_t)
                 fn_para.append(space_run)
 
-                # Testo della nota
-                fn_text_run = OxmlElement('w:r')
-                fn_text_rPr = OxmlElement('w:rPr')
-                fn_text_sz = OxmlElement('w:sz')
-                fn_text_sz.set(qn('w:val'), str(fn_font_size * 2))  # half-points
-                fn_text_rPr.append(fn_text_sz)
-                fn_text_szCs = OxmlElement('w:szCs')
-                fn_text_szCs.set(qn('w:val'), str(fn_font_size * 2))
-                fn_text_rPr.append(fn_text_szCs)
-                if fn_font_name:
-                    fn_text_rFonts = OxmlElement('w:rFonts')
-                    fn_text_rFonts.set(qn('w:ascii'), fn_font_name)
-                    fn_text_rFonts.set(qn('w:hAnsi'), fn_font_name)
-                    fn_text_rPr.append(fn_text_rFonts)
-                fn_text_run.append(fn_text_rPr)
-                fn_text_t = OxmlElement('w:t')
-                fn_text_t.set(qn('xml:space'), 'preserve')
-                fn_text_t.text = footnote_text
-                fn_text_run.append(fn_text_t)
-                fn_para.append(fn_text_run)
+                # Testo della nota (con supporto Markdown *italic* per i titoli APA)
+                for seg_text, seg_italic in iter_italic_segments(footnote_text):
+                    if not seg_text:
+                        continue
+                    fn_seg_run = OxmlElement('w:r')
+                    fn_seg_rPr = OxmlElement('w:rPr')
+                    fn_seg_sz = OxmlElement('w:sz')
+                    fn_seg_sz.set(qn('w:val'), str(fn_font_size * 2))  # half-points
+                    fn_seg_rPr.append(fn_seg_sz)
+                    fn_seg_szCs = OxmlElement('w:szCs')
+                    fn_seg_szCs.set(qn('w:val'), str(fn_font_size * 2))
+                    fn_seg_rPr.append(fn_seg_szCs)
+                    if fn_font_name:
+                        fn_seg_rFonts = OxmlElement('w:rFonts')
+                        fn_seg_rFonts.set(qn('w:ascii'), fn_font_name)
+                        fn_seg_rFonts.set(qn('w:hAnsi'), fn_font_name)
+                        fn_seg_rPr.append(fn_seg_rFonts)
+                    if seg_italic:
+                        fn_seg_i = OxmlElement('w:i')
+                        fn_seg_rPr.append(fn_seg_i)
+                    fn_seg_run.append(fn_seg_rPr)
+                    fn_seg_t = OxmlElement('w:t')
+                    fn_seg_t.set(qn('xml:space'), 'preserve')
+                    fn_seg_t.text = seg_text
+                    fn_seg_run.append(fn_seg_t)
+                    fn_para.append(fn_seg_run)
 
                 footnote_el.append(fn_para)
                 fns_element.append(footnote_el)
@@ -2283,6 +2319,18 @@ async def export_thesis(
                     run.font.name = font_name
             elif line.strip():
                 footnotes_in_line = extract_footnotes_from_line(line)
+
+                def _add_runs_with_italic(para, text):
+                    """Aggiunge run al paragrafo rispettando il Markdown *italic*."""
+                    for seg_text, seg_italic in iter_italic_segments(text):
+                        if not seg_text:
+                            continue
+                        run = para.add_run(seg_text)
+                        run.font.name = font_name
+                        run.font.size = Pt(font_sz)
+                        if seg_italic:
+                            run.italic = True
+
                 if footnotes_in_line:
                     para = doc.add_paragraph()
                     para.alignment = body_alignment
@@ -2291,17 +2339,15 @@ async def export_thesis(
 
                     last_end = 0
                     for fn_start, fn_end, fn_text in footnotes_in_line:
-                        # Testo prima della nota
+                        # Testo prima della nota (con eventuale italic Markdown)
                         before_text = line[last_end:fn_start]
                         if before_text:
-                            run = para.add_run(before_text)
-                            run.font.name = font_name
-                            run.font.size = Pt(font_sz)
-                        # Aggiungi la footnote
+                            _add_runs_with_italic(para, before_text)
+                        # Aggiungi la footnote (italic gestito dentro add_footnote)
                         try:
                             add_footnote(doc, para, fn_text, docx_footnote_id[0], font_name, font_sz - 2)
                             docx_footnote_id[0] += 1
-                        except Exception as e:
+                        except Exception:
                             # Fallback: aggiungi come testo in apice
                             sup_run = para.add_run(f"[{docx_footnote_id[0]}]")
                             sup_run.font.name = font_name
@@ -2313,17 +2359,13 @@ async def export_thesis(
                     # Testo dopo l'ultima nota
                     remaining = line[last_end:]
                     if remaining:
-                        run = para.add_run(remaining)
-                        run.font.name = font_name
-                        run.font.size = Pt(font_sz)
+                        _add_runs_with_italic(para, remaining)
                 else:
-                    para = doc.add_paragraph(line)
+                    para = doc.add_paragraph()
                     para.alignment = body_alignment
                     para.paragraph_format.space_after = Pt(para_sp_after)
                     para.paragraph_format.line_spacing = line_sp
-                    for run in para.runs:
-                        run.font.name = font_name
-                        run.font.size = Pt(font_sz)
+                    _add_runs_with_italic(para, line)
             # Righe vuote: non aggiungere nulla (spazio naturale)
 
         doc.save(str(file_path))
@@ -2615,7 +2657,9 @@ async def export_thesis(
                     fontname=font_body,
                     color=(0.3, 0.3, 0.3)
                 )
-                # Wrap footnote text
+                # Wrap footnote text (rimuoviamo i marker Markdown *italic* nel PDF:
+                # qui non c'è rendering italic nativo, evitiamo asterischi letterali)
+                fn_text = strip_italic_markers(fn_text)
                 fn_words = fn_text.split()
                 fn_current_line = []
                 fn_x_start = margin_left + label_width
@@ -2735,6 +2779,10 @@ async def export_thesis(
                         last_end = fn_end
                     processed_line += line[last_end:]
                     line = processed_line
+
+                # PDF non gestisce nativamente il corsivo Markdown: rimuoviamo gli asterischi
+                # così i titoli APA non appaiono come letterali. (Il DOCX usa run italic.)
+                line = strip_italic_markers(line)
 
                 # Wrap text
                 words = line.split()
