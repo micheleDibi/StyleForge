@@ -59,6 +59,7 @@ const PaperSearchPanel = ({
   summaryByPaperId = {},
   onSummaryGenerated,
   initialTopic = '',
+  hideCreditEstimate = false,
 }) => {
   const [topic, setTopic] = useState(initialTopic);
   const [sources, setSources] = useState(AVAILABLE_SOURCES.map((s) => s.key));
@@ -205,11 +206,13 @@ const PaperSearchPanel = ({
           </select>
         </div>
 
-        <CreditEstimatePreview
-          operations={[
-            { type: 'research_search', params: { num_sources: sources.length }, label: 'Ricerca' },
-          ]}
-        />
+        {!hideCreditEstimate && (
+          <CreditEstimatePreview
+            operations={[
+              { type: 'research_search', params: { num_sources: sources.length }, label: 'Ricerca' },
+            ]}
+          />
+        )}
       </form>
 
       <div className="mt-6">

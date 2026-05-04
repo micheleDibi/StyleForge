@@ -21,7 +21,7 @@ import PaperSearchPanel from '../research/PaperSearchPanel';
 
 const PAPER_MIME_TYPE = 'application/x-research-paper';
 
-const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged }) => {
+const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesisPaid = false }) => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedPapers, setSelectedPapers] = useState(() => new Map());
   const [cachedSummaries, setCachedSummaries] = useState(() => new Map());
@@ -31,14 +31,16 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged }) => {
   const [removingId, setRemovingId] = useState(null);
   const [summaryCost, setSummaryCost] = useState(3);
 
-  // Recupera il costo effettivo di un riassunto AI per la stima
+  // Recupera il costo effettivo di un riassunto AI per la stima.
+  // Se la tesi ha gia' pagato il flat, l'informazione non serve.
   useEffect(() => {
+    if (isThesisPaid) return;
     let cancelled = false;
     estimateCredits('research_summary', {}).then((res) => {
       if (!cancelled && res?.credits_needed != null) setSummaryCost(res.credits_needed);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, []);
+  }, [isThesisPaid]);
 
   const paperAttachments = useMemo(
     () => (data.attachments || []).filter((a) => a.mime_type === PAPER_MIME_TYPE),
@@ -90,9 +92,13 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged }) => {
       setSelectedPapers(new Map());
       const summarized = result.summarized_count || 0;
       const credits = result.credits_consumed || 0;
+      // Se la tesi ha gia' pagato la tariffa flat, niente conteggio crediti consumati.
+      const summaryNote = isThesisPaid
+        ? `Aggiunti ${result.total} paper. Generati ${summarized} riassunti AI inclusi nella tariffa.`
+        : `Aggiunti ${result.total} paper. Generati ${summarized} riassunti AI (${credits} crediti).`;
       setInfo(
         summarized > 0
-          ? `Aggiunti ${result.total} paper. Generati ${summarized} riassunti AI (${credits} crediti).`
+          ? summaryNote
           : `Aggiunti ${result.total} paper alla tesi.`
       );
       if (onCreditsChanged) onCreditsChanged();
@@ -206,6 +212,7 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged }) => {
             onTogglePaper={handleTogglePaper}
             summaryByPaperId={Object.fromEntries(cachedSummaries)}
             onSummaryGenerated={handleSummaryGenerated}
+            hideCreditEstimate={isThesisPaid}
           />
 
           {selectedList.length > 0 && (
@@ -218,7 +225,7 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged }) => {
                     {selectedList.length === 1 ? 'paper selezionato' : 'paper selezionati'}
                   </span>
                 </div>
-                {unsummarizedCount > 0 && (
+                {unsummarizedCount > 0 && !isThesisPaid && (
                   <div className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
                     <Coins className="w-3.5 h-3.5" />
                     ≈ {estimatedExtraCost} crediti per {unsummarizedCount} {unsummarizedCount === 1 ? 'riassunto AI' : 'riassunti AI'} mancanti
@@ -251,9 +258,16 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged }) => {
                   </>
                 )}
               </button>
-              <p className="text-xs text-slate-500 text-center">
-                Per i paper di cui hai già generato il riassunto manualmente, i crediti del riassunto AI non vengono riaddebitati.
-              </p>
+              {!isThesisPaid && (
+                <p className="text-xs text-slate-500 text-center">
+                  Per i paper di cui hai già generato il riassunto manualmente, i crediti del riassunto AI non vengono riaddebitati.
+                </p>
+              )}
+              {isThesisPaid && (
+                <p className="text-xs text-emerald-700 text-center">
+                  Inclusi nella tariffa flat della tesi: nessun ulteriore credito verrà addebitato per i riassunti AI dei paper.
+                </p>
+              )}
             </div>
           )}
         </>

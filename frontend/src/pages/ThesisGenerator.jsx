@@ -51,6 +51,9 @@ const ThesisGenerator = () => {
   const [searchParams] = useSearchParams();
   const { user, isAdmin, credits, refreshUser } = useAuth();
   const entityType = (user?.entity_type || 'private');
+  // Una volta creata la tesi, l'addebito flat e' gia' avvenuto (oppure utente admin):
+  // gli step successivi (paper, capitoli, sezioni, contenuto) non vanno mostrati come a pagamento.
+  // `thesis.credits_charged` viene impostato a true dal backend al momento della create_thesis.
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -234,8 +237,19 @@ const ThesisGenerator = () => {
     return newThesis.id;
   };
 
+  // Indica che la tesi ha gia' pagato la tariffa flat (o utente admin):
+  // tutti gli step interni non devono piu' chiedere o scalare crediti.
+  const isThesisPaid = isAdmin || thesis?.credits_charged === true;
+
   // Helper: mostra dialog crediti e poi esegui azione
   const showCreditConfirmation = async (operationType, params, operationLabel, action) => {
+    // Se la tesi ha gia' pagato il flat (o utente admin), niente dialog: esegui direttamente.
+    if (isThesisPaid) {
+      await action();
+      refreshUser();
+      return;
+    }
+
     setCreditLoading(true);
     setCreditOperationName(operationLabel);
     setPendingCreditAction(() => action);
@@ -602,6 +616,7 @@ const ThesisGenerator = () => {
                 onChange={setAttachmentsData}
                 thesisId={thesisId}
                 onCreditsChanged={refreshUser}
+                isThesisPaid={isThesisPaid}
               />
             </>
           )}
@@ -653,8 +668,10 @@ const ThesisGenerator = () => {
           )}
         </div>
 
-        {/* Credit + API Cost Estimate (step 2-7) */}
-        {currentStep >= 2 && currentStep <= 7 && parametersData.title && (
+        {/* Credit + API Cost Estimate (step 2-7).
+            Per i non-admin la preview "tesi flat" si mostra SOLO finche' la tesi non e' stata creata
+            (quindi prima dell'addebito); subito dopo non ha piu' senso mostrarla. */}
+        {currentStep >= 2 && currentStep <= 7 && parametersData.title && (isAdmin || !isThesisPaid) && (
           <div className="mt-4">
             <CreditEstimatePreview
               operations={
@@ -669,6 +686,17 @@ const ThesisGenerator = () => {
                     ]
               }
             />
+          </div>
+        )}
+        {/* Banner di conferma "tesi gia' pagata" per non-admin durante gli step successivi alla creazione. */}
+        {!isAdmin && isThesisPaid && currentStep >= 3 && currentStep <= 7 && (
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span>
+              Tesi gia' pagata. Tutti gli step (paper, allegati, capitoli, sezioni, contenuto) sono inclusi: nessun ulteriore credito verra' addebitato.
+            </span>
           </div>
         )}
         {isAdmin && currentStep >= 2 && currentStep <= 7 && parametersData.title && (
