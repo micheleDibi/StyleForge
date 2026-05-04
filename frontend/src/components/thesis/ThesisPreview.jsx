@@ -22,6 +22,10 @@ const ThesisPreview = ({ thesis, content }) => {
   const [compilatioJobId, setCompilatioJobId] = useState(null);
   const [compilatioProgress, setCompilatioProgress] = useState(0);
 
+  // Stato per il download del report PDF
+  const [downloadingReport, setDownloadingReport] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+
   // Carica i template disponibili
   useEffect(() => {
     const loadTemplates = async () => {
@@ -109,13 +113,22 @@ const ThesisPreview = ({ thesis, content }) => {
   };
 
   const handleDownloadCompilatioReport = async () => {
-    if (compilatioResult?.scan_id) {
-      try {
-        await downloadCompilatioReport(compilatioResult.scan_id);
-      } catch (error) {
-        console.error('Errore download report:', error);
-        alert('Errore nel download del report');
-      }
+    if (!compilatioResult?.scan_id || downloadingReport) return;
+    setDownloadingReport(true);
+    setDownloadProgress(0);
+    try {
+      await downloadCompilatioReport(compilatioResult.scan_id, (pct) => {
+        setDownloadProgress(pct);
+      });
+    } catch (error) {
+      console.error('Errore download report:', error);
+      const msg = error?.code === 'ECONNABORTED'
+        ? 'Il download e\' scaduto. Riprova fra qualche istante.'
+        : (error?.response?.data?.detail || 'Errore nel download del report');
+      alert(msg);
+    } finally {
+      setDownloadingReport(false);
+      setDownloadProgress(0);
     }
   };
 
@@ -294,10 +307,20 @@ const ThesisPreview = ({ thesis, content }) => {
                 {compilatioResult.has_report && (
                   <button
                     onClick={handleDownloadCompilatioReport}
-                    className="btn btn-secondary gap-1 text-xs h-8"
+                    disabled={downloadingReport}
+                    className="btn btn-secondary gap-1 text-xs h-8 disabled:opacity-60 disabled:cursor-not-allowed min-w-[120px]"
                   >
-                    <FileText className="w-3 h-3" />
-                    Report PDF
+                    {downloadingReport ? (
+                      <>
+                        <Loader className="w-3 h-3 animate-spin" />
+                        {downloadProgress}%
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-3 h-3" />
+                        Report PDF
+                      </>
+                    )}
                   </button>
                 )}
               </div>

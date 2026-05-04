@@ -57,6 +57,51 @@ FONT_BOLD = "hebo"
 
 
 # ============================================================================
+# NORMALIZZAZIONE TESTO
+# ============================================================================
+#
+# Helvetica (Base 14 PDF) supporta solo Latin-1. Caratteri Unicode comuni nel
+# testo italiano (apostrofo tipografico, virgolette curve, em-dash, NBSP, ecc.)
+# vengono sostituiti con i loro equivalenti ASCII *prima* del rendering perche'
+# altrimenti `fitz.get_text_length` (usato per calcolare le posizioni X) e
+# `fitz.insert_text` (che li sostituisce con un fallback) divergono e i
+# segmenti seguenti finiscono accavallati.
+#
+# Tutte le sostituzioni sono 1:1 in codepoint per non shiftare le posizioni
+# delle POI (Compilatio le restituisce in offset di codepoint del testo
+# originale).
+_NORMALIZATION_PAIRS = [
+    # Apostrofi tipografici / virgolette singole
+    (0x2018, "'"), (0x2019, "'"), (0x201A, "'"), (0x201B, "'"),
+    (0x2032, "'"),  # prime
+    # Virgolette doppie tipografiche
+    (0x201C, '"'), (0x201D, '"'), (0x201E, '"'), (0x201F, '"'),
+    (0x2033, '"'),  # double prime
+    (0x00AB, '"'), (0x00BB, '"'),  # caporali
+    # Trattini lunghi
+    (0x2013, "-"), (0x2014, "-"), (0x2015, "-"), (0x2212, "-"),
+    # Ellissi (1 codepoint -> 1 codepoint)
+    (0x2026, "."),
+    # Spazi unicode -> spazio normale
+    (0x00A0, " "), (0x2002, " "), (0x2003, " "), (0x2004, " "),
+    (0x2005, " "), (0x2006, " "), (0x2009, " "), (0x202F, " "),
+    (0x205F, " "), (0x3000, " "),
+    # Zero-width / formatting -> spazio (preserva la lunghezza)
+    (0x200B, " "), (0x200C, " "), (0x200D, " "), (0xFEFF, " "),
+]
+
+_TEXT_NORMALIZATION_TABLE = str.maketrans({chr(cp): repl for cp, repl in _NORMALIZATION_PAIRS})
+
+
+def _normalize_text(text: Optional[str]) -> Optional[str]:
+    """Sostituisce i caratteri Unicode non supportati da Helvetica con
+    equivalenti ASCII, mantenendo la stessa lunghezza in codepoint."""
+    if text is None:
+        return None
+    return text.translate(_TEXT_NORMALIZATION_TABLE)
+
+
+# ============================================================================
 # DATACLASS DI APPOGGIO
 # ============================================================================
 
@@ -571,15 +616,14 @@ def _render_page_summary(doc: fitz.Document, scan_data: Dict[str, Any]) -> None:
     _draw_label_value(page, left_x, line_y + line_h, "Numero di parole", f"{n_words:,}".replace(",", "."))
     _draw_label_value(page, left_x, line_y + 2 * line_h, "Numero di caratteri", f"{n_chars:,}".replace(",", "."))
 
-    # Destra
-    _draw_label_value(page, right_x, line_y, "Depositante", scan_data.get("user_full_name") or scan_data.get("user_email") or "-", max_value_w=col_w - 80)
+    # Destra (Depositante volutamente omesso: il report e' anonimo lato utente)
     src_label_map = {
         "manual": "Caricamento manuale",
         "thesis": "Wizard tesi",
         "generate": "Generazione",
         "humanize": "Umanizzazione",
     }
-    _draw_label_value(page, right_x, line_y + line_h, "Tipo di caricamento",
+    _draw_label_value(page, right_x, line_y, "Tipo di caricamento",
                       src_label_map.get(scan_data.get("source_type") or "manual", "Manuale"))
     completed = scan_data.get("completed_at")
     if isinstance(completed, datetime):
@@ -588,7 +632,7 @@ def _render_page_summary(doc: fitz.Document, scan_data: Dict[str, Any]) -> None:
         completed_str = completed[:16].replace("T", " ")
     else:
         completed_str = "-"
-    _draw_label_value(page, right_x, line_y + 2 * line_h, "Data fine analisi", completed_str)
+    _draw_label_value(page, right_x, line_y + line_h, "Data fine analisi", completed_str)
 
     # ---- Sezione 1/3 Riassunto ----
     y = y_box + box_h + 24
@@ -810,6 +854,76 @@ def _build_segments(text: str, positions: List[Position]) -> List[Tuple[str, str
     return segments
 
 
+def _layout_lines(text: str, fontname: str, fontsize: float, max_w: float) -> List[Tuple[str, int]]:
+    """
+    Spezza `text` in righe che entrano in `max_w`. Mantiene i \\n come line break
+    forzati. Ritorna una lista di tuple (line_str, char_offset_nel_testo_originale).
+    Il char_offset serve per sapere quale tratto della riga e' evidenziato.
+    """
+    lines: List[Tuple[str, int]] = []
+    n = len(text)
+    i = 0
+    while i < n:
+        # Trova il prossimo newline
+        nl = text.find("\n", i)
+        para_end = nl if nl >= 0 else n
+        para = text[i:para_end]
+        para_offset = i
+
+        # Word-wrap del paragrafo
+        if not para:
+            lines.append(("", para_offset))
+        else:
+            j = 0
+            cur_start = 0  # offset nel paragrafo
+            cur_len_chars = 0
+            last_break = -1  # ultima posizione dove possiamo wrappare (dopo uno spazio)
+            while j <= len(para):
+                # Misura il sub-testo da cur_start a j
+                if j == len(para):
+                    # Ultima riga del paragrafo
+                    seg = para[cur_start:j]
+                    if seg or cur_start == 0:
+                        lines.append((seg, para_offset + cur_start))
+                    break
+                ch = para[j]
+                seg_so_far = para[cur_start:j + 1]
+                w = fitz.get_text_length(seg_so_far, fontname=fontname, fontsize=fontsize)
+                if w > max_w:
+                    # Devo wrappare. Usa l'ultimo punto di break valido se c'e'.
+                    if last_break > cur_start:
+                        seg = para[cur_start:last_break]
+                        lines.append((seg.rstrip(), para_offset + cur_start))
+                        # Salta gli spazi dopo il break
+                        cur_start = last_break
+                        while cur_start < len(para) and para[cur_start] == " ":
+                            cur_start += 1
+                        j = cur_start
+                        last_break = -1
+                        continue
+                    else:
+                        # Parola troppo lunga, taglia hard a j (almeno un char per evitare loop)
+                        seg = para[cur_start:max(j, cur_start + 1)]
+                        lines.append((seg, para_offset + cur_start))
+                        cur_start = max(j, cur_start + 1)
+                        j = cur_start
+                        last_break = -1
+                        continue
+                if ch == " ":
+                    last_break = j + 1
+                j += 1
+
+        i = para_end
+        if nl >= 0:
+            # Salta il \n
+            i += 1
+            # Se la prossima e' empty (paragrafo vuoto) inseriamo riga vuota
+            # (gestita gia' al prossimo giro se text[i] == '\n')
+
+
+    return lines
+
+
 def _render_page_pois(doc: fitz.Document, scan_data: Dict[str, Any]) -> None:
     text = scan_data.get("document_text")
     positions: List[Position] = scan_data.get("positions") or []
@@ -839,89 +953,111 @@ def _render_page_pois(doc: fitz.Document, scan_data: Dict[str, Any]) -> None:
         _draw_footer(page, page_num=3)
         return
 
-    # Legenda
+    # Legenda colori
     _draw_legend(page, y)
     y += 22
 
-    # Costruisci segmenti tipizzati
-    segments = _build_segments(text, positions)
+    # Costruisci array di tipo per ogni char (None = normal)
+    n = len(text)
+    type_arr: List[Optional[str]] = [None] * n
+    for p in positions:
+        s = max(0, min(n, p.start))
+        e = max(0, min(n, p.end))
+        if e <= s:
+            continue
+        for i in range(s, e):
+            if type_arr[i] is None:
+                type_arr[i] = p.type
 
-    # Renderizza paragrafi mantenendo gli a-capo
+    # Spezza il testo in righe (offset incluso)
     fontsize = 9.5
     line_height = fontsize * 1.55
+    lines = _layout_lines(text, FONT_REG, fontsize, CONTENT_W)
+
     page_num = 3
+    y_cursor = y
 
-    cursor_x = MARGIN
-    cursor_y = y
-    line_segments: List[Tuple[str, str, float, float]] = []  # (text, type, x_start, width)
-    line_width_used = 0.0
-    space_w = fitz.get_text_length(" ", fontname=FONT_REG, fontsize=fontsize)
+    for line_text, line_offset in lines:
+        # Wrap pagina
+        if y_cursor > PAGE_H - MARGIN - 8:
+            _draw_footer(page, page_num=page_num)
+            page_num += 1
+            page = doc.new_page(width=PAGE_W, height=PAGE_H)
+            y_cursor = MARGIN + 12
 
-    def flush_line():
-        """Renderizza la riga corrente accumulata in line_segments."""
-        nonlocal line_segments, line_width_used
-        for (seg_text, seg_type, sx, sw) in line_segments:
-            if not seg_text:
-                continue
-            # Sfondo evidenziato
-            if seg_type in ("ai", "similarity", "quotation"):
-                bg = COLOR_AI_BG if seg_type == "ai" else (COLOR_SIM_BG if seg_type == "similarity" else COLOR_QUOT_BG)
+        if not line_text:
+            y_cursor += line_height
+            continue
+
+        # 1) Disegna prima i bg rect per i range evidenziati su questa riga
+        # Trova i run consecutivi dello stesso type all'interno della riga
+        L = len(line_text)
+        i = 0
+        while i < L:
+            t = type_arr[line_offset + i] if (line_offset + i) < n else None
+            if t in ("ai", "similarity", "quotation"):
+                # Trova fine del run
+                j = i + 1
+                while j < L and (line_offset + j) < n and type_arr[line_offset + j] == t:
+                    j += 1
+                # Calcola x_start, x_end usando get_text_length
+                prefix_w = fitz.get_text_length(line_text[:i], fontname=FONT_REG, fontsize=fontsize)
+                run_w = fitz.get_text_length(line_text[i:j], fontname=FONT_REG, fontsize=fontsize)
+                x_s = MARGIN + prefix_w
+                x_e = MARGIN + prefix_w + run_w
+
+                # Background
+                bg = COLOR_AI_BG if t == "ai" else (COLOR_SIM_BG if t == "similarity" else COLOR_QUOT_BG)
                 shape = page.new_shape()
-                shape.draw_rect(fitz.Rect(sx - 1, cursor_y - fontsize + 1, sx + sw + 1, cursor_y + 3))
+                shape.draw_rect(fitz.Rect(x_s - 1, y_cursor - fontsize + 1, x_e + 1, y_cursor + 3))
                 shape.finish(fill=bg, color=bg, width=0)
                 shape.commit()
-            # Testo
-            color = BRAND_TEXT
-            if seg_type == "ai":
+
+                # Sottolineatura per ai/similarity
+                if t in ("ai", "similarity"):
+                    line_color = COLOR_AI_LINE if t == "ai" else COLOR_SIM_LINE
+                    shape = page.new_shape()
+                    shape.draw_line(fitz.Point(x_s, y_cursor + 1.5), fitz.Point(x_e, y_cursor + 1.5))
+                    shape.finish(color=line_color, width=0.7)
+                    shape.commit()
+
+                i = j
+            else:
+                i += 1
+
+        # 2) Renderizza la riga run-by-run (un solo insert_text per run, con
+        #    posizione X calcolata dal prefix). Ogni run ha al massimo un colore;
+        #    niente double-render, niente overlay -> nessuna sovrapposizione.
+        i = 0
+        while i < L:
+            t_raw = type_arr[line_offset + i] if (line_offset + i) < n else None
+            t = t_raw if t_raw in ("ai", "similarity", "quotation") else "normal"
+            j = i + 1
+            while j < L:
+                t_next_raw = type_arr[line_offset + j] if (line_offset + j) < n else None
+                t_next = t_next_raw if t_next_raw in ("ai", "similarity", "quotation") else "normal"
+                if t_next != t:
+                    break
+                j += 1
+
+            if t == "ai":
                 color = COLOR_AI_LINE
-            elif seg_type == "similarity":
+            elif t == "similarity":
                 color = COLOR_SIM_LINE
+            else:
+                color = BRAND_TEXT
+
+            prefix_w = fitz.get_text_length(line_text[:i], fontname=FONT_REG, fontsize=fontsize) if i > 0 else 0
             page.insert_text(
-                fitz.Point(sx, cursor_y),
-                seg_text,
+                fitz.Point(MARGIN + prefix_w, y_cursor),
+                line_text[i:j],
                 fontname=FONT_REG,
                 fontsize=fontsize,
                 color=color,
             )
-            # Sottolineatura per AI/similarity
-            if seg_type in ("ai", "similarity"):
-                line_color = COLOR_AI_LINE if seg_type == "ai" else COLOR_SIM_LINE
-                shape = page.new_shape()
-                shape.draw_line(fitz.Point(sx, cursor_y + 1.5), fitz.Point(sx + sw, cursor_y + 1.5))
-                shape.finish(color=line_color, width=0.7)
-                shape.commit()
-        line_segments = []
-        line_width_used = 0.0
+            i = j
 
-    def new_line():
-        nonlocal cursor_x, cursor_y, page, page_num
-        flush_line()
-        cursor_y += line_height
-        cursor_x = MARGIN
-        if cursor_y > PAGE_H - MARGIN:
-            _draw_footer(page, page_num=page_num)
-            page_num += 1
-            page = doc.new_page(width=PAGE_W, height=PAGE_H)
-            cursor_y = MARGIN + 12
-
-    # Per ogni segmento, lo splittiamo in parole rispettando wrap
-    for seg_text, seg_type in segments:
-        # Mantieni newline come terminatori di riga forzati
-        parts = seg_text.split("\n")
-        for pi, part in enumerate(parts):
-            if pi > 0:
-                new_line()
-            # word wrap
-            for word in re.split(r"(\s+)", part):
-                if not word:
-                    continue
-                w_len = fitz.get_text_length(word, fontname=FONT_REG, fontsize=fontsize)
-                if line_width_used + w_len > CONTENT_W and word.strip():
-                    new_line()
-                # Aggiungi alla riga
-                line_segments.append((word, seg_type, MARGIN + line_width_used, w_len))
-                line_width_used += w_len
-    flush_line()
+        y_cursor += line_height
 
     _draw_footer(page, page_num=page_num)
 
@@ -983,12 +1119,19 @@ def generate_styleforge_report(scan_data: Dict[str, Any], output_path: str) -> s
         pois = sd.get("pois") or []
     positions, sources = parse_pois(pois)
 
-    # Conteggio caratteri se non gia' fornito
-    if not scan_data.get("char_count"):
-        if scan_data.get("document_text"):
-            scan_data["char_count"] = len(scan_data["document_text"])
-
+    # Normalizza il testo originale prima di inserirlo nel PDF.
+    # Helvetica (Base 14) non supporta vari simboli Unicode (apostrofi tipografici,
+    # virgolette curve, em-dash, ecc.). La normalizzazione e' length-preserving
+    # cosi' le `positions` restano coerenti.
     enriched = dict(scan_data)
+    if enriched.get("document_text"):
+        enriched["document_text"] = _normalize_text(enriched["document_text"])
+
+    # Conteggio caratteri se non gia' fornito
+    if not enriched.get("char_count"):
+        if enriched.get("document_text"):
+            enriched["char_count"] = len(enriched["document_text"])
+
     enriched["positions"] = positions
     enriched["sources"] = sources
 

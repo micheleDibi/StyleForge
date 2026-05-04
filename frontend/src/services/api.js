@@ -823,14 +823,40 @@ export const getCompilatioScansBySource = async (sourceJobIds) => {
   return response.data;
 };
 
-export const downloadCompilatioReport = async (scanId) => {
+/**
+ * Scarica il report Detector AI in PDF.
+ * Il PDF viene generato server-side a richiesta (puo' richiedere alcuni secondi
+ * per documenti lunghi), quindi abbiamo un timeout esteso e supportiamo un
+ * callback di avanzamento.
+ *
+ * @param {string} scanId
+ * @param {(percent: number) => void} [onProgress] - 0..100. Quando il backend
+ *   non invia Content-Length (PDF generato in streaming), viene comunque
+ *   chiamato con valori "indeterminati" basati sui bytes ricevuti.
+ */
+export const downloadCompilatioReport = async (scanId, onProgress) => {
   const response = await api.get(`/compilatio/report/${scanId}`, {
-    responseType: 'blob'
+    responseType: 'blob',
+    timeout: 300000, // 5 minuti: la generazione PDF puo' essere lenta
+    onDownloadProgress: (e) => {
+      if (typeof onProgress !== 'function') return;
+      if (e.total && e.total > 0) {
+        const pct = Math.min(99, Math.round((e.loaded / e.total) * 100));
+        onProgress(pct);
+      } else {
+        // Server non invia Content-Length: usiamo i byte ricevuti come hint
+        // limitato a 90% per non confondere l'utente.
+        const approx = Math.min(90, Math.round((e.loaded / 200000) * 100));
+        onProgress(approx);
+      }
+    },
   });
+  if (typeof onProgress === 'function') onProgress(100);
+
   const url = window.URL.createObjectURL(new Blob([response.data]));
   const link = document.createElement('a');
   link.href = url;
-  link.setAttribute('download', `compilatio_report_${scanId.substring(0, 8)}.pdf`);
+  link.setAttribute('download', `styleforge_detector_report_${scanId.substring(0, 8)}.pdf`);
   document.body.appendChild(link);
   link.click();
   link.remove();
