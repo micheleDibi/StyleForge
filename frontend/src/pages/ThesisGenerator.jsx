@@ -567,6 +567,8 @@ const ThesisGenerator = () => {
               onConfirm={confirmChaptersAndGenerateSections}
               isLoading={isLoading}
               isGenerating={isGeneratingChapters}
+              thesisTitle={parametersData.title}
+              thesisDescription={parametersData.description}
             />
           )}
 
@@ -577,6 +579,8 @@ const ThesisGenerator = () => {
               onConfirm={confirmSectionsAndGenerate}
               isLoading={isLoading}
               isGenerating={isGeneratingSections}
+              thesisTitle={parametersData.title}
+              thesisDescription={parametersData.description}
             />
           )}
 

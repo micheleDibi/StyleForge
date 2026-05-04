@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { GripVertical, Plus, Trash2, Edit3, Check, X, Sparkles, Loader, BookOpen, Brain, ListTree } from 'lucide-react';
+import { GripVertical, Plus, Trash2, Edit3, Check, X, Sparkles, Loader, BookOpen, Brain, ListTree, Download } from 'lucide-react';
+import exportThesisStructureToPdf from '../../utils/exportThesisStructure';
 
-const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenerating }) => {
+const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenerating, thesisTitle = '', thesisDescription = '' }) => {
   const [editingIndex, setEditingIndex] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -145,13 +146,34 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
     );
   }
 
+  const handleExportPdf = () => {
+    exportThesisStructureToPdf({
+      title: thesisTitle,
+      description: thesisDescription,
+      chapters: safeChapters,
+      scope: 'chapters',
+    });
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Struttura Capitoli</h2>
-        <p className="text-slate-600">
-          Rivedi e modifica i capitoli generati dall'AI. Puoi riordinare, aggiungere o rimuovere capitoli.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Struttura Capitoli</h2>
+          <p className="text-slate-600">
+            Rivedi e modifica i capitoli generati dall'AI. Puoi riordinare, aggiungere o rimuovere capitoli.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleExportPdf}
+          disabled={safeChapters.length === 0}
+          className="flex-shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Esporta la struttura corrente dei capitoli in PDF"
+        >
+          <Download className="w-4 h-4" />
+          Esporta PDF
+        </button>
       </div>
 
       <div className="card space-y-4">
