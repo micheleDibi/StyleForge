@@ -125,17 +125,54 @@ class SourceItem:
 # ============================================================================
 
 def _classify_poi_type(raw: Any) -> str:
-    """Mappa stringhe varie ad un tipo canonico."""
+    """Mappa una stringa di tipo ad un tipo canonico ('ai' | 'similarity' | 'quotation')."""
     if not raw:
         return "similarity"
     s = str(raw).lower()
-    if "ai" in s or "artificial" in s or "ia" == s or "ai_generated" in s:
+    if "ai" in s or "artificial" in s or "ia" == s or "ai_generated" in s or "machine" in s:
         return "ai"
     if "quot" in s or "cit" in s:
         return "quotation"
-    if "sim" in s or "exact" in s or "match" in s or "plag" in s:
+    if (
+        "sim" in s
+        or "exact" in s
+        or "match" in s
+        or "plag" in s
+        or "paraphr" in s
+        or "same_meaning" in s
+        or "translat" in s
+    ):
         return "similarity"
     return "similarity"
+
+
+# Priorita' di evidenziazione quando un POI ha piu' tipi (Compilatio puo' assegnare
+# piu' classificazioni alla stessa porzione di testo).
+_POI_TYPE_PRIORITY = {"ai": 3, "similarity": 2, "quotation": 1}
+
+
+def _resolve_poi_type(poi: dict) -> str:
+    """
+    Determina il tipo canonico di un POI Compilatio.
+    Compilatio espone i tipi nel campo `types` (lista). Manteniamo
+    fallback a `type/category/kind` per altre sorgenti.
+    """
+    raw = poi.get("types")
+    if raw is None:
+        raw = poi.get("type") or poi.get("category") or poi.get("kind")
+
+    candidates: List[str] = []
+    if isinstance(raw, list):
+        candidates = [str(x) for x in raw if x]
+    elif raw:
+        candidates = [str(raw)]
+
+    if not candidates:
+        return "similarity"
+
+    classified = [_classify_poi_type(c) for c in candidates]
+    # Sceglie il tipo con priorita' piu' alta (AI > similarity > quotation).
+    return max(classified, key=lambda t: _POI_TYPE_PRIORITY.get(t, 0))
 
 
 def _coerce_int(value: Any) -> Optional[int]:
@@ -238,9 +275,7 @@ def parse_pois(pois: List[dict]) -> Tuple[List[Position], List[SourceItem]]:
         if not isinstance(poi, dict):
             continue
 
-        ptype = _classify_poi_type(
-            poi.get("type") or poi.get("category") or poi.get("kind")
-        )
+        ptype = _resolve_poi_type(poi)
         start, end = _extract_position(poi)
         if start is not None and end is not None and end > start:
             positions.append(Position(start=start, end=end, type=ptype))
