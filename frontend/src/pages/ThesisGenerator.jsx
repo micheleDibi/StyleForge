@@ -109,6 +109,17 @@ const ThesisGenerator = () => {
   const [creditOperationName, setCreditOperationName] = useState('');
   const [pendingCreditAction, setPendingCreditAction] = useState(null);
 
+  // Costo della tariffa flat tesi per il tipo ente dell'utente (configurabile da admin).
+  const [thesisFlatCost, setThesisFlatCost] = useState(null);
+  useEffect(() => {
+    if (isAdmin) return;
+    let cancelled = false;
+    estimateCredits('thesis_total', { entity_type: entityType }).then((res) => {
+      if (!cancelled && res?.credits_needed != null) setThesisFlatCost(res.credits_needed);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isAdmin, entityType]);
+
   // Helper: extract error message with credit error detection
   const handleApiError = (err, fallbackMessage) => {
     if (err.isInsufficientCredits || err.response?.status === 402) {
@@ -726,7 +737,7 @@ const ThesisGenerator = () => {
               </div>
               <div className="flex-1 text-sm">
                 <p className="font-semibold text-amber-900 mb-1">
-                  Addebito alla creazione: {entityType === 'training' ? '125' : '250'} crediti
+                  Addebito alla creazione: {thesisFlatCost != null ? thesisFlatCost : '—'} crediti
                 </p>
                 <p className="text-amber-800">
                   Cliccando su <strong>Continua</strong> verrà creata la tesi e verrà addebitata in un'unica
