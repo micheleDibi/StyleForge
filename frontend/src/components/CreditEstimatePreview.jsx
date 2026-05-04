@@ -21,6 +21,9 @@ const CreditEstimatePreview = ({ operationType, params, operations }) => {
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
 
+    // La preview crediti e' uno strumento di osservabilita' admin: per gli utenti
+    // standard non viene calcolata ne' mostrata.
+    if (!isAdmin) { setResults(null); return; }
     if (!ops[0]?.type) { setResults(null); return; }
 
     setLoading(true);
@@ -38,8 +41,9 @@ const CreditEstimatePreview = ({ operationType, params, operations }) => {
     }, 700);
 
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [depsKey]);
+  }, [depsKey, isAdmin]);
 
+  if (!isAdmin) return null;
   if (!results && !loading) return null;
 
   const totalNeeded = results ? results.reduce((sum, r) => sum + (r.credits_needed || 0), 0) : 0;
