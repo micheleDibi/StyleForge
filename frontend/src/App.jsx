@@ -12,6 +12,9 @@ import Admin from './pages/Admin';
 import DetectorAI from './pages/DetectorAI';
 import ImageToVideo from './pages/ImageToVideo';
 import ResearchSearch from './pages/ResearchSearch';
+import BuyCredits from './pages/BuyCredits';
+import PaymentReturn from './pages/PaymentReturn';
+import PaymentHistory from './pages/PaymentHistory';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import Helper from './components/Helper';
@@ -160,6 +163,30 @@ const AppRoutes = () => {
           <PermissionRoute permission="compilatio_scan">
             <DetectorAI />
           </PermissionRoute>
+        }
+      />
+      <Route
+        path="/credits/buy"
+        element={
+          <ProtectedRoute>
+            <BuyCredits />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/payments/return"
+        element={
+          <ProtectedRoute>
+            <PaymentReturn />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/payments/history"
+        element={
+          <ProtectedRoute>
+            <PaymentHistory />
+          </ProtectedRoute>
         }
       />
       <Route path="/privacy" element={<PrivacyPolicy />} />

@@ -162,6 +162,15 @@ const Dashboard = () => {
                 <Coins className="w-4 h-4 text-orange-500" />
                 <span className="text-sm font-bold text-orange-700">{isAdmin ? '∞' : credits}</span>
                 <span className="text-xs text-orange-500">crediti</span>
+                {!isAdmin && (
+                  <button
+                    onClick={() => navigate('/credits/buy')}
+                    className="ml-1 w-5 h-5 rounded-full bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center transition-colors shadow-sm"
+                    title="Compra crediti"
+                  >
+                    <span className="text-sm font-bold leading-none">+</span>
+                  </button>
+                )}
               </div>
               {/* User */}
               <div className="hidden md:flex items-center gap-2 px-3 py-2 bg-white/70 rounded-xl border border-gray-200/50">

@@ -38,6 +38,10 @@ Pillow>=10.0.0
 # Web Scraping
 beautifulsoup4>=4.12.0
 
+# PagoPA / SolutionPA — SOAP client + XML parsing
+zeep>=4.2.0
+lxml>=4.9.0
+
 # Testing
 pytest>=7.4.0
 httpx>=0.25.0

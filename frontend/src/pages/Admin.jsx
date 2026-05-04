@@ -5,7 +5,8 @@ import {
   ChevronDown, ChevronUp, Edit3, Save, X, Plus, Minus,
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
   Sparkles, Settings, Eye, EyeOff, UserPlus, RotateCcw,
-  AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image
+  AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image,
+  CreditCard
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -19,6 +20,7 @@ import {
   createApiKey, getApiKeys, revokeApiKey
 } from '../services/api';
 import Logo from '../components/Logo';
+import AdminPaymentsSection from '../components/admin/AdminPaymentsSection';
 
 const PERMISSION_LABELS = {
   train: 'Addestra Modello',
@@ -596,7 +598,8 @@ const Admin = () => {
     { id: 'stats', label: 'Statistiche', icon: BarChart3 },
     { id: 'settings', label: 'Impostazioni', icon: Settings },
     { id: 'templates', label: 'Template Export', icon: FileText },
-    { id: 'api-keys', label: 'API Keys', icon: Key }
+    { id: 'api-keys', label: 'API Keys', icon: Key },
+    { id: 'payments', label: 'Pagamenti PagoPA', icon: CreditCard }
   ];
 
   return (
@@ -1814,6 +1817,11 @@ const Admin = () => {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ===================== TAB PAGAMENTI PAGOPA ===================== */}
+            {activeTab === 'payments' && (
+              <AdminPaymentsSection />
             )}
           </>
         )}

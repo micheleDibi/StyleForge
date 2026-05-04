@@ -63,6 +63,10 @@ class UserResponse(BaseModel):
     credits: int = 0
     permissions: list = []
     entity_type: Optional[str] = 'private'
+    codice_fiscale: Optional[str] = None
+    partita_iva: Optional[str] = None
+    ragione_sociale: Optional[str] = None
+    indirizzo_fatturazione: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     last_login: Optional[datetime] = None
@@ -268,6 +272,10 @@ def build_user_response(user: User, db: Session) -> UserResponse:
         credits=user.credits if not (user.is_admin or (user.role and user.role.name == 'admin')) else -1,  # -1 = infiniti
         permissions=permissions,
         entity_type=getattr(user, 'entity_type', None) or 'private',
+        codice_fiscale=getattr(user, 'codice_fiscale', None),
+        partita_iva=getattr(user, 'partita_iva', None),
+        ragione_sociale=getattr(user, 'ragione_sociale', None),
+        indirizzo_fatturazione=getattr(user, 'indirizzo_fatturazione', None),
         created_at=user.created_at,
         updated_at=user.updated_at,
         last_login=user.last_login
