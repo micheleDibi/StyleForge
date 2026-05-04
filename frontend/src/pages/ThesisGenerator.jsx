@@ -544,12 +544,65 @@ const ThesisGenerator = () => {
           )}
 
           {currentStep === 3 && (
-            <ThesisPapersForm
-              data={attachmentsData}
-              onChange={setAttachmentsData}
-              thesisId={thesisId}
-              onCreditsChanged={refreshUser}
-            />
+            <>
+              {/* Nav bar in cima allo step paper: la lista risultati può essere lunga,
+                  qui i pulsanti restano sempre raggiungibili senza scroll. */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between gap-4 p-4 bg-white rounded-2xl shadow-lg border border-slate-200">
+                  <button
+                    onClick={handleBack}
+                    disabled={currentStep === 1}
+                    className={`
+                      flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all
+                      ${currentStep === 1
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900 active:scale-95'
+                      }
+                    `}
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                    <span>Indietro</span>
+                  </button>
+
+                  <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
+                    <span className="font-medium text-orange-600">Step {currentStep}</span>
+                    <span>di</span>
+                    <span>{STEPS.length}</span>
+                  </div>
+
+                  <button
+                    onClick={handleNext}
+                    disabled={!canProceed() || isLoading}
+                    className={`
+                      flex items-center gap-2 px-8 py-3 rounded-xl font-semibold transition-all shadow-md
+                      ${!canProceed() || isLoading
+                        ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                        : 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 hover:shadow-lg hover:shadow-orange-500/30 active:scale-95'
+                      }
+                    `}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader className="w-5 h-5 animate-spin" />
+                        <span>Elaborazione...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Continua</span>
+                        <ArrowRight className="w-5 h-5" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <ThesisPapersForm
+                data={attachmentsData}
+                onChange={setAttachmentsData}
+                thesisId={thesisId}
+                onCreditsChanged={refreshUser}
+              />
+            </>
           )}
 
           {currentStep === 4 && (
@@ -627,8 +680,9 @@ const ThesisGenerator = () => {
           </div>
         )}
 
-        {/* Navigation Buttons - Migliorati */}
-        {currentStep <= 4 && (
+        {/* Navigation Buttons - Migliorati
+            Lo step 3 (Paper) ha la propria nav bar in cima, vista la lunghezza dei risultati. */}
+        {currentStep <= 4 && currentStep !== 3 && (
           <div className="mt-10 pb-8">
             <div className="flex items-center justify-between gap-4 p-4 bg-white rounded-2xl shadow-lg border border-slate-200">
               {/* Pulsante Indietro */}
