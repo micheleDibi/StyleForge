@@ -332,6 +332,7 @@ class ThesisResponse(BaseModel):
     current_phase: int
     generation_progress: int
     total_words_generated: int
+    credits_charged: bool = False
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
