@@ -40,17 +40,32 @@ CREATE TABLE IF NOT EXISTS credit_packages (
 
 CREATE INDEX IF NOT EXISTS idx_credit_packages_active ON credit_packages(is_active, sort_order);
 
--- Pacchetti default (idempotente: niente errore se già presenti)
-INSERT INTO credit_packages (name, credits, price_cents, sort_order, description)
-SELECT 'Starter', 100, 1000, 1, 'Pacchetto piccolo per uso saltuario'
+-- Auto-correzione default su tabelle preesistenti (se la migration era stata
+-- applicata in versioni precedenti senza i default, riallinea ora).
+ALTER TABLE credit_packages ALTER COLUMN is_active SET DEFAULT TRUE;
+ALTER TABLE credit_packages ALTER COLUMN sort_order SET DEFAULT 0;
+ALTER TABLE credit_packages ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE credit_packages ALTER COLUMN updated_at SET DEFAULT NOW();
+UPDATE credit_packages SET is_active  = TRUE WHERE is_active  IS NULL;
+UPDATE credit_packages SET sort_order = 0    WHERE sort_order IS NULL;
+UPDATE credit_packages SET created_at = NOW() WHERE created_at IS NULL;
+UPDATE credit_packages SET updated_at = NOW() WHERE updated_at IS NULL;
+ALTER TABLE credit_packages ALTER COLUMN is_active  SET NOT NULL;
+ALTER TABLE credit_packages ALTER COLUMN sort_order SET NOT NULL;
+
+-- Pacchetti default (idempotente: niente errore se già presenti).
+-- Specifichiamo esplicitamente is_active/created_at/updated_at per non
+-- dipendere dai DEFAULT (pi robusto se la tabella è stata creata altrove).
+INSERT INTO credit_packages (name, credits, price_cents, is_active, sort_order, description, created_at, updated_at)
+SELECT 'Starter', 100, 1000, TRUE, 1, 'Pacchetto piccolo per uso saltuario', NOW(), NOW()
 WHERE NOT EXISTS (SELECT 1 FROM credit_packages WHERE name = 'Starter');
 
-INSERT INTO credit_packages (name, credits, price_cents, sort_order, description)
-SELECT 'Standard', 500, 4500, 2, 'Pacchetto medio: 10% di sconto'
+INSERT INTO credit_packages (name, credits, price_cents, is_active, sort_order, description, created_at, updated_at)
+SELECT 'Standard', 500, 4500, TRUE, 2, 'Pacchetto medio: 10% di sconto', NOW(), NOW()
 WHERE NOT EXISTS (SELECT 1 FROM credit_packages WHERE name = 'Standard');
 
-INSERT INTO credit_packages (name, credits, price_cents, sort_order, description)
-SELECT 'Plus', 1000, 8500, 3, 'Pacchetto grande: 15% di sconto'
+INSERT INTO credit_packages (name, credits, price_cents, is_active, sort_order, description, created_at, updated_at)
+SELECT 'Plus', 1000, 8500, TRUE, 3, 'Pacchetto grande: 15% di sconto', NOW(), NOW()
 WHERE NOT EXISTS (SELECT 1 FROM credit_packages WHERE name = 'Plus');
 
 -- ----------------------------------------------------------------------------
