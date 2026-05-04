@@ -571,6 +571,7 @@ class AdminUserResponse(BaseModel):
     credits: int
     permissions: List[str] = []
     user_overrides: Dict[str, bool] = {}  # {permission_code: granted}
+    entity_type: Optional[str] = 'private'
     created_at: datetime
     updated_at: Optional[datetime] = None
     last_login: Optional[datetime] = None
@@ -586,6 +587,10 @@ class AdminUpdateUserRequest(BaseModel):
     """Request per aggiornare un utente (admin)."""
     is_active: Optional[bool] = None
     full_name: Optional[str] = None
+    entity_type: Optional[str] = Field(
+        None,
+        description="Tipo ente: 'private' o 'training'. Determina la tariffa flat per la generazione tesi.",
+    )
 
 
 class AdminChangeRoleRequest(BaseModel):

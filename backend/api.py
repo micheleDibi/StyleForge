@@ -36,8 +36,6 @@ from auth import get_current_user, get_current_active_user, require_permission
 from auth_routes import router as auth_router
 from thesis_routes import router as thesis_router
 from admin_routes import router as admin_router
-from image_enhance_routes import router as image_enhance_router
-from carousel_routes import router as carousel_router
 from external_api_routes import router as external_api_router
 from video_routes import router as video_router
 from research_routes import router as research_router
@@ -87,12 +85,6 @@ app.include_router(thesis_router)
 
 # Registra router admin
 app.include_router(admin_router)
-
-# Registra router image enhancement
-app.include_router(image_enhance_router)
-
-# Registra router carousel creator
-app.include_router(carousel_router)
 
 # Registra router API esterna v1
 app.include_router(external_api_router)
@@ -667,7 +659,7 @@ async def anti_ai_correction_endpoint(
 # COMPILATIO SCAN ENDPOINTS (Admin-only)
 # ============================================================================
 
-from auth import get_current_admin_user
+from auth import user_has_permission
 from compilatio_service import get_compilatio_service, CompilatioService
 from db_models import CompilatioScan
 import uuid as uuid_module
@@ -734,17 +726,57 @@ def compilatio_scan_task(
 async def compilatio_scan(
     request: CompilatioScanRequest,
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Avvia una scansione Compilatio per rilevare contenuto AI e plagio.
 
-    **Solo admin.** Il testo viene convertito in PDF e inviato a Compilatio per analisi.
-    I risultati includono percentuali di AI, similarità, plagio e un report PDF dettagliato.
+    Permessi richiesti:
+    - se `source_type == 'thesis'` -> 'compilatio_scan' OPPURE 'compilatio_scan_thesis'
+    - altrimenti -> 'compilatio_scan'
+    Gli admin hanno sempre accesso.
 
-    Se il testo è già stato scansionato (dedup via hash), ritorna il risultato cached.
+    Se source_type='thesis' viene anche validato che la tesi indicata in source_job_id
+    sia di proprieta' dell'utente, per impedire scansioni cross-utente.
+
+    Se il testo e' gia' stato scansionato (dedup via hash), ritorna il risultato cached.
     """
+    # ---------- Permesso in base al source_type -------------------------------
+    source_type = (request.source_type or 'manual').strip().lower()
+
+    has_full = user_has_permission(current_user, 'compilatio_scan', db)
+    has_thesis_only = user_has_permission(current_user, 'compilatio_scan_thesis', db)
+
+    if source_type == 'thesis':
+        # Ammessi entrambi i permessi
+        if not (has_full or has_thesis_only):
+            raise HTTPException(
+                status_code=403,
+                detail="Non hai il permesso per usare il Detector AI sulle tesi."
+            )
+        # Se l'utente ha solo il permesso 'thesis', il source_job_id deve corrispondere
+        # ad una tesi posseduta da lui (security: niente scan cross-utente).
+        # Per coerenza applichiamo la stessa verifica a tutti gli utenti non admin.
+        if not current_user.is_admin and request.source_job_id:
+            from db_models import Thesis
+            owned = db.query(Thesis).filter(
+                Thesis.id == request.source_job_id,
+                Thesis.user_id == current_user.id,
+            ).first()
+            if not owned:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Tesi non trovata o non di tua proprieta'."
+                )
+    else:
+        # Standalone / generate / humanize -> solo permesso completo
+        if not has_full:
+            raise HTTPException(
+                status_code=403,
+                detail="Non hai il permesso per usare il Detector AI."
+            )
+
     user_id = str(current_user.id)
 
     # Check dedup: se esiste già una scansione per questo testo
@@ -760,13 +792,23 @@ async def compilatio_scan(
             cached_scan=existing
         )
 
-    # Stima e deduzione crediti
-    credit_estimate = estimate_credits('compilatio_scan', {'text_length': len(request.text)}, db=db)
+    # Stima e deduzione crediti.
+    # Per le scansioni di tesi applichiamo una tariffa flat ('compilatio_scan_thesis');
+    # per gli altri source_type il costo varia in base alla lunghezza del testo.
+    if source_type == 'thesis':
+        credit_estimate = estimate_credits('compilatio_scan_thesis', {}, db=db)
+        billing_op = 'compilatio_scan_thesis'
+        billing_desc = f"Detector AI - Scansione tesi (tariffa flat)"
+    else:
+        credit_estimate = estimate_credits('compilatio_scan', {'text_length': len(request.text)}, db=db)
+        billing_op = 'compilatio_scan'
+        billing_desc = f"Detector AI - Scansione ({len(request.text)} caratteri)"
+
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],
-        operation_type='compilatio_scan',
-        description=f"Scansione Compilatio ({len(request.text)} caratteri)",
+        operation_type=billing_op,
+        description=billing_desc,
         db=db
     )
 
@@ -806,13 +848,20 @@ async def compilatio_scan(
 async def list_compilatio_scans(
     limit: int = 20,
     offset: int = 0,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Lista tutte le scansioni Compilatio dell'utente admin.
-    Ordinate per data di creazione decrescente.
+    Lista tutte le scansioni Compilatio dell'utente.
+    Richiede 'compilatio_scan' o 'compilatio_scan_thesis' (admin sempre ammesso).
+    Filtra per user_id, quindi ciascuno vede solo le proprie scansioni.
     """
+    if not (
+        user_has_permission(current_user, 'compilatio_scan', db)
+        or user_has_permission(current_user, 'compilatio_scan_thesis', db)
+    ):
+        raise HTTPException(status_code=403, detail="Non hai il permesso per il Detector AI.")
+
     user_id = current_user.id
 
     total = db.query(CompilatioScan).filter(
@@ -836,12 +885,22 @@ async def list_compilatio_scans(
 @app.get("/compilatio/report/{scan_id}", tags=["Compilatio"])
 async def download_compilatio_report(
     scan_id: str,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Scarica il report PDF di una scansione Compilatio.
+    Scarica il report PDF StyleForge-branded di una scansione Compilatio.
+    Il PDF viene generato a runtime usando i dati persistiti (scores, POI,
+    eventuale testo originale) — senza esporre il marchio Compilatio.
+    Cached su disco dopo la prima generazione.
+    L'utente puo' scaricare solo i propri report.
     """
+    if not (
+        user_has_permission(current_user, 'compilatio_scan', db)
+        or user_has_permission(current_user, 'compilatio_scan_thesis', db)
+    ):
+        raise HTTPException(status_code=403, detail="Non hai il permesso per il Detector AI.")
+
     scan = db.query(CompilatioScan).filter(
         CompilatioScan.id == scan_id,
     ).first()
@@ -849,30 +908,85 @@ async def download_compilatio_report(
     if not scan:
         raise HTTPException(status_code=404, detail="Scansione non trovata")
 
-    if not scan.report_pdf_path or not Path(scan.report_pdf_path).exists():
-        raise HTTPException(status_code=404, detail="Report PDF non disponibile")
+    # Solo il proprietario (o admin) puo' scaricare
+    if not current_user.is_admin and str(scan.user_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Non hai accesso a questo report.")
+
+    # Path del PDF brandizzato, cachato su disco dopo la prima generazione.
+    # Vive nello stesso reports_dir usato per i PDF Compilatio.
+    reports_dir = getattr(config, 'COMPILATIO_REPORTS_DIR', 'compilatio_reports')
+    branded_path = Path(reports_dir) / f"styleforge_{scan_id}.pdf"
+
+    if not branded_path.exists():
+        # Carica info utente per il campo "Depositante"
+        owner = db.query(User).filter(User.id == scan.user_id).first()
+        # Fonte: tesi -> usa il titolo della tesi se disponibile
+        display_title = None
+        if scan.source_type == 'thesis' and scan.source_job_id:
+            try:
+                from db_models import Thesis
+                t = db.query(Thesis).filter(Thesis.id == scan.source_job_id).first()
+                if t and t.title:
+                    display_title = t.title
+            except Exception:
+                display_title = None
+
+        scan_data = {
+            'scan_id': str(scan.id),
+            'document_filename': scan.document_filename,
+            'display_title': display_title or scan.document_filename,
+            'word_count': scan.word_count or 0,
+            'char_count': len(scan.document_text or '') if scan.document_text else 0,
+            'global_score_percent': float(scan.global_score_percent or 0),
+            'similarity_percent': float(scan.similarity_percent or 0),
+            'ai_generated_percent': float(scan.ai_generated_percent or 0),
+            'quotation_percent': float(scan.quotation_percent or 0),
+            'exact_percent': float(scan.exact_percent or 0),
+            'source_type': scan.source_type or 'manual',
+            'completed_at': scan.completed_at,
+            'user_full_name': (owner.full_name if owner else None) or (owner.username if owner else None) or (owner.email if owner else None),
+            'document_text': scan.document_text,
+            'scan_details': scan.scan_details or {},
+        }
+
+        try:
+            from styleforge_report import generate_styleforge_report
+            branded_path.parent.mkdir(parents=True, exist_ok=True)
+            generate_styleforge_report(scan_data, str(branded_path))
+        except Exception as e:
+            logger.exception("Errore generazione report StyleForge")
+            raise HTTPException(status_code=500, detail=f"Errore generazione report: {str(e)[:200]}")
 
     return FileResponse(
-        path=scan.report_pdf_path,
+        path=str(branded_path),
         media_type="application/pdf",
-        filename=f"compilatio_report_{scan_id[:8]}.pdf"
+        filename=f"styleforge_detector_report_{str(scan_id)[:8]}.pdf"
     )
 
 
 @app.get("/compilatio/scan-by-source/{source_job_id}", tags=["Compilatio"])
 async def get_scan_by_source(
     source_job_id: str,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Recupera la scansione Compilatio associata a un job sorgente.
-    Utile per mostrare i risultati nella Dashboard accanto al job originale.
+    L'utente puo' recuperare solo le proprie scansioni.
     """
-    scan = db.query(CompilatioScan).filter(
+    if not (
+        user_has_permission(current_user, 'compilatio_scan', db)
+        or user_has_permission(current_user, 'compilatio_scan_thesis', db)
+    ):
+        raise HTTPException(status_code=403, detail="Non hai il permesso per il Detector AI.")
+
+    q = db.query(CompilatioScan).filter(
         CompilatioScan.source_job_id == source_job_id,
-        CompilatioScan.completed_at.isnot(None)
-    ).order_by(CompilatioScan.created_at.desc()).first()
+        CompilatioScan.completed_at.isnot(None),
+    )
+    if not current_user.is_admin:
+        q = q.filter(CompilatioScan.user_id == current_user.id)
+    scan = q.order_by(CompilatioScan.created_at.desc()).first()
 
     if not scan:
         return {"scan": None}
@@ -883,21 +997,31 @@ async def get_scan_by_source(
 @app.get("/compilatio/scans-by-sources", tags=["Compilatio"])
 async def get_scans_by_sources(
     source_job_ids: str,
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
     Recupera le scansioni Compilatio per multipli job sorgente in una sola chiamata.
     source_job_ids: stringa con ID separati da virgola.
+    L'utente vede solo le proprie scansioni.
     """
+    if not (
+        user_has_permission(current_user, 'compilatio_scan', db)
+        or user_has_permission(current_user, 'compilatio_scan_thesis', db)
+    ):
+        raise HTTPException(status_code=403, detail="Non hai il permesso per il Detector AI.")
+
     ids = [s.strip() for s in source_job_ids.split(",") if s.strip()]
     if not ids:
         return {"scans": {}}
 
-    scans = db.query(CompilatioScan).filter(
+    q = db.query(CompilatioScan).filter(
         CompilatioScan.source_job_id.in_(ids),
-        CompilatioScan.completed_at.isnot(None)
-    ).all()
+        CompilatioScan.completed_at.isnot(None),
+    )
+    if not current_user.is_admin:
+        q = q.filter(CompilatioScan.user_id == current_user.id)
+    scans = q.all()
 
     # Mappa source_job_id -> scan (prendi il piu' recente per ogni source)
     result = {}

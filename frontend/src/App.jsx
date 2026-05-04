@@ -10,8 +10,6 @@ import SessionDetail from './pages/SessionDetail';
 import ThesisGenerator from './pages/ThesisGenerator';
 import Admin from './pages/Admin';
 import DetectorAI from './pages/DetectorAI';
-import EnhanceImage from './pages/EnhanceImage';
-import CarouselCreator from './pages/CarouselCreator';
 import ImageToVideo from './pages/ImageToVideo';
 import ResearchSearch from './pages/ResearchSearch';
 import PrivacyPolicy from './pages/PrivacyPolicy';
@@ -133,22 +131,6 @@ const AppRoutes = () => {
         }
       />
       <Route
-        path="/enhance-image"
-        element={
-          <PermissionRoute permission="enhance_image">
-            <EnhanceImage />
-          </PermissionRoute>
-        }
-      />
-      <Route
-        path="/carousel"
-        element={
-          <PermissionRoute permission="carousel_creator">
-            <CarouselCreator />
-          </PermissionRoute>
-        }
-      />
-      <Route
         path="/research"
         element={
           <PermissionRoute permission="research">
@@ -175,9 +157,9 @@ const AppRoutes = () => {
       <Route
         path="/detector-ai"
         element={
-          <AdminRoute>
+          <PermissionRoute permission="compilatio_scan">
             <DetectorAI />
-          </AdminRoute>
+          </PermissionRoute>
         }
       />
       <Route path="/privacy" element={<PrivacyPolicy />} />

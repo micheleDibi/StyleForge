@@ -26,24 +26,23 @@ const PERMISSION_LABELS = {
   humanize: 'Umanizza Testo',
   thesis: 'Tesi',
   manage_templates: 'Gestione Template',
-  compilatio_scan: 'Detector AI',
-  enhance_image: 'Migliora Immagine',
-  carousel_creator: 'Carosello / Post / Copertina'
+  compilatio_scan: 'Detector AI (completo)',
+  compilatio_scan_thesis: 'Detector AI (solo tesi)'
 };
 
-const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'enhance_image', 'carousel_creator'];
+const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'compilatio_scan_thesis'];
 
 // Labels per le operazioni dei costi crediti
 const COST_OPERATION_LABELS = {
   train: { label: 'Training', icon: '🎓', fields: { base: 'Costo base', per_page: 'Per pagina PDF' } },
   generate: { label: 'Generazione Contenuto', icon: '✍️', fields: { base: 'Costo base', per_1000_words: 'Per 1000 parole' } },
   humanize: { label: 'Umanizzazione', icon: '🤖', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
-  thesis_chapters: { label: 'Tesi - Capitoli', icon: '📚', fields: { base: 'Costo base', per_1000_attachment_chars: 'Per 1000 caratteri allegati' } },
-  thesis_sections: { label: 'Tesi - Sezioni', icon: '📄', fields: { base: 'Costo base' } },
-  thesis_content: { label: 'Tesi - Contenuto', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
-  compilatio_scan: { label: 'Detector AI', icon: '🔍', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
-  enhance_image: { label: 'Migliora Immagine', icon: '🖼️', fields: { base: 'Costo base' } },
-  carousel_creator: { label: 'Carosello / Post / Copertina', icon: '📱', fields: { base: 'Costo base', image_enhance: 'Enhancement immagine' } }
+  thesis_total: { label: 'Tesi - Tariffa flat per ente', icon: '🎯', description: 'Addebito unico alla creazione di una nuova tesi, in base al tipo di ente dell\'utente. Sostituisce i costi per step (capitoli/sezioni/contenuto) per le tesi nuove.', fields: { private: 'Ente privato', training: 'Ente di formazione' } },
+  thesis_chapters: { label: 'Tesi - Capitoli (legacy)', icon: '📚', fields: { base: 'Costo base', per_1000_attachment_chars: 'Per 1000 caratteri allegati' } },
+  thesis_sections: { label: 'Tesi - Sezioni (legacy)', icon: '📄', fields: { base: 'Costo base' } },
+  thesis_content: { label: 'Tesi - Contenuto (legacy)', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
+  compilatio_scan: { label: 'Detector AI - Scansione (manuale/generate/humanize)', icon: '🔍', description: 'Scansione AI/plagio. Costo variabile in base alla lunghezza del testo.', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
+  compilatio_scan_thesis: { label: 'Detector AI - Scansione tesi', icon: '🎓', description: 'Tariffa flat per la scansione AI/plagio dentro il wizard tesi. Indipendente dalla lunghezza del documento.', fields: { base: 'Costo base (flat)' } }
 };
 
 const Admin = () => {
@@ -191,6 +190,15 @@ const Admin = () => {
       setUsers(users.map(u => u.id === userId ? updated : u));
     } catch (error) {
       console.error('Errore cambio ruolo:', error);
+    }
+  };
+
+  const handleEntityTypeChange = async (userId, entityType) => {
+    try {
+      const updated = await updateAdminUser(userId, { entity_type: entityType });
+      setUsers(users.map(u => u.id === userId ? updated : u));
+    } catch (error) {
+      console.error('Errore cambio tipo ente:', error);
     }
   };
 
@@ -937,6 +945,21 @@ const Admin = () => {
                                 {u.is_active ? 'Si' : 'No'}
                               </button>
                             </div>
+
+                            {u.role_name !== 'admin' && (
+                              <div className="bg-white rounded-xl p-3 flex items-center gap-3">
+                                <label className="text-sm font-medium text-gray-600">Tipo ente:</label>
+                                <select
+                                  className="input py-1 px-2 text-sm"
+                                  value={u.entity_type || 'private'}
+                                  onChange={(e) => handleEntityTypeChange(u.id, e.target.value)}
+                                  title="Determina la tariffa flat per la generazione tesi"
+                                >
+                                  <option value="private">Ente privato</option>
+                                  <option value="training">Ente di formazione</option>
+                                </select>
+                              </div>
+                            )}
                           </div>
 
                           {/* Permessi */}
@@ -1272,10 +1295,13 @@ const Admin = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {Object.entries(COST_OPERATION_LABELS).map(([opType, opConfig]) => (
                     <div key={opType} className="glass rounded-2xl p-5">
-                      <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                      <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
                         <span className="text-xl">{opConfig.icon}</span>
                         {opConfig.label}
                       </h3>
+                      {opConfig.description && (
+                        <p className="text-xs text-gray-500 mb-3">{opConfig.description}</p>
+                      )}
                       <div className="space-y-3">
                         {Object.entries(opConfig.fields).map(([field, fieldLabel]) => (
                           <div key={field} className="flex items-center justify-between gap-4">

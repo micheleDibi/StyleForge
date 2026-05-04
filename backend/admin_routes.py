@@ -63,6 +63,7 @@ def build_admin_user_response(user: User, db: Session) -> AdminUserResponse:
         credits=user.credits,
         permissions=permissions,
         user_overrides=user_overrides,
+        entity_type=getattr(user, 'entity_type', None) or 'private',
         created_at=user.created_at,
         updated_at=user.updated_at,
         last_login=user.last_login
@@ -127,7 +128,7 @@ async def update_user(
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
-    """Aggiorna dati utente (is_active, full_name)."""
+    """Aggiorna dati utente (is_active, full_name, entity_type)."""
     user = db.query(User).options(joinedload(User.role)).filter(User.id == UUID(user_id)).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utente non trovato")
@@ -136,6 +137,14 @@ async def update_user(
         user.is_active = request.is_active
     if request.full_name is not None:
         user.full_name = request.full_name
+    if request.entity_type is not None:
+        et = request.entity_type.strip().lower()
+        if et not in ('private', 'training'):
+            raise HTTPException(
+                status_code=400,
+                detail="entity_type deve essere 'private' o 'training'",
+            )
+        user.entity_type = et
 
     user.updated_at = datetime.utcnow()
     db.commit()

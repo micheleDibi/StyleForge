@@ -10,7 +10,7 @@ import { jsPDF } from 'jspdf';
 
 const Generate = () => {
   const navigate = useNavigate();
-  const { isAdmin, credits, refreshUser } = useAuth();
+  const { isAdmin, credits, refreshUser, hasPermission } = useAuth();
   const [searchParams] = useSearchParams();
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(searchParams.get('session') || '');
@@ -405,8 +405,8 @@ const Generate = () => {
               </div>
             )}
 
-            {/* Compilatio Scan - Admin Only (outside result card, higher position) */}
-            {isAdmin && result && (
+            {/* Compilatio Scan - per chi ha il permesso 'compilatio_scan' (full) */}
+            {hasPermission('compilatio_scan') && result && (
               <div className="mt-4">
                 {!compilatioResult && !compilatioScanning && !compilatioError && (
                   <button

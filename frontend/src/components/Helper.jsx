@@ -20,8 +20,6 @@ const PAGE_NAMES = {
   '/generate': 'Generazione Contenuti',
   '/humanize': 'Umanizzazione Testi',
   '/thesis': 'Generazione Tesi',
-  '/enhance-image': 'Migliora Immagine',
-  '/carousel': 'Carosello Instagram',
   '/research': 'Ricerca Accademica',
   '/admin': 'Pannello Admin',
 };

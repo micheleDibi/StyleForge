@@ -67,6 +67,12 @@ Procedura guidata in 8 step:
 7. Generazione: il contenuto viene generato sezione per sezione con barra di avanzamento
 8. Download: visualizza anteprima e esporta in PDF, DOCX, TXT o Markdown
 
+**TARIFFAZIONE TESI**:
+La generazione di una tesi ha un costo flat addebitato in un'unica soluzione alla creazione (passaggio dallo step 1 allo step 2). Tutti gli step successivi (paper, allegati, capitoli, sezioni, contenuto) sono inclusi e non comportano addebiti aggiuntivi. La tariffa dipende dal tipo di ente dell'utente:
+- Ente privato: 250 crediti per tesi
+- Ente di formazione: 125 crediti per tesi
+I valori sono configurabili dall'admin nella pagina "Configurazione costi crediti". Il tipo ente di ciascun utente e' impostato dall'admin nel pannello utenti. **L'addebito non e' rimborsabile in caso di abbandono del wizard**, quindi e' importante completare i parametri prima di proseguire dallo step 1. Gli admin StyleForge non vengono addebitati (crediti illimitati).
+
 **RICERCA ACCADEMICA** (pagina "/research"):
 - Cerca pubblicazioni scientifiche, paper e riviste su un argomento specifico
 - I risultati arrivano da piu' database accademici in parallelo: OpenAlex, Semantic Scholar, Crossref

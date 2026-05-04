@@ -50,6 +50,8 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
     credits = Column(Integer, default=0, nullable=False)
+    # Tipo ente cliente: 'private' (default, costo tesi pieno) o 'training' (costo ridotto)
+    entity_type = Column(String(20), default='private', nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
@@ -473,6 +475,10 @@ class Thesis(Base):
     # File allegati
     attachments_path = Column(Text, nullable=True)
 
+    # Flag tariffazione: True se la tesi ha già pagato il flat thesis_total alla creazione
+    # (modello introdotto post-deploy 2026-05). Le tesi pre-deploy hanno False e usano il vecchio pay-per-step.
+    credits_charged = Column(Boolean, default=False, nullable=False)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -513,6 +519,7 @@ class Thesis(Base):
             "target_audience_id": self.target_audience_id,
             "ai_provider": self.ai_provider or "openai",
             "citation_style": self.citation_style or "footnotes",
+            "credits_charged": bool(self.credits_charged),
             "chapters_structure": self.chapters_structure,
             "generated_content": self.generated_content,
             "status": self.status,
@@ -626,6 +633,11 @@ class CompilatioScan(Base):
     # Report e dettagli
     report_pdf_path = Column(Text, nullable=True)
     scan_details = Column(JSONB, nullable=True)  # JSON completo risultati + POIs
+
+    # Testo originale del documento analizzato.
+    # Necessario per ri-generare il report StyleForge-branded con evidenziazioni.
+    # Non viene esposto in to_dict() per ridurre il payload delle list response.
+    document_text = Column(Text, nullable=True)
 
     # Sorgente della scansione
     source_type = Column(String(50), nullable=True)  # 'generate', 'humanize', 'thesis', 'manual'

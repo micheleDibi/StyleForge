@@ -262,6 +262,9 @@ async def create_thesis(
     Crea una nuova tesi/relazione.
 
     Richiede tutti i parametri di configurazione.
+    Addebita la tariffa flat in base al tipo ente dell'utente
+    (250 ente privato, 125 ente di formazione, configurabili da admin).
+    Gli admin StyleForge non vengono addebitati.
     """
     # Verifica sessione se specificata
     session_uuid = None
@@ -272,6 +275,31 @@ async def create_thesis(
         ).first()
         if session:
             session_uuid = session.id
+
+    # Addebito flat in base al tipo di ente (solo per non-admin)
+    entity_type = (getattr(current_user, 'entity_type', None) or 'private').strip().lower()
+    if entity_type not in ('private', 'training'):
+        entity_type = 'private'
+
+    flat_charged = False
+    if not current_user.is_admin:
+        estimate = estimate_credits(
+            'thesis_total',
+            {'entity_type': entity_type},
+            db,
+        )
+        cost = int(estimate.get('credits_needed', 0) or 0)
+        if cost > 0:
+            label_ente = 'ente di formazione' if entity_type == 'training' else 'ente privato'
+            title_short = (request.title or 'Tesi senza titolo')[:80]
+            deduct_credits(
+                current_user,
+                cost,
+                'thesis_total',
+                f"Tesi flat ({label_ente}): {title_short}",
+                db,
+            )
+            flat_charged = True
 
     # Crea la tesi
     thesis = Thesis(
@@ -291,7 +319,10 @@ async def create_thesis(
         target_audience_id=request.target_audience_id,
         ai_provider=request.ai_provider.value if request.ai_provider else "openai",
         citation_style=request.citation_style or "footnotes",
-        status='draft'
+        status='draft',
+        # Marca come "già pagata" sia per addebito flat che per admin
+        # (così gli step successivi non riaddebitano)
+        credits_charged=(flat_charged or bool(current_user.is_admin)),
     )
 
     db.add(thesis)
@@ -588,7 +619,7 @@ async def thesis_research_search(
     Stesso motore di /api/research/search ma gated dal permesso 'thesis'.
     """
     # Verifica ownership della tesi
-    get_thesis_by_id(db, thesis_id, str(current_user.id))
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
 
     sources = request.sources
     if sources:
@@ -601,14 +632,17 @@ async def thesis_research_search(
     else:
         sources = DEFAULT_SOURCES
 
-    credit_estimate = estimate_credits("research_search", {"num_sources": len(sources)}, db=db)
-    deduct_credits(
-        user=current_user,
-        amount=credit_estimate["credits_needed"],
-        operation_type="research_search",
-        description=f"Ricerca paper per tesi: {request.topic[:80]}",
-        db=db,
-    )
+    # Per tesi pre-tariffa-flat (credits_charged=False) addebito per step (back-compat).
+    # Le tesi nuove pagano flat alla creazione e qui non vengono addebitate.
+    if not getattr(thesis, 'credits_charged', False):
+        credit_estimate = estimate_credits("research_search", {"num_sources": len(sources)}, db=db)
+        deduct_credits(
+            user=current_user,
+            amount=credit_estimate["credits_needed"],
+            operation_type="research_search",
+            description=f"Ricerca paper per tesi: {request.topic[:80]}",
+            db=db,
+        )
 
     import httpx as _httpx
     try:
@@ -642,21 +676,23 @@ async def thesis_research_summarize(
     """
     Genera un riassunto AI per un paper, dentro il wizard tesi.
     """
-    get_thesis_by_id(db, thesis_id, str(current_user.id))
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
 
     try:
         paper = UnifiedPaper(**request.paper)
     except Exception:
         raise HTTPException(status_code=400, detail="Paper non valido")
 
-    credit_estimate = estimate_credits("research_summary", {}, db=db)
-    deduct_credits(
-        user=current_user,
-        amount=credit_estimate["credits_needed"],
-        operation_type="research_summary",
-        description=f"Riassunto paper per tesi: {paper.title[:80]}",
-        db=db,
-    )
+    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
+    if not getattr(thesis, 'credits_charged', False):
+        credit_estimate = estimate_credits("research_summary", {}, db=db)
+        deduct_credits(
+            user=current_user,
+            amount=credit_estimate["credits_needed"],
+            operation_type="research_summary",
+            description=f"Riassunto paper per tesi: {paper.title[:80]}",
+            db=db,
+        )
 
     try:
         summary = await summarize_paper(paper)
@@ -713,14 +749,16 @@ async def add_paper_attachments(
                 summary = None
 
         if summary is None:
-            # Deduce crediti PRIMA di chiamare il provider (pattern coerente col resto del codice)
-            deduct_credits(
-                user=current_user,
-                amount=summary_cost,
-                operation_type="research_summary",
-                description=f"Riassunto paper aggiunto a tesi: {paper.title[:80]}",
-                db=db,
-            )
+            # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
+            if not getattr(thesis, 'credits_charged', False):
+                # Deduce crediti PRIMA di chiamare il provider (pattern coerente col resto del codice)
+                deduct_credits(
+                    user=current_user,
+                    amount=summary_cost,
+                    operation_type="research_summary",
+                    description=f"Riassunto paper aggiunto a tesi: {paper.title[:80]}",
+                    db=db,
+                )
             try:
                 summary = await summarize_paper(paper)
             except Exception:
@@ -728,7 +766,8 @@ async def add_paper_attachments(
                 summary = None  # Salvo comunque l'attachment con solo metadati
             else:
                 summarized_count += 1
-                credits_consumed += summary_cost
+                if not getattr(thesis, 'credits_charged', False):
+                    credits_consumed += summary_cost
 
         extracted_text = render_paper_with_summary(paper, summary)
 
@@ -874,15 +913,17 @@ async def generate_chapters(
     ch_attachments = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis.id).all()
     ch_attachment_chars = sum(len(a.extracted_text or '') for a in ch_attachments)
 
-    # Deduzione crediti per generazione capitoli
-    credit_estimate = estimate_credits('thesis_chapters', {'attachment_chars': ch_attachment_chars}, db=db)
-    deduct_credits(
-        user=current_user,
-        amount=credit_estimate['credits_needed'],
-        operation_type='thesis_chapters',
-        description=f"Generazione struttura capitoli - {thesis.title[:50]}",
-        db=db
-    )
+    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
+    # Le tesi nuove sono già pagate flat alla creazione (credits_charged=True).
+    if not getattr(thesis, 'credits_charged', False):
+        credit_estimate = estimate_credits('thesis_chapters', {'attachment_chars': ch_attachment_chars}, db=db)
+        deduct_credits(
+            user=current_user,
+            amount=credit_estimate['credits_needed'],
+            operation_type='thesis_chapters',
+            description=f"Generazione struttura capitoli - {thesis.title[:50]}",
+            db=db
+        )
 
     try:
         # Costruisci i dati per il prompt
@@ -1105,15 +1146,17 @@ async def generate_sections(
             detail=f"Devi prima confermare i capitoli. Stato attuale: '{thesis.status}'"
         )
 
-    # Deduzione crediti per generazione sezioni
-    credit_estimate = estimate_credits('thesis_sections', {}, db=db)
-    deduct_credits(
-        user=current_user,
-        amount=credit_estimate['credits_needed'],
-        operation_type='thesis_sections',
-        description=f"Generazione struttura sezioni - {thesis.title[:50]}",
-        db=db
-    )
+    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
+    # Le tesi nuove sono già pagate flat alla creazione (credits_charged=True).
+    if not getattr(thesis, 'credits_charged', False):
+        credit_estimate = estimate_credits('thesis_sections', {}, db=db)
+        deduct_credits(
+            user=current_user,
+            amount=credit_estimate['credits_needed'],
+            operation_type='thesis_sections',
+            description=f"Generazione struttura sezioni - {thesis.title[:50]}",
+            db=db
+        )
 
     try:
         # Costruisci dati
@@ -1639,19 +1682,21 @@ async def start_content_generation(
     chapters = thesis.chapters_structure.get("chapters", [])
     total_sections = sum(len(c.get("sections", [])) for c in chapters)
 
-    # Deduzione crediti per generazione contenuto tesi
-    credit_estimate = estimate_credits('thesis_content', {
-        'num_chapters': thesis.num_chapters,
-        'sections_per_chapter': thesis.sections_per_chapter,
-        'words_per_section': thesis.words_per_section
-    }, db=db)
-    deduct_credits(
-        user=current_user,
-        amount=credit_estimate['credits_needed'],
-        operation_type='thesis_content',
-        description=f"Generazione contenuto tesi - {thesis.title[:50]} ({thesis.num_chapters} cap, {thesis.sections_per_chapter} sez/cap)",
-        db=db
-    )
+    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
+    # Le tesi nuove sono già pagate flat alla creazione (credits_charged=True).
+    if not getattr(thesis, 'credits_charged', False):
+        credit_estimate = estimate_credits('thesis_content', {
+            'num_chapters': thesis.num_chapters,
+            'sections_per_chapter': thesis.sections_per_chapter,
+            'words_per_section': thesis.words_per_section
+        }, db=db)
+        deduct_credits(
+            user=current_user,
+            amount=credit_estimate['credits_needed'],
+            operation_type='thesis_content',
+            description=f"Generazione contenuto tesi - {thesis.title[:50]} ({thesis.num_chapters} cap, {thesis.sections_per_chapter} sez/cap)",
+            db=db
+        )
 
     # Aggiorna stato
     thesis.status = 'generating'

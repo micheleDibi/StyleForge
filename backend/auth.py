@@ -62,6 +62,7 @@ class UserResponse(BaseModel):
     role: Optional[str] = None
     credits: int = 0
     permissions: list = []
+    entity_type: Optional[str] = 'private'
     created_at: datetime
     updated_at: Optional[datetime] = None
     last_login: Optional[datetime] = None
@@ -266,10 +267,41 @@ def build_user_response(user: User, db: Session) -> UserResponse:
         role=role_name,
         credits=user.credits if not (user.is_admin or (user.role and user.role.name == 'admin')) else -1,  # -1 = infiniti
         permissions=permissions,
+        entity_type=getattr(user, 'entity_type', None) or 'private',
         created_at=user.created_at,
         updated_at=user.updated_at,
         last_login=user.last_login
     )
+
+
+def user_has_permission(user: User, permission_code: str, db: Session) -> bool:
+    """
+    Verifica programmatica (non come dependency) se un utente ha un permesso.
+    Usata quando il gating dipende da logica runtime (es. source_type del payload).
+    Replica la stessa precedenza di require_permission:
+      admin (is_admin o role=='admin') -> sempre True
+      override utente (granted/denied) -> ha priorita' assoluta
+      altrimenti ricade sui permessi del ruolo
+    """
+    if user.is_admin or (user.role and user.role.name == 'admin'):
+        return True
+
+    user_override = db.query(UserPermission).filter(
+        UserPermission.user_id == user.id,
+        UserPermission.permission_code == permission_code
+    ).first()
+    if user_override is not None:
+        return bool(user_override.granted)
+
+    if user.role_id:
+        role_perm = db.query(RolePermission).filter(
+            RolePermission.role_id == user.role_id,
+            RolePermission.permission_code == permission_code
+        ).first()
+        if role_perm:
+            return True
+
+    return False
 
 
 def require_permission(permission_code: str):

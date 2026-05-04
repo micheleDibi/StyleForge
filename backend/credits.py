@@ -48,15 +48,11 @@ DEFAULT_CREDIT_COSTS = {
         'per_1000_words_target': 1,  # per 1000 parole target per sezione
     },
     'compilatio_scan': {
-        'base': 5,           # costo base per scansione Compilatio
+        'base': 5,           # costo base per scansione Compilatio (manuale/generate/humanize)
         'per_1000_chars': 1, # per 1000 caratteri analizzati
     },
-    'enhance_image': {
-        'base': 5,           # costo base per miglioramento immagine con AI
-    },
-    'carousel_creator': {
-        'base': 3,           # costo base per link processato
-        'image_enhance': 3,  # costo aggiuntivo per enhancement immagine
+    'compilatio_scan_thesis': {
+        'base': 30,          # tariffa flat per scansione Detector AI sulle tesi
     },
     'research_search': {
         'base': 3,           # costo base per ricerca multi-provider
@@ -65,13 +61,20 @@ DEFAULT_CREDIT_COSTS = {
     'research_summary': {
         'base': 3,           # costo base per riassunto AI di un paper
     },
+    # Tariffa flat tesi: addebito unico alla creazione della tesi.
+    # Differenziato per tipo di ente impostato sull'utente (User.entity_type).
+    # Copre tutto il flusso wizard tesi (paper, allegati, capitoli, sezioni, contenuto).
+    'thesis_total': {
+        'private': 250,      # ente privato
+        'training': 125,     # ente di formazione
+    },
 }
 
 # Alias per compatibilita' con import esistenti
 CREDIT_COSTS = DEFAULT_CREDIT_COSTS
 
 # Lista codici permesso disponibili
-PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'enhance_image', 'carousel_creator', 'research']
+PERMISSION_CODES = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'compilatio_scan_thesis', 'research']
 
 
 # ============================================================================
@@ -303,11 +306,13 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
             "caratteri_crediti": char_cost
         }
 
-    elif operation_type == 'enhance_image':
-        total = costs['base']
+    elif operation_type == 'compilatio_scan_thesis':
+        # Tariffa flat per la scansione Detector AI sulle tesi.
+        # Ignora la lunghezza del documento: costo fisso configurabile dall'admin.
+        total = int(costs.get('base', 30) or 0)
         breakdown = {
             "base": total,
-            "descrizione": "Miglioramento immagine con AI"
+            "descrizione": "Detector AI - Scansione tesi (tariffa flat)",
         }
 
     elif operation_type == 'research_search':
@@ -331,18 +336,18 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
             "descrizione": "Riassunto AI di un paper accademico"
         }
 
-    elif operation_type == 'carousel_creator':
-        base = costs['base']
-        include_image = params.get('include_image', False)
-        image_cost = costs.get('image_enhance', 3) if include_image else 0
-        total = base + image_cost
+    elif operation_type == 'thesis_total':
+        # Tariffa flat per tesi, scelta in base al tipo di ente dell'utente.
+        et = (params.get('entity_type') or 'private').strip().lower()
+        if et not in ('private', 'training'):
+            et = 'private'
+        total = int(costs.get(et, costs.get('private', 250)) or 0)
+        label_ente = "Ente di formazione" if et == 'training' else "Ente privato"
         breakdown = {
-            "base": base,
-            "descrizione": "Generazione contenuto Instagram da articolo"
+            "base": total,
+            "descrizione": f"Tesi completa (tariffa flat - {label_ente})",
+            "tipo_ente": et,
         }
-        if include_image:
-            breakdown["immagine"] = f"Enhancement immagine: {image_cost}"
-            breakdown["immagine_crediti"] = image_cost
 
     return {
         "credits_needed": total,

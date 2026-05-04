@@ -626,6 +626,7 @@ class CompilatioService:
                 points_of_interest=results["points_of_interest"],
                 report_pdf_path=report_path,
                 scan_details=results,
+                document_text=text,  # Necessario per il report StyleForge-branded (sezione POI)
                 source_type=source_type,
                 source_job_id=source_job_id,
                 completed_at=datetime.utcnow()

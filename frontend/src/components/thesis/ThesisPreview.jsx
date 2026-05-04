@@ -1,8 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Download, FileText, Eye, Copy, Check, Loader, FileType, FileCode, BookOpen, List, Calendar, User, Settings, ChevronDown, Shield, AlertTriangle } from 'lucide-react';
 import { exportThesis, getExportTemplates, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
-const ThesisPreview = ({ thesis, content, isAdmin }) => {
+const ThesisPreview = ({ thesis, content }) => {
+  const { hasPermission } = useAuth();
+  // Detector AI sulla tesi: ammesso a chi ha 'compilatio_scan' (full)
+  // OPPURE 'compilatio_scan_thesis' (granulare). hasPermission e' true di default per gli admin.
+  const canScanThesis = hasPermission('compilatio_scan') || hasPermission('compilatio_scan_thesis');
   const [activeTab, setActiveTab] = useState('preview');
   const [exportFormat, setExportFormat] = useState('pdf');
   const [isExporting, setIsExporting] = useState(false);
@@ -233,13 +238,12 @@ const ThesisPreview = ({ thesis, content, isAdmin }) => {
         </div>
       </div>
 
-      {/* Compilatio Scan - Admin Only (positioned higher, before content) */}
-      {isAdmin && content && (
+      {/* Compilatio Scan - per chi ha permesso 'compilatio_scan' o 'compilatio_scan_thesis' */}
+      {canScanThesis && content && (
         <div className="card">
           <div className="flex items-center gap-2 mb-4">
             <Shield className="w-5 h-5 text-purple-500" />
             <h3 className="font-semibold text-slate-900">Scansione Detector AI</h3>
-            <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full font-medium">Admin</span>
           </div>
 
           {!compilatioResult && !compilatioScanning && !compilatioError && (

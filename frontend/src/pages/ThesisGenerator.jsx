@@ -49,7 +49,8 @@ const STEPS = [
 const ThesisGenerator = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { isAdmin, credits, refreshUser } = useAuth();
+  const { user, isAdmin, credits, refreshUser } = useAuth();
+  const entityType = (user?.entity_type || 'private');
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -648,7 +649,6 @@ const ThesisGenerator = () => {
             <ThesisPreview
               thesis={thesis}
               content={generatedContent}
-              isAdmin={isAdmin}
             />
           )}
         </div>
@@ -657,11 +657,17 @@ const ThesisGenerator = () => {
         {currentStep >= 2 && currentStep <= 7 && parametersData.title && (
           <div className="mt-4">
             <CreditEstimatePreview
-              operations={[
-                { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5) }, label: 'Capitoli + allegati' },
-                { type: 'thesis_sections', params: {}, label: 'Sezioni' },
-                { type: 'thesis_content', params: { num_chapters: parametersData.num_chapters, sections_per_chapter: parametersData.sections_per_chapter, words_per_section: parametersData.words_per_section }, label: 'Contenuto' },
-              ]}
+              operations={
+                isAdmin
+                  ? [
+                      { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5) }, label: 'Capitoli + allegati' },
+                      { type: 'thesis_sections', params: {}, label: 'Sezioni' },
+                      { type: 'thesis_content', params: { num_chapters: parametersData.num_chapters, sections_per_chapter: parametersData.sections_per_chapter, words_per_section: parametersData.words_per_section }, label: 'Contenuto' },
+                    ]
+                  : [
+                      { type: 'thesis_total', params: { entity_type: entityType }, label: entityType === 'training' ? 'Tesi (flat - ente formazione)' : 'Tesi (flat - ente privato)' },
+                    ]
+              }
             />
           </div>
         )}
@@ -677,6 +683,31 @@ const ThesisGenerator = () => {
               attachmentsCount={attachmentsData.attachments?.length || 0}
               attachmentsTotalSize={attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0}
             />
+          </div>
+        )}
+
+        {/* Avviso "addebito non rimborsabile" prima di lasciare lo step 2.
+            La creazione tesi (passaggio 2 → 3) addebita la tariffa flat in base al tipo ente. */}
+        {currentStep === 2 && !isAdmin && !thesisId && (
+          <div className="mt-6 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 mt-0.5">
+                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="flex-1 text-sm">
+                <p className="font-semibold text-amber-900 mb-1">
+                  Addebito alla creazione: {entityType === 'training' ? '125' : '250'} crediti
+                </p>
+                <p className="text-amber-800">
+                  Cliccando su <strong>Continua</strong> verrà creata la tesi e verrà addebitata in un'unica
+                  soluzione la tariffa flat per il tuo ente ({entityType === 'training' ? 'ente di formazione' : 'ente privato'}).
+                  Tutti gli step successivi (paper, allegati, capitoli, sezioni, contenuto) sono inclusi.
+                  <strong> L'importo non è rimborsabile in caso di abbandono del wizard.</strong>
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
