@@ -61,6 +61,15 @@ DEFAULT_CREDIT_COSTS = {
     'research_summary': {
         'base': 3,           # costo base per riassunto AI di un paper
     },
+    # LLM Wiki: ingest delle fonti raw -> wiki/ via SDK Anthropic
+    'wiki_ingest': {
+        'base': 5,           # costo base per avvio ingest
+        'per_source': 2,     # per ogni file in raw/
+    },
+    # LLM Wiki: lint del wiki (one-shot, costo basso)
+    'wiki_lint': {
+        'base': 3,
+    },
     # Tariffa flat tesi: addebito unico alla creazione della tesi.
     # Differenziato per tipo di ente impostato sull'utente (User.entity_type).
     # Copre tutto il flusso wizard tesi (paper, allegati, capitoli, sezioni, contenuto).
@@ -334,6 +343,26 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
         breakdown = {
             "base": total,
             "descrizione": "Riassunto AI di un paper accademico"
+        }
+
+    elif operation_type == 'wiki_ingest':
+        base = costs['base']
+        num_sources = max(0, int(params.get('num_sources', 0) or 0))
+        per_source = costs.get('per_source', 2)
+        extra = num_sources * per_source
+        total = base + extra
+        breakdown = {
+            "base": base,
+            "descrizione": "Ingest LLM Wiki (sintesi cross-fonte via Claude)",
+            "fonti": num_sources,
+            "fonti_crediti": extra,
+        }
+
+    elif operation_type == 'wiki_lint':
+        total = costs['base']
+        breakdown = {
+            "base": total,
+            "descrizione": "Lint LLM Wiki (controllo coerenza, contraddizioni, gaps)"
         }
 
     elif operation_type == 'thesis_total':

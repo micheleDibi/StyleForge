@@ -118,9 +118,9 @@ DESTINATARI: {thesis_data.get('target_audience_name', 'Pubblico Generale')}
   → Indicazione: {thesis_data.get('target_audience_hint', '')}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CONTESTO DAGLI ALLEGATI
+BASE DI CONOSCENZA (LLM WIKI)
 ═══════════════════════════════════════════════════════════════════════════════
-{attachments_context if attachments_context else "Nessun allegato fornito."}
+{attachments_context if attachments_context else "Nessuna fonte caricata. Procedi con la struttura di tesi piu' standard per il tema dato."}
 
 ═══════════════════════════════════════════════════════════════════════════════
 ISTRUZIONI
@@ -224,9 +224,9 @@ CAPITOLI CONFERMATI
 {chapters_text}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CONTESTO DAGLI ALLEGATI
+BASE DI CONOSCENZA (LLM WIKI)
 ═══════════════════════════════════════════════════════════════════════════════
-{attachments_context if attachments_context else "Nessun allegato fornito."}
+{attachments_context if attachments_context else "Nessuna fonte caricata. Procedi con la struttura di tesi piu' standard per il tema dato."}
 
 ═══════════════════════════════════════════════════════════════════════════════
 ISTRUZIONI
@@ -352,9 +352,9 @@ CONTESTO PRECEDENTE
 {previous_sections_summary if previous_sections_summary else "Questa è la prima sezione della tesi."}
 
 ═══════════════════════════════════════════════════════════════════════════════
-MATERIALE DI RIFERIMENTO (dagli allegati)
+BASE DI CONOSCENZA (LLM WIKI)
 ═══════════════════════════════════════════════════════════════════════════════
-{attachments_context if attachments_context else "Nessun materiale allegato."}
+{attachments_context if attachments_context else "Nessuna fonte caricata. Genera basandoti sulla conoscenza del modello."}
 
 ═══════════════════════════════════════════════════════════════════════════════
 STILE DELL'AUTORE
@@ -588,9 +588,9 @@ STRUTTURA DEI CAPITOLI DELLA TESI
 {chapters_list}
 
 ═══════════════════════════════════════════════════════════════════════════════
-MATERIALE DI RIFERIMENTO (dagli allegati)
+BASE DI CONOSCENZA (LLM WIKI)
 ═══════════════════════════════════════════════════════════════════════════════
-{attachments_context if attachments_context else "Nessun materiale allegato."}
+{attachments_context if attachments_context else "Nessuna fonte caricata. Genera basandoti sulla conoscenza del modello."}
 
 ═══════════════════════════════════════════════════════════════════════════════
 STILE DELL'AUTORE

@@ -495,6 +495,45 @@ export const addPaperAttachments = async (thesisId, items) => {
   return response.data;
 };
 
+// ============================================================================
+// LLM WIKI (second-brain) — knowledge base per-tesi
+// ============================================================================
+
+// Avvia ingest + lint del wiki (in background sul server). Ritorna lo stato
+// transitorio (wiki_status='ingesting'); il client deve fare polling con
+// getWikiStatus.
+export const startWikiIngest = async (thesisId, force = false) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/wiki/ingest`,
+    { force: !!force },
+    { timeout: 30000 }
+  );
+  return response.data;
+};
+
+// Rilancia il SOLO lint (l'ingest deve gia' essere stato eseguito).
+export const startWikiLint = async (thesisId) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/wiki/lint`,
+    {},
+    { timeout: 30000 }
+  );
+  return response.data;
+};
+
+// Stato del wiki di una tesi (per polling). Ritorna anche sources_count e
+// pages_count per la progress bar.
+export const getWikiStatus = async (thesisId) => {
+  const response = await api.get(`/api/thesis/${thesisId}/wiki/status`);
+  return response.data;
+};
+
+// Report di lint (orphan_pages, broken_wikilinks, contradictions, gaps, ...).
+export const getWikiReport = async (thesisId) => {
+  const response = await api.get(`/api/thesis/${thesisId}/wiki/report`);
+  return response.data;
+};
+
 // Generation phases - timeout estesi per operazioni AI
 export const generateThesisChapters = async (thesisId) => {
   const response = await api.post(`/api/thesis/${thesisId}/generate-chapters`, {}, {

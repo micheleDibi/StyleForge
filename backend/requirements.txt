@@ -42,6 +42,12 @@ beautifulsoup4>=4.12.0
 zeep>=4.2.0
 lxml>=4.9.0
 
+# LLM Wiki (second-brain): markdown frontmatter + filesystem lock cross-platform
+python-frontmatter>=1.1.0
+filelock>=3.13.0
+
+# HTTP client (paper download for LLM Wiki)
+httpx>=0.25.0
+
 # Testing
 pytest>=7.4.0
-httpx>=0.25.0

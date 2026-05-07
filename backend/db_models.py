@@ -20,6 +20,7 @@ pg_job_status = PG_ENUM(
 
 pg_job_type = PG_ENUM(
     'training', 'generation', 'humanization', 'thesis_generation', 'compilatio_scan',
+    'wiki_ingest', 'wiki_lint',
     name='job_type',
     create_type=False
 )
@@ -29,6 +30,13 @@ pg_thesis_status = PG_ENUM(
     'draft', 'chapters_pending', 'chapters_confirmed', 'sections_pending',
     'sections_confirmed', 'generating', 'completed', 'failed',
     name='thesis_status',
+    create_type=False
+)
+
+# ENUM per lo stato del wiki (LLM Wiki, second-brain) di una tesi
+pg_thesis_wiki_status = PG_ENUM(
+    'none', 'ingesting', 'ingested', 'linting', 'linted', 'failed',
+    name='thesis_wiki_status',
     create_type=False
 )
 
@@ -485,6 +493,16 @@ class Thesis(Base):
     # (modello introdotto post-deploy 2026-05). Le tesi pre-deploy hanno False e usano il vecchio pay-per-step.
     credits_charged = Column(Boolean, default=False, nullable=False)
 
+    # LLM Wiki (second-brain per-tesi). Se restrict_to_sources=True la generazione
+    # si attiene SOLO alle fonti caricate (paper + upload). wiki_path e' la cartella
+    # thesis_uploads/{thesis_id}/llm_wiki/ una volta materializzata.
+    restrict_to_sources = Column(Boolean, default=True, nullable=False)
+    wiki_status = Column(pg_thesis_wiki_status, default='none', nullable=False)
+    wiki_path = Column(Text, nullable=True)
+    wiki_lint_report = Column(JSONB, nullable=True)
+    wiki_ingested_at = Column(DateTime, nullable=True)
+    wiki_linted_at = Column(DateTime, nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -532,6 +550,12 @@ class Thesis(Base):
             "current_phase": self.current_phase,
             "generation_progress": self.generation_progress,
             "total_words_generated": self.total_words_generated,
+            "restrict_to_sources": bool(self.restrict_to_sources) if self.restrict_to_sources is not None else True,
+            "wiki_status": self.wiki_status or "none",
+            "wiki_path": self.wiki_path,
+            "wiki_lint_report": self.wiki_lint_report,
+            "wiki_ingested_at": self.wiki_ingested_at,
+            "wiki_linted_at": self.wiki_linted_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "completed_at": self.completed_at

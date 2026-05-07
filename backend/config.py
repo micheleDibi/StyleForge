@@ -61,6 +61,28 @@ THESIS_MAX_UPLOAD_SIZE = int(os.getenv("THESIS_MAX_UPLOAD_SIZE", "50")) * 1024 *
 THESIS_MAX_ATTACHMENTS = int(os.getenv("THESIS_MAX_ATTACHMENTS", "10"))
 THESIS_MAX_CONTEXT_CHARS = int(os.getenv("THESIS_MAX_CONTEXT_CHARS", "50000"))
 
+# LLM Wiki (second-brain per-tesi)
+# Path del template del wiki: contiene CLAUDE.md (la "costituzione") + struttura
+# di sottocartelle vuote che viene clonata in thesis_uploads/{tid}/llm_wiki/.
+WIKI_TEMPLATE_DIR = Path(os.getenv("WIKI_TEMPLATE_DIR", str(Path(__file__).resolve().parent.parent / "llm_wiki")))
+# Modello Claude usato per ingest/lint. Sonnet e' il default (good cost/perf ratio
+# con prompt caching del CLAUDE.md). L'utente puo' overridare via env.
+WIKI_CLAUDE_MODEL = os.getenv("WIKI_CLAUDE_MODEL", "claude-sonnet-4-6")
+# Max fonti raw per tesi prima di andare in errore (taglia il costo dell'ingest)
+WIKI_MAX_SOURCES = int(os.getenv("WIKI_MAX_SOURCES", "15"))
+# Timeout HTTP per il download dei PDF dei paper (secondi)
+WIKI_PAPER_DOWNLOAD_TIMEOUT = int(os.getenv("WIKI_PAPER_DOWNLOAD_TIMEOUT", "30"))
+# Max bytes per un PDF scaricato (25 MB)
+WIKI_PAPER_MAX_BYTES = int(os.getenv("WIKI_PAPER_MAX_BYTES", str(25 * 1024 * 1024)))
+# Timeout duro sul job di ingest (secondi). Dopo wiki_status diventa 'failed'.
+WIKI_INGEST_TIMEOUT_SEC = int(os.getenv("WIKI_INGEST_TIMEOUT_SEC", "900"))  # 15 min
+# Numero di fonti per turno SDK Anthropic durante l'ingest
+WIKI_INGEST_BATCH_SIZE = int(os.getenv("WIKI_INGEST_BATCH_SIZE", "5"))
+# Max tokens output per turno (ingest)
+WIKI_INGEST_MAX_TOKENS = int(os.getenv("WIKI_INGEST_MAX_TOKENS", "8000"))
+# Max tokens output per il lint (uno shot read-only)
+WIKI_LINT_MAX_TOKENS = int(os.getenv("WIKI_LINT_MAX_TOKENS", "4000"))
+
 # Configurazione Prompt
 PROMPT_ADDESTRAMENTO_PATH = Path(os.getenv("PROMPT_ADDESTRAMENTO_PATH", "prompt_addestramento.txt"))
 

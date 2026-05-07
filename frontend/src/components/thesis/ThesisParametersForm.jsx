@@ -296,6 +296,30 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
           </div>
         </div>
 
+        {/* Knowledge Base (LLM Wiki) — restrict_to_sources */}
+        <div className="border-t border-slate-200 pt-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">Base di conoscenza</h3>
+          <label className="flex items-start gap-3 p-4 rounded-xl border-2 border-slate-200 bg-white hover:border-orange-300 cursor-pointer transition-colors">
+            <input
+              type="checkbox"
+              checked={data.restrict_to_sources !== false}
+              onChange={(e) => handleChange('restrict_to_sources', e.target.checked)}
+              className="mt-0.5 w-4 h-4 text-orange-600 border-slate-300 rounded focus:ring-orange-500"
+            />
+            <div className="flex-1">
+              <p className="font-semibold text-slate-900">
+                Limita la generazione alle sole fonti che caricherò
+                <span className="ml-2 text-[11px] font-medium text-orange-700 bg-orange-100 rounded px-1.5 py-0.5">consigliato</span>
+              </p>
+              <p className="text-xs text-slate-600 mt-1">
+                Se attivo, l'AI userà esclusivamente i paper selezionati e i documenti caricati
+                (indicizzati nel wiki). Riduce le allucinazioni e le citazioni inventate. Disattiva
+                se vuoi che il modello integri liberamente con la sua conoscenza generale.
+              </p>
+            </div>
+          </label>
+        </div>
+
       </div>
     </div>
   );

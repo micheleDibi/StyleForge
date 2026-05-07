@@ -29,9 +29,10 @@ from models import (
     WritingStyleResponse, ContentDepthResponse,
     AudienceKnowledgeLevelResponse, AudienceSizeResponse,
     IndustryResponse, TargetAudienceResponse,
-    ThesisStatus, ChapterInfo, ThesisUrlAttachmentRequest,
+    ThesisStatus, ThesisWikiStatus, ChapterInfo, ThesisUrlAttachmentRequest,
     ThesisResearchSearchRequest, ThesisResearchSummarizeRequest,
     ThesisAddPapersRequest, ThesisAddPapersResponse,
+    WikiIngestRequest, WikiStatusResponse, WikiLintReportResponse,
 )
 from db_models import (
     User, Thesis, ThesisAttachment, ThesisGenerationJob,
@@ -81,6 +82,79 @@ def get_thesis_by_id(db: DBSession, thesis_id: str, user_id: str) -> Thesis:
         raise HTTPException(status_code=404, detail="Tesi non trovata")
 
     return thesis
+
+
+_RESTRICT_INSTRUCTION = """
+
+═══════════════════════════════════════════════════════════════════════════════
+VINCOLO DI FONTE (RESTRICT)
+═══════════════════════════════════════════════════════════════════════════════
+Le informazioni autorevoli per questa tesi sono SOLO quelle nella BASE DI
+CONOSCENZA (LLM WIKI) sopra. Non aggiungere fatti, dati o citazioni provenienti
+dalla tua conoscenza generale.
+- Se un dato necessario non e' presente nel wiki, scrivi "[fonte non disponibile]"
+  invece di inventarlo.
+- Le citazioni inline ([1], {{nota:...}}) devono riferirsi UNICAMENTE a fonti
+  elencate nella sezione "Fonti citate" del wiki.
+- Non inventare autori, titoli, anni, DOI, dati statistici. Se il wiki non li
+  contiene, ometti la citazione e segnala "[fonte non disponibile]".
+"""
+
+
+def _build_context_for_thesis(thesis: Thesis, db: DBSession, query_extra: str = "") -> str:
+    """
+    Costruisce il context da iniettare nei prompt (chapters/sections/content).
+
+    Se la tesi ha un wiki gia' ingerito (wiki_status in {ingested, linted}),
+    usa il retriever che pesca da wiki/temi/sintesi/concetti/fonti con TF-IDF
+    sul query (titolo + key_topics + descrizione + query_extra). Quando
+    restrict_to_sources=True appende il blocco "VINCOLO DI FONTE (RESTRICT)"
+    direttamente al context: cosi' i prompt builder esistenti non devono
+    cambiare firma.
+
+    Altrimenti, fallback al vecchio build_attachments_context (back-compat per
+    tesi pre-feature o per chi disabilita lo step Knowledge Base). In quel
+    caso il VINCOLO viene comunque appeso se restrict_to_sources=True.
+    """
+    restrict = bool(thesis.restrict_to_sources)
+    wiki_status = (thesis.wiki_status or "none").lower()
+
+    base_context: str = ""
+    if wiki_status in ("ingested", "linted"):
+        try:
+            from llm_wiki import wiki_retriever as _wr
+            query_parts = [
+                thesis.title or "",
+                " ".join(thesis.key_topics or []),
+                thesis.description or "",
+                query_extra,
+            ]
+            query = " ".join(p for p in query_parts if p)
+            result = _wr.build_context(
+                str(thesis.id),
+                query=query,
+                max_chars=config.THESIS_MAX_CONTEXT_CHARS,
+                restrict_to_sources=restrict,
+            )
+            base_context = result.context
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Wiki retriever fallito tesi %s, fallback ad attachments_context",
+                thesis.id,
+            )
+
+    if not base_context:
+        # Fallback: back-compat (tesi pre-LLM-Wiki o wiki non ancora ingerita)
+        attachments = db.query(ThesisAttachment).filter(
+            ThesisAttachment.thesis_id == thesis.id
+        ).all()
+        base_context = build_attachments_context(
+            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
+        )
+
+    if restrict:
+        return base_context + _RESTRICT_INSTRUCTION
+    return base_context
 
 
 def build_thesis_data_dict(thesis: Thesis, db: DBSession) -> dict:
@@ -323,6 +397,9 @@ async def create_thesis(
         # Marca come "già pagata" sia per addebito flat che per admin
         # (così gli step successivi non riaddebitano)
         credits_charged=(flat_charged or bool(current_user.is_admin)),
+        # LLM Wiki: vincolo "solo fonti selezionate" (default ON)
+        restrict_to_sources=bool(getattr(request, 'restrict_to_sources', True)),
+        wiki_status='none',
     )
 
     db.add(thesis)
@@ -374,6 +451,13 @@ async def delete_thesis(
 
     # Elimina allegati dal filesystem
     cleanup_thesis_attachments(thesis_id)
+
+    # Elimina cartella LLM Wiki (se presente)
+    try:
+        from llm_wiki import wiki_workspace as _ww
+        _ww.cleanup(thesis_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("Errore cleanup wiki tesi %s", thesis_id)
 
     # Elimina dal database (cascade eliminerà allegati e job)
     db.delete(thesis)
@@ -712,9 +796,17 @@ async def add_paper_attachments(
 ):
     """
     Salva i paper selezionati come allegati della tesi.
-    Per ogni paper privo di summary in input, genera il riassunto AI
-    server-side (consumando 'research_summary' in crediti).
-    L'extracted_text combina sempre paper completo + riassunto AI.
+
+    Dal 2026-05 (introduzione LLM Wiki): NON viene piu' generato un riassunto
+    AI per-paper qui. Il riassunto/sintesi e' compito del workflow INGEST del
+    wiki (eseguito poi via /wiki/ingest), che opera in modo cross-fonti e
+    riconcilia entita'/concetti/contraddizioni. Quindi:
+
+      - extracted_text = solo metadati + abstract (compatto, no chiamata LLM)
+      - summary fornito dal client e' ancora accettato per back-compat ma NON
+        viene piu' generato server-side; tesi gia' create con summary li usano
+        come prima (no rotture)
+      - summarized_count e credits_consumed restano per back-compat = 0
     """
     thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
 
@@ -728,10 +820,6 @@ async def add_paper_attachments(
             detail=f"Superato il limite di {config.THESIS_MAX_ATTACHMENTS} allegati",
         )
 
-    summary_cost = estimate_credits("research_summary", {}, db=db)["credits_needed"]
-    summarized_count = 0
-    credits_consumed = 0
-
     created: List[ThesisAttachmentResponse] = []
 
     for item in request.items:
@@ -740,7 +828,8 @@ async def add_paper_attachments(
         except Exception:
             raise HTTPException(status_code=400, detail="Paper non valido nel payload")
 
-        # Riusa summary fornito o generalo (a costo di crediti)
+        # Se il client ha gia' un summary (vecchio flusso), lo include per
+        # massima retro-compatibilita'. Non genera piu' niente server-side.
         summary: Optional[SummaryResult] = None
         if item.summary is not None:
             try:
@@ -748,28 +837,11 @@ async def add_paper_attachments(
             except Exception:
                 summary = None
 
-        if summary is None:
-            # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
-            if not getattr(thesis, 'credits_charged', False):
-                # Deduce crediti PRIMA di chiamare il provider (pattern coerente col resto del codice)
-                deduct_credits(
-                    user=current_user,
-                    amount=summary_cost,
-                    operation_type="research_summary",
-                    description=f"Riassunto paper aggiunto a tesi: {paper.title[:80]}",
-                    db=db,
-                )
-            try:
-                summary = await summarize_paper(paper)
-            except Exception:
-                logger.exception("Riassunto fallito per paper '%s', salvo solo metadati", paper.title[:80])
-                summary = None  # Salvo comunque l'attachment con solo metadati
-            else:
-                summarized_count += 1
-                if not getattr(thesis, 'credits_charged', False):
-                    credits_consumed += summary_cost
-
-        extracted_text = render_paper_with_summary(paper, summary)
+        if summary is not None:
+            extracted_text = render_paper_with_summary(paper, summary)
+        else:
+            # Solo metadati + abstract: il wiki-ingest ricavera' i takeaway.
+            extracted_text = paper_to_attachment_text(paper)
 
         # Placeholder per file_path (la colonna è NOT NULL)
         if paper.full_text_url:
@@ -799,8 +871,266 @@ async def add_paper_attachments(
     return ThesisAddPapersResponse(
         attachments=created,
         total=len(created),
-        summarized_count=summarized_count,
-        credits_consumed=credits_consumed,
+        summarized_count=0,
+        credits_consumed=0,
+    )
+
+
+# ============================================================================
+# LLM WIKI (second-brain) ENDPOINTS
+# ============================================================================
+
+def _wiki_ingest_task(thesis_id: str, user_id: str):
+    """Background task: scarica paper, materializza upload, lancia ingest+lint."""
+    from filelock import Timeout as _LockTimeout
+
+    from llm_wiki import (
+        paper_downloader as _pd,
+        wiki_runner as _wr,
+        wiki_workspace as _ww,
+    )
+
+    db = SessionLocal()
+    lock = None
+    try:
+        thesis = db.query(Thesis).get(thesis_id)
+        if not thesis:
+            logger.error("Wiki ingest: tesi %s non trovata", thesis_id)
+            return
+
+        # Acquisisci lock filesystem (non bloccante: se gia' in corso, esci)
+        try:
+            lock = _ww.acquire_lock(thesis_id, timeout=0)
+        except _LockTimeout:
+            logger.warning("Wiki ingest: tesi %s gia' in corso (lock attivo)", thesis_id)
+            return
+
+        # Bootstrap (idempotente) + snapshot di backup
+        _ww.bootstrap(thesis_id)
+        backup = _ww.snapshot_wiki(thesis_id)
+
+        # 1. Scarica paper / fallback abstract
+        attachments = db.query(ThesisAttachment).filter(
+            ThesisAttachment.thesis_id == thesis.id
+        ).all()
+        try:
+            _pd.materialize_papers(thesis_id, attachments)
+        except Exception:  # noqa: BLE001
+            logger.exception("Wiki ingest: errore materialize_papers tesi %s", thesis_id)
+
+        # 2. Materializza upload utente
+        try:
+            _ww.materialize_user_uploads(thesis_id, attachments)
+        except Exception:  # noqa: BLE001
+            logger.exception("Wiki ingest: errore materialize_user_uploads tesi %s", thesis_id)
+
+        # 3. Aggiorna stato + path
+        thesis.wiki_status = "ingesting"
+        thesis.wiki_path = str(_ww.get_wiki_root(thesis_id))
+        db.commit()
+
+        # 4. INGEST con SDK Anthropic
+        try:
+            _wr.run_ingest(thesis_id)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Wiki ingest fallito tesi %s", thesis_id)
+            thesis = db.query(Thesis).get(thesis_id)
+            if thesis:
+                thesis.wiki_status = "failed"
+                thesis.wiki_lint_report = {"error": str(e)[:500]}
+                db.commit()
+            # Rollback al backup pre-ingest
+            if backup is not None:
+                try:
+                    _ww.restore_snapshot(thesis_id, backup)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Restore snapshot fallito tesi %s", thesis_id)
+            return
+
+        thesis = db.query(Thesis).get(thesis_id)
+        if thesis:
+            thesis.wiki_status = "ingested"
+            thesis.wiki_ingested_at = datetime.utcnow()
+            db.commit()
+
+        _ww.cleanup_old_snapshots(thesis_id, keep=2)
+
+        # 5. LINT (chained). Errori lint non rendono failed l'ingest.
+        thesis = db.query(Thesis).get(thesis_id)
+        if thesis:
+            thesis.wiki_status = "linting"
+            db.commit()
+        try:
+            report = _wr.run_lint(thesis_id)
+            thesis = db.query(Thesis).get(thesis_id)
+            if thesis:
+                thesis.wiki_status = "linted"
+                thesis.wiki_lint_report = report
+                thesis.wiki_linted_at = datetime.utcnow()
+                db.commit()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Wiki lint fallito tesi %s", thesis_id)
+            thesis = db.query(Thesis).get(thesis_id)
+            if thesis:
+                # Resta 'ingested' (utilizzabile, il lint e' opzionale)
+                thesis.wiki_status = "ingested"
+                thesis.wiki_lint_report = {"error": str(e)[:500]}
+                db.commit()
+    finally:
+        if lock is not None:
+            try:
+                lock.release()
+            except Exception:  # noqa: BLE001
+                pass
+        db.close()
+
+
+@router.post("/{thesis_id}/wiki/ingest", response_model=WikiStatusResponse)
+async def start_wiki_ingest(
+    thesis_id: str,
+    request: WikiIngestRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Avvia ingest + lint del wiki della tesi (in background).
+
+    - 409 se gia' in corso (wiki_status in ingesting/linting).
+    - 200 con stato corrente se gia' completato e force=False.
+    - 200 + ripartenza se force=True o se wiki_status in {none, failed, ingested}.
+    """
+    from llm_wiki import wiki_workspace as _ww
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    # Stati transitori -> 409
+    if thesis.wiki_status in ("ingesting", "linting"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Wiki gia' in elaborazione (stato={thesis.wiki_status})",
+        )
+
+    # Se gia' linted e force=False, non rifare niente
+    if thesis.wiki_status == "linted" and not request.force:
+        return WikiStatusResponse(
+            thesis_id=str(thesis.id),
+            wiki_status=ThesisWikiStatus.LINTED,
+            wiki_path=thesis.wiki_path,
+            sources_count=len(_ww.list_raw_files(thesis_id)),
+            pages_count=_ww.count_wiki_pages(thesis_id),
+            wiki_ingested_at=thesis.wiki_ingested_at,
+            wiki_linted_at=thesis.wiki_linted_at,
+        )
+
+    # Reset stato e schedula task
+    thesis.wiki_status = "ingesting"
+    thesis.wiki_lint_report = None
+    db.commit()
+
+    background_tasks.add_task(_wiki_ingest_task, str(thesis.id), str(current_user.id))
+
+    return WikiStatusResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus.INGESTING,
+        wiki_path=thesis.wiki_path,
+        sources_count=0,
+        pages_count=0,
+    )
+
+
+@router.post("/{thesis_id}/wiki/lint", response_model=WikiStatusResponse)
+async def start_wiki_lint(
+    thesis_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """Rilancia il SOLO lint (l'ingest deve essere gia' avvenuto)."""
+    from llm_wiki import wiki_workspace as _ww
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    if thesis.wiki_status not in ("ingested", "linted"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Wiki non ancora ingestita (stato={thesis.wiki_status})",
+        )
+
+    def _lint_only(tid: str):
+        from llm_wiki import wiki_runner as _wr
+        d = SessionLocal()
+        try:
+            t = d.query(Thesis).get(tid)
+            if not t:
+                return
+            t.wiki_status = "linting"
+            d.commit()
+            try:
+                report = _wr.run_lint(tid)
+                t = d.query(Thesis).get(tid)
+                if t:
+                    t.wiki_status = "linted"
+                    t.wiki_lint_report = report
+                    t.wiki_linted_at = datetime.utcnow()
+                    d.commit()
+            except Exception as e:  # noqa: BLE001
+                logger.exception("Lint fallito")
+                t = d.query(Thesis).get(tid)
+                if t:
+                    t.wiki_status = "ingested"
+                    t.wiki_lint_report = {"error": str(e)[:500]}
+                    d.commit()
+        finally:
+            d.close()
+
+    background_tasks.add_task(_lint_only, str(thesis.id))
+
+    return WikiStatusResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus.LINTING,
+        wiki_path=thesis.wiki_path,
+        sources_count=len(_ww.list_raw_files(thesis_id)),
+        pages_count=_ww.count_wiki_pages(thesis_id),
+    )
+
+
+@router.get("/{thesis_id}/wiki/status", response_model=WikiStatusResponse)
+async def get_wiki_status(
+    thesis_id: str,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """Stato del wiki: per polling lato client."""
+    from llm_wiki import wiki_workspace as _ww
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    return WikiStatusResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus(thesis.wiki_status or "none"),
+        wiki_path=thesis.wiki_path,
+        sources_count=len(_ww.list_raw_files(thesis_id)) if thesis.wiki_path else 0,
+        pages_count=_ww.count_wiki_pages(thesis_id) if thesis.wiki_path else 0,
+        wiki_ingested_at=thesis.wiki_ingested_at,
+        wiki_linted_at=thesis.wiki_linted_at,
+    )
+
+
+@router.get("/{thesis_id}/wiki/report", response_model=WikiLintReportResponse)
+async def get_wiki_report(
+    thesis_id: str,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """Restituisce il lint report del wiki (se disponibile)."""
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    return WikiLintReportResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus(thesis.wiki_status or "none"),
+        report=thesis.wiki_lint_report,
+        generated_at=thesis.wiki_linted_at,
     )
 
 
@@ -819,13 +1149,8 @@ def generate_chapters_task(thesis_id: str, user_id: str):
         # Costruisci i dati per il prompt
         thesis_data = build_thesis_data_dict(thesis, db)
 
-        # Costruisci contesto allegati
-        attachments = db.query(ThesisAttachment).filter(
-            ThesisAttachment.thesis_id == thesis.id
-        ).all()
-        attachments_context = build_attachments_context(
-            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
-        )
+        # Costruisci contesto: Wiki retriever se disponibile, altrimenti fallback
+        attachments_context = _build_context_for_thesis(thesis, db)
 
         # Genera capitoli con il provider AI selezionato
         provider = thesis.ai_provider or "openai"
@@ -929,13 +1254,8 @@ async def generate_chapters(
         # Costruisci i dati per il prompt
         thesis_data = build_thesis_data_dict(thesis, db)
 
-        # Costruisci contesto allegati
-        attachments = db.query(ThesisAttachment).filter(
-            ThesisAttachment.thesis_id == thesis.id
-        ).all()
-        attachments_context = build_attachments_context(
-            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
-        )
+        # Costruisci contesto: Wiki retriever se disponibile, altrimenti fallback
+        attachments_context = _build_context_for_thesis(thesis, db)
 
         # Genera capitoli con il provider AI selezionato (sincrono)
         provider = thesis.ai_provider or "openai"
@@ -1059,13 +1379,12 @@ def generate_sections_task(thesis_id: str, user_id: str):
         thesis_data = build_thesis_data_dict(thesis, db)
         chapters = thesis.chapters_structure.get("chapters", [])
 
-        # Costruisci contesto allegati
-        attachments = db.query(ThesisAttachment).filter(
-            ThesisAttachment.thesis_id == thesis.id
-        ).all()
-        attachments_context = build_attachments_context(
-            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
+        # Costruisci contesto: Wiki retriever (query include titoli capitoli) se
+        # disponibile, altrimenti fallback ai vecchi extracted_text
+        chapter_titles_q = " ".join(
+            c.get("chapter_title") or c.get("title") or "" for c in chapters
         )
+        attachments_context = _build_context_for_thesis(thesis, db, query_extra=chapter_titles_q)
 
         # Genera sezioni con il provider AI selezionato
         provider = thesis.ai_provider or "openai"
@@ -1163,13 +1482,11 @@ async def generate_sections(
         thesis_data = build_thesis_data_dict(thesis, db)
         chapters = thesis.chapters_structure.get("chapters", [])
 
-        # Costruisci contesto allegati
-        attachments = db.query(ThesisAttachment).filter(
-            ThesisAttachment.thesis_id == thesis.id
-        ).all()
-        attachments_context = build_attachments_context(
-            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
+        # Costruisci contesto: Wiki retriever con query mirata ai capitoli
+        chapter_titles_q = " ".join(
+            c.get("chapter_title") or c.get("title") or "" for c in chapters
         )
+        attachments_context = _build_context_for_thesis(thesis, db, query_extra=chapter_titles_q)
 
         # Genera sezioni con il provider AI selezionato (sincrono)
         provider = thesis.ai_provider or "openai"
@@ -1349,13 +1666,8 @@ def generate_content_task(thesis_id: str, user_id: str):
         thesis_data = build_thesis_data_dict(thesis, db)
         chapters = thesis.chapters_structure.get("chapters", [])
 
-        # Costruisci contesto allegati
-        attachments = db.query(ThesisAttachment).filter(
-            ThesisAttachment.thesis_id == thesis.id
-        ).all()
-        attachments_context = build_attachments_context(
-            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
-        )
+        # Costruisci contesto: Wiki retriever se disponibile, altrimenti fallback
+        attachments_context = _build_context_for_thesis(thesis, db)
 
         # Verifica se c'è una sessione addestrata per umanizzazione avanzata
         trained_session_client = None

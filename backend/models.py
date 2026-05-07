@@ -75,6 +75,18 @@ class JobType(str, Enum):
     HUMANIZATION = "humanization"
     THESIS_GENERATION = "thesis_generation"
     COMPILATIO_SCAN = "compilatio_scan"
+    WIKI_INGEST = "wiki_ingest"
+    WIKI_LINT = "wiki_lint"
+
+
+class ThesisWikiStatus(str, Enum):
+    """Stati del wiki LLM (second-brain) di una tesi."""
+    NONE = "none"
+    INGESTING = "ingesting"
+    INGESTED = "ingested"
+    LINTING = "linting"
+    LINTED = "linted"
+    FAILED = "failed"
 
 
 class ThesisStatus(str, Enum):
@@ -261,6 +273,7 @@ class ThesisCreateRequest(BaseModel):
     target_audience_id: int = Field(..., description="ID destinatario target")
     ai_provider: AIProviderEnum = Field(AIProviderEnum.OPENAI, description="Provider AI (openai o claude)")
     citation_style: Optional[str] = Field("footnotes", description="Stile citazioni: 'footnotes' (note a piè di pagina) o 'bibliography' (citazioni [x])")
+    restrict_to_sources: bool = Field(True, description="Se True la generazione si attiene SOLO alle fonti caricate (paper + upload). Se False permette anche conoscenza generale del modello.")
 
     class Config:
         json_schema_extra = {
@@ -278,7 +291,8 @@ class ThesisCreateRequest(BaseModel):
                 "industry_id": 3,
                 "target_audience_id": 1,
                 "ai_provider": "openai",
-                "citation_style": "footnotes"
+                "citation_style": "footnotes",
+                "restrict_to_sources": True
             }
         }
 
@@ -333,6 +347,12 @@ class ThesisResponse(BaseModel):
     generation_progress: int
     total_words_generated: int
     credits_charged: bool = False
+    restrict_to_sources: bool = True
+    wiki_status: ThesisWikiStatus = ThesisWikiStatus.NONE
+    wiki_path: Optional[str] = None
+    wiki_lint_report: Optional[Dict[str, Any]] = None
+    wiki_ingested_at: Optional[datetime] = None
+    wiki_linted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
@@ -487,6 +507,44 @@ class GenerationStatusResponse(BaseModel):
     completed_sections: int
     chapters: List[ChapterGenerationStatus]
     estimated_time_remaining: Optional[int] = None  # secondi
+
+
+# ============================================================================
+# LLM WIKI (second-brain per-tesi) MODELS
+# ============================================================================
+
+class WikiIngestRequest(BaseModel):
+    """Request opzionale per avviare l'ingest del wiki di una tesi.
+
+    Se force=True, ricicla il wiki/ esistente (snapshot pre-overwrite); utile
+    per ri-eseguire dopo aggiunte di nuove fonti.
+    """
+    force: bool = Field(False, description="Se True ricostruisce il wiki anche se gia' ingested")
+
+
+class WikiStatusResponse(BaseModel):
+    """Stato del wiki di una tesi (polling-friendly)."""
+    thesis_id: str
+    wiki_status: ThesisWikiStatus
+    wiki_path: Optional[str] = None
+    sources_count: int = Field(0, description="Numero di file in raw/")
+    pages_count: int = Field(0, description="Numero di pagine generate in wiki/")
+    job_id: Optional[str] = Field(None, description="ID del job in corso (se ingesting/linting)")
+    job_progress: Optional[int] = Field(None, ge=0, le=100)
+    job_error: Optional[str] = None
+    wiki_ingested_at: Optional[datetime] = None
+    wiki_linted_at: Optional[datetime] = None
+
+
+class WikiLintReportResponse(BaseModel):
+    """Report di lint del wiki: pagine orfane, link rotti, contraddizioni, gaps."""
+    thesis_id: str
+    wiki_status: ThesisWikiStatus
+    report: Optional[Dict[str, Any]] = Field(
+        None,
+        description="JSON con {orphan_pages, broken_wikilinks, missing_concepts, contradictions, stale_pages, frontmatter_issues, exploration_suggestions, gaps}"
+    )
+    generated_at: Optional[datetime] = None
 
 
 # ============================================================================

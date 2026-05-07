@@ -1,21 +1,22 @@
-import { Check, Settings, Users, Paperclip, List, FileText, Sparkles, Download, BookMarked } from 'lucide-react';
+import { Check, Settings, Users, Paperclip, List, FileText, Sparkles, Download, BookMarked, Brain } from 'lucide-react';
 
-const StepIndicator = ({ currentStep, totalSteps = 8 }) => {
-  const steps = [
-    { num: 1, label: 'Parametri', icon: Settings },
-    { num: 2, label: 'Pubblico', icon: Users },
-    { num: 3, label: 'Paper', icon: BookMarked },
-    { num: 4, label: 'Allegati', icon: Paperclip },
-    { num: 5, label: 'Capitoli', icon: List },
-    { num: 6, label: 'Sezioni', icon: FileText },
-    { num: 7, label: 'Generazione', icon: Sparkles },
-    { num: 8, label: 'Download', icon: Download }
-  ];
+const STEPS = [
+  { num: 1, label: 'Parametri', icon: Settings },
+  { num: 2, label: 'Pubblico', icon: Users },
+  { num: 3, label: 'Paper', icon: BookMarked },
+  { num: 4, label: 'Allegati', icon: Paperclip },
+  { num: 5, label: 'Knowledge Base', icon: Brain },
+  { num: 6, label: 'Capitoli', icon: List },
+  { num: 7, label: 'Sezioni', icon: FileText },
+  { num: 8, label: 'Generazione', icon: Sparkles },
+  { num: 9, label: 'Download', icon: Download }
+];
 
+const StepIndicator = ({ currentStep, totalSteps = STEPS.length }) => {
   return (
     <div className="mb-8">
       <div className="flex items-center justify-between">
-        {steps.slice(0, totalSteps).map((step, idx) => (
+        {STEPS.slice(0, totalSteps).map((step, idx) => (
           <div key={step.num} className="flex items-center flex-1">
             <div className="flex flex-col items-center">
               <div className={`
@@ -33,16 +34,16 @@ const StepIndicator = ({ currentStep, totalSteps = 8 }) => {
                 )}
               </div>
               <span className={`
-                mt-2 text-xs font-medium hidden md:block
+                mt-2 text-[11px] md:text-xs font-medium hidden md:block text-center leading-tight
                 ${currentStep >= step.num ? 'text-slate-900' : 'text-slate-400'}
               `}>
                 {step.label}
               </span>
             </div>
 
-            {idx < steps.length - 1 && (
+            {idx < totalSteps - 1 && (
               <div className={`
-                flex-1 h-1 mx-2 rounded-full transition-all duration-300
+                flex-1 h-1 mx-1.5 md:mx-2 rounded-full transition-all duration-300
                 ${currentStep > step.num ? 'bg-green-500' : 'bg-slate-200'}
               `} />
             )}
