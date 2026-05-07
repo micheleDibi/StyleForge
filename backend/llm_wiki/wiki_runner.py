@@ -105,6 +105,16 @@ def _build_system(constitution: str, mode: str) -> List[Dict[str, Any]]:
 # raggiunge max_iterations. Applica i tool_use, ritorna l'ultima risposta.
 # ---------------------------------------------------------------------------
 
+@dataclass
+class ToolLoopStats:
+    iterations: int = 0
+    total_tool_calls: int = 0
+    write_calls: int = 0
+    read_calls: int = 0
+    list_calls: int = 0
+    last_stop_reason: str = ""
+
+
 def _run_tool_loop(
     client: anthropic.Anthropic,
     system: List[Dict[str, Any]],
@@ -119,19 +129,20 @@ def _run_tool_loop(
     deadline_ts: Optional[float] = None,
     force_first_tool: bool = False,
     api_timeout: float = 180.0,
-) -> Tuple[anthropic.types.Message, int]:
+) -> Tuple[anthropic.types.Message, ToolLoopStats]:
     """
     Esegue un loop messages.create -> apply tool_use -> append tool_result.
     Termina quando stop_reason != 'tool_use' o max_iterations.
-    Ritorna (last_response, total_tool_calls).
+    Ritorna (last_response, stats).
     """
     last_response: Optional[anthropic.types.Message] = None
-    total_tool_calls = 0
+    stats = ToolLoopStats()
     for iteration in range(max_iterations):
+        stats.iterations = iteration + 1
         if deadline_ts is not None and time.time() > deadline_ts:
             raise TimeoutError(
                 f"Wiki runner timeout dopo {iteration} iter "
-                f"(modalita' {'RO' if read_only else 'RW'}, tool_calls={total_tool_calls})"
+                f"(modalita' {'RO' if read_only else 'RW'}, tool_calls={stats.total_tool_calls})"
             )
 
         # Forza tool_use al primo turno per evitare che il modello risponda solo testualmente.
@@ -151,11 +162,14 @@ def _run_tool_loop(
         resp = client.messages.create(**kwargs)
         latency = time.time() - t0
         last_response = resp
+        stats.last_stop_reason = resp.stop_reason or ""
 
         # Conta i blocchi tool_use in questa risposta
         n_tool_use = sum(1 for b in resp.content if getattr(b, "type", None) == "tool_use")
         n_text = sum(1 for b in resp.content if getattr(b, "type", None) == "text")
-        logger.info(
+        # Uso WARNING (non INFO) cosi' i log diagnostici escono sempre anche se il
+        # root logger e' configurato a livello WARNING/ERROR.
+        logger.warning(
             "wiki_runner iter=%d stop=%s text_blocks=%d tool_use=%d latency=%.1fs ro=%s",
             iteration, resp.stop_reason, n_text, n_tool_use, latency, read_only,
         )
@@ -178,10 +192,18 @@ def _run_tool_loop(
                     wiki_root=wiki_root,
                     read_only=read_only,
                 )
-                # Log compatto del tool call (path + ok/error)
+                # Log + counter per categoria
+                if tool_name == wiki_tools.TOOL_WRITE_FILE:
+                    stats.write_calls += 1
+                elif tool_name == wiki_tools.TOOL_APPEND_FILE:
+                    stats.write_calls += 1
+                elif tool_name == wiki_tools.TOOL_READ_FILE:
+                    stats.read_calls += 1
+                elif tool_name == wiki_tools.TOOL_LIST_DIR:
+                    stats.list_calls += 1
                 try:
                     parsed = json.loads(result_str)
-                    logger.info(
+                    logger.warning(
                         "wiki_runner tool=%s path=%s ok=%s err=%s",
                         tool_name,
                         tool_input.get("path", "?"),
@@ -190,7 +212,7 @@ def _run_tool_loop(
                     )
                 except Exception:  # noqa: BLE001
                     pass
-                total_tool_calls += 1
+                stats.total_tool_calls += 1
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -204,7 +226,7 @@ def _run_tool_loop(
 
     if last_response is None:
         raise RuntimeError("messages.create non ha mai risposto")
-    return last_response, total_tool_calls
+    return last_response, stats
 
 
 def _chunked(seq: List, size: int) -> List[List]:
@@ -269,29 +291,45 @@ def run_ingest(
             user_msg = (
                 f"{INGEST_TRIGGER}\n\n"
                 f"In `raw/` ci sono {len(raw_files)} file da ingerire (in {total_batches} batch). "
-                f"Questo è il primo batch:\n\n{files_block}\n\n"
-                "Per ogni file: leggilo con `read_file`, poi crea/aggiorna le pagine in "
-                "`wiki/fonti/`, `wiki/entita/`, `wiki/concetti/`, `wiki/temi/` come da "
-                "schema (sez. 7 di CLAUDE.md). Aggiorna anche `index.md` e appendi una "
-                "entry a `log.md`. Quando hai finito questo batch, rispondi con un breve "
-                "riepilogo (1-3 righe) di cosa hai creato/aggiornato e vado avanti col prossimo batch."
+                f"Batch corrente {idx}/{total_batches}:\n\n{files_block}\n\n"
+                "**PROCEDURA OBBLIGATORIA** (esegui tutti gli step, non fermarti dopo aver letto):\n\n"
+                "1. Per OGNI file del batch (uno alla volta):\n"
+                "   a. `read_file(path)` per leggere la fonte raw\n"
+                "   b. **SUBITO DOPO**: `write_file('wiki/fonti/<slug>.md', content)` con il "
+                "contenuto completo della pagina fonte (frontmatter YAML + sezioni Riassunto, "
+                "Punti chiave, Citazioni notevoli, Entità menzionate, Concetti introdotti, "
+                "Connessioni — vedi sez. 7 di CLAUDE.md)\n"
+                "   c. Per ogni entità rilevante menzionata che merita una pagina propria: "
+                "`write_file('wiki/entita/<slug>.md', content)` (frontmatter + descrizione)\n"
+                "   d. Per ogni concetto sostantivo nuovo: `write_file('wiki/concetti/<slug>.md', content)`\n"
+                "2. Quando hai processato TUTTI i file del batch:\n"
+                "   - `write_file('index.md', content)` aggiornando il catalogo content-oriented\n"
+                "   - `append_file('log.md', '\\n## [YYYY-MM-DD] ingest | batch X\\n- Creata: ...\\n')` "
+                "con una entry per il batch\n"
+                "3. Solo DOPO aver completato tutti i write, rispondi con un breve riepilogo "
+                "testuale (1-3 righe) e attendi il batch successivo.\n\n"
+                "**NON limitarti a leggere i file e fare un riepilogo: il tuo compito principale "
+                "e' SCRIVERE le pagine wiki. Se non chiami `write_file`, non hai completato "
+                "l'ingest.**"
             )
         else:
             user_msg = (
                 f"Ottimo, prosegui con il batch {idx}/{total_batches}:\n\n{files_block}\n\n"
-                "Stessa procedura: ingest delle fonti, aggiornamento pagine sintetiche, "
-                "index.md e log.md. Riepilogo finale dopo questo batch."
+                "Stessa **PROCEDURA OBBLIGATORIA** del primo batch: per OGNI file → read_file + "
+                "write_file della pagina fonte + write_file delle entita'/concetti rilevanti. "
+                "Alla fine del batch, aggiorna index.md e appendi una entry a log.md.\n"
+                "**Ricorda: non fermarti dopo i read_file. Devi chiamare write_file per ogni pagina.**"
             )
 
         messages.append({"role": "user", "content": user_msg})
 
         batch_t0 = time.time()
-        logger.info(
+        logger.warning(
             "wiki_runner BEGIN batch %d/%d tesi=%s files=%d",
             idx, total_batches, thesis_id, len(rel_paths),
         )
         try:
-            _resp, n_tools = _run_tool_loop(
+            _resp, batch_stats = _run_tool_loop(
                 client=client,
                 system=system,
                 messages=messages,
@@ -303,10 +341,51 @@ def run_ingest(
                 deadline_ts=deadline_ts,
                 force_first_tool=True,
             )
-            summary.total_tool_calls += n_tools
-            logger.info(
-                "wiki_runner END batch %d/%d tesi=%s tool_calls=%d duration=%.1fs",
-                idx, total_batches, thesis_id, n_tools, time.time() - batch_t0,
+            summary.total_tool_calls += batch_stats.total_tool_calls
+
+            # Follow-up: se il modello ha letto ma NON ha scritto nulla, rilancia
+            # con un messaggio forzante. Massimo 2 retry per batch.
+            retry = 0
+            while batch_stats.write_calls == 0 and batch_stats.read_calls > 0 and retry < 2:
+                retry += 1
+                logger.warning(
+                    "wiki_runner FOLLOWUP batch %d retry=%d (read=%d write=0)",
+                    idx, retry, batch_stats.read_calls,
+                )
+                followup_msg = (
+                    "Hai letto i file ma **non hai ancora chiamato `write_file` per le pagine wiki**. "
+                    "L'ingest e' incompleto: il tuo riepilogo testuale deve essere salvato come pagina markdown sotto "
+                    "`wiki/fonti/<slug>.md`, non solo nel testo della risposta.\n\n"
+                    "**ORA chiama write_file** per ogni fonte appena letta. Frontmatter YAML "
+                    "(tipo: fonte, titolo, autore, formato, raw_path, tag) + sezione `## Riassunto` "
+                    "+ `## Punti chiave` + `## Entita' menzionate` + `## Concetti introdotti` "
+                    "(vedi sez. 7 di CLAUDE.md). Inizia subito con il primo write_file."
+                )
+                messages.append({"role": "user", "content": followup_msg})
+                _resp2, fu_stats = _run_tool_loop(
+                    client=client,
+                    system=system,
+                    messages=messages,
+                    tools=wiki_tools.WIKI_FS_TOOLS_RW,
+                    wiki_root=wiki_root,
+                    model=model,
+                    max_tokens=config.WIKI_INGEST_MAX_TOKENS,
+                    read_only=False,
+                    deadline_ts=deadline_ts,
+                    force_first_tool=True,  # forza tool_use anche nel follow-up
+                )
+                summary.total_tool_calls += fu_stats.total_tool_calls
+                # Aggiorna le statistiche del batch con il follow-up
+                batch_stats.write_calls += fu_stats.write_calls
+                batch_stats.read_calls += fu_stats.read_calls
+                batch_stats.list_calls += fu_stats.list_calls
+                batch_stats.total_tool_calls += fu_stats.total_tool_calls
+
+            logger.warning(
+                "wiki_runner END batch %d/%d tesi=%s read=%d write=%d list=%d duration=%.1fs",
+                idx, total_batches, thesis_id,
+                batch_stats.read_calls, batch_stats.write_calls, batch_stats.list_calls,
+                time.time() - batch_t0,
             )
         except Exception as e:  # noqa: BLE001
             logger.exception("Errore ingest batch %s/%s tesi %s", idx, total_batches, thesis_id)
@@ -370,7 +449,7 @@ def run_lint(thesis_id: str) -> Dict[str, Any]:
     deadline_ts = time.time() + config.WIKI_INGEST_TIMEOUT_SEC
 
     messages: List[Dict[str, Any]] = [{"role": "user", "content": LINT_USER_PROMPT}]
-    response, _n_tools = _run_tool_loop(
+    response, _stats = _run_tool_loop(
         client=client,
         system=system,
         messages=messages,
