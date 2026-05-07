@@ -299,15 +299,28 @@ def run_ingest(
                 "contenuto completo della pagina fonte (frontmatter YAML + sezioni Riassunto, "
                 "Punti chiave, Citazioni notevoli, Entità menzionate, Concetti introdotti, "
                 "Connessioni — vedi sez. 7 di CLAUDE.md)\n"
-                "   c. Per ogni entità rilevante menzionata che merita una pagina propria: "
-                "`write_file('wiki/entita/<slug>.md', content)` (frontmatter + descrizione)\n"
-                "   d. Per ogni concetto sostantivo nuovo: `write_file('wiki/concetti/<slug>.md', content)`\n"
+                "   c. **Per ogni entità rilevante** che vuoi linkare con `[[X]]`: crea SUBITO "
+                "`write_file('wiki/entita/<slug>.md', content)` con frontmatter (`tipo: entita, "
+                "sottotipo: persona|organizzazione|prodotto|...`) + 3+ righe sostantive. "
+                "Esempi: prodotti software (PyTorch, TensorFlow, AlexNet), autore primario, "
+                "organizzazione editrice. Coautori e nomi di passaggio: NIENTE wikilink, testo semplice.\n"
+                "   d. **Per ogni concetto sostantivo** che vuoi linkare con `[[X]]`: crea SUBITO "
+                "`write_file('wiki/concetti/<slug>.md', content)`. Concetti di passaggio: NIENTE "
+                "wikilink, testo semplice.\n"
                 "2. Quando hai processato TUTTI i file del batch:\n"
-                "   - `write_file('index.md', content)` aggiornando il catalogo content-oriented\n"
+                "   - `write_file('index.md', content)` aggiornando il catalogo content-oriented "
+                "(deduplicato: ogni pagina compare una sola volta)\n"
                 "   - `append_file('log.md', '\\n## [YYYY-MM-DD] ingest | batch X\\n- Creata: ...\\n')` "
                 "con una entry per il batch\n"
                 "3. Solo DOPO aver completato tutti i write, rispondi con un breve riepilogo "
                 "testuale (1-3 righe) e attendi il batch successivo.\n\n"
+                "**REGOLE FERREE SUI WIKILINKS** (sez. 5 CLAUDE.md):\n"
+                "- Se scrivi `[[X]]`, la pagina `wiki/*/X.md` DEVE esistere o essere creata "
+                "in questo stesso batch. Nessuna eccezione.\n"
+                "- Se non vuoi creare la pagina (menzione di passaggio): usa testo semplice, "
+                "niente parentesi quadre.\n"
+                "- Per le fonti, usa lo SLUG della pagina fonte (es. "
+                "`[[2019-pytorch-imperative-style-high-performance-dl]]`), NON il nome del file raw.\n\n"
                 "**NON limitarti a leggere i file e fare un riepilogo: il tuo compito principale "
                 "e' SCRIVERE le pagine wiki. Se non chiami `write_file`, non hai completato "
                 "l'ingest.**"
@@ -317,8 +330,9 @@ def run_ingest(
                 f"Ottimo, prosegui con il batch {idx}/{total_batches}:\n\n{files_block}\n\n"
                 "Stessa **PROCEDURA OBBLIGATORIA** del primo batch: per OGNI file → read_file + "
                 "write_file della pagina fonte + write_file delle entita'/concetti rilevanti. "
-                "Alla fine del batch, aggiorna index.md e appendi una entry a log.md.\n"
-                "**Ricorda: non fermarti dopo i read_file. Devi chiamare write_file per ogni pagina.**"
+                "Alla fine del batch, aggiorna index.md (deduplicato) e appendi una entry a log.md.\n"
+                "**Ricorda: ogni `[[X]]` che scrivi deve avere il file `wiki/*/X.md` creato in "
+                "questo stesso batch — niente wikilink rotti.**"
             )
 
         messages.append({"role": "user", "content": user_msg})
@@ -395,17 +409,165 @@ def run_ingest(
         if on_progress:
             on_progress(int(idx / total_batches * 100), f"batch {idx}/{total_batches}")
 
+    # ----- AUTO-FIX FASE: scan wikilink rotti e chiedi al modello di fixare -----
+    pages_pre_autofix = wiki_workspace.count_wiki_pages(thesis_id)
+    if pages_pre_autofix > pages_before and len(summary.errors) == 0:
+        try:
+            broken = _scan_broken_wikilinks(wiki_root)
+            if broken:
+                logger.warning(
+                    "wiki_runner AUTOFIX tesi=%s broken_links=%d",
+                    thesis_id, len(broken),
+                )
+                _autofix_broken_links(
+                    client=client,
+                    system=system,
+                    messages=messages,
+                    wiki_root=wiki_root,
+                    model=model,
+                    deadline_ts=deadline_ts,
+                    broken_links=broken,
+                    summary=summary,
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception("Auto-fix wikilinks fallito tesi %s (non critico)", thesis_id)
+
     summary.duration_sec = time.time() - started
     pages_after = wiki_workspace.count_wiki_pages(thesis_id)
     summary.pages_created = max(0, pages_after - pages_before)
     summary.log_entries_added = max(0, _count_log_entries(wiki_root) - log_lines_before)
     summary.raw_log_tail = _tail_log(wiki_root, max_chars=2000)
-    logger.info(
+    logger.warning(
         "wiki_runner FINAL tesi=%s pages_created=%d log_entries=%d tool_calls=%d duration=%.1fs errors=%d",
         thesis_id, summary.pages_created, summary.log_entries_added,
         summary.total_tool_calls, summary.duration_sec, len(summary.errors),
     )
     return summary
+
+
+# ---------------------------------------------------------------------------
+# Auto-fix: scan wikilink rotti e fai un round di correzione
+# ---------------------------------------------------------------------------
+
+_WIKILINK_RE = re.compile(r"\[\[([^\]\|#]+)(?:\|[^\]]+)?\]\]")
+
+
+def _scan_broken_wikilinks(wiki_root: Path) -> List[Dict[str, Any]]:
+    """
+    Scansiona tutte le pagine sotto wiki/ ed estrae i wikilink rotti.
+
+    Ritorna lista di dict {in_page: <relpath>, target: <slug>} per ogni
+    wikilink che non punta a un file esistente in wiki/*/<slug>.md.
+    """
+    wiki_dir = wiki_root / "wiki"
+    if not wiki_dir.exists():
+        return []
+
+    # Costruisci set degli slug esistenti (senza .md)
+    existing_slugs = set()
+    for sub in wiki_workspace.WIKI_SUBDIRS:
+        d = wiki_dir / sub
+        if d.exists():
+            for p in d.iterdir():
+                if p.is_file() and p.suffix == ".md":
+                    existing_slugs.add(p.stem)
+
+    # Scan ogni pagina e raccogli i wikilink
+    broken: List[Dict[str, Any]] = []
+    for sub in wiki_workspace.WIKI_SUBDIRS:
+        d = wiki_dir / sub
+        if not d.exists():
+            continue
+        for p in d.iterdir():
+            if not (p.is_file() and p.suffix == ".md"):
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            in_page = str(p.relative_to(wiki_root))
+            for match in _WIKILINK_RE.finditer(text):
+                target = match.group(1).strip()
+                if target and target not in existing_slugs:
+                    broken.append({"in_page": in_page, "target": target})
+
+    return broken
+
+
+def _autofix_broken_links(
+    *,
+    client: anthropic.Anthropic,
+    system: List[Dict[str, Any]],
+    messages: List[Dict[str, Any]],
+    wiki_root: Path,
+    model: str,
+    deadline_ts: float,
+    broken_links: List[Dict[str, Any]],
+    summary: IngestSummary,
+) -> None:
+    """
+    Invia un follow-up al modello con la lista dei wikilink rotti e gli chiede:
+    per ognuno, o crea la pagina mancante (almeno frontmatter + 3 righe), oppure
+    riscrive la pagina sorgente sostituendo `[[X]]` con testo semplice.
+    """
+    # Raggruppa per target per ridurre rumore
+    by_target: Dict[str, List[str]] = {}
+    for b in broken_links:
+        by_target.setdefault(b["target"], []).append(b["in_page"])
+
+    # Limita a max 30 link rotti per non far esplodere il prompt
+    items = list(by_target.items())[:30]
+    truncated = len(by_target) > 30
+
+    listing = "\n".join(
+        f"- `[[{tgt}]]` (citato in: {', '.join(sorted(set(pages))[:3])}"
+        f"{', ...' if len(set(pages)) > 3 else ''})"
+        for tgt, pages in items
+    )
+    if truncated:
+        listing += f"\n- ...e altri {len(by_target) - 30} link rotti"
+
+    user_msg = (
+        "**Pass di auto-fix dei wikilink rotti** (sez. 7 di CLAUDE.md, step 8).\n\n"
+        "Ho rilevato i seguenti wikilink che NON puntano a una pagina esistente nel wiki:\n\n"
+        f"{listing}\n\n"
+        "Per ognuno, decidi e applica:\n"
+        "1. **Se l'elemento merita una pagina propria** (entita' rilevante o concetto sostantivo, "
+        "vedi sez. 7 di CLAUDE.md): chiama `write_file('wiki/<categoria>/<slug>.md', content)` "
+        "creando la pagina con frontmatter completo + almeno 3 righe sostantive. "
+        "Categorie: `entita` per persone/organizzazioni/prodotti/dataset/architetture, "
+        "`concetti` per idee/teorie/framework astratti.\n"
+        "2. **Se l'elemento e' una menzione di passaggio**: chiama `read_file` sulla pagina che "
+        "lo contiene, poi `write_file` riscrivendola con `[[X]]` sostituito da testo semplice "
+        "(rimuovi le parentesi quadre).\n\n"
+        "Procedi ora. Quando hai sistemato tutti i link, aggiorna anche `index.md` con le "
+        "eventuali nuove pagine create e appendi a `log.md` una riga "
+        "`- Auto-fix: N link rotti corretti`."
+    )
+
+    messages.append({"role": "user", "content": user_msg})
+
+    try:
+        _resp, fix_stats = _run_tool_loop(
+            client=client,
+            system=system,
+            messages=messages,
+            tools=wiki_tools.WIKI_FS_TOOLS_RW,
+            wiki_root=wiki_root,
+            model=model,
+            max_tokens=config.WIKI_INGEST_MAX_TOKENS,
+            read_only=False,
+            deadline_ts=deadline_ts,
+            force_first_tool=True,
+        )
+        summary.total_tool_calls += fix_stats.total_tool_calls
+        logger.warning(
+            "wiki_runner AUTOFIX done broken=%d tool_calls=%d",
+            len(broken_links), fix_stats.total_tool_calls,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Auto-fix loop fallito")
+        summary.errors.append(f"autofix: {e}")
 
 
 # ---------------------------------------------------------------------------

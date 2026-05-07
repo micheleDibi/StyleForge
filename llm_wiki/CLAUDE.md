@@ -144,6 +144,21 @@ Usa la sintassi Obsidian `[[nome-file]]` o `[[nome-file|testo visibile]]`. Senza
 
 **Sezioni "Vedi anche" in fondo alla pagina:** ogni pagina sintetica (entità, concetto, tema) deve avere una sezione `## Vedi anche` con link bidirezionali alle pagine correlate.
 
+### REGOLA CRITICA: niente wikilink rotti
+
+**Se scrivi `[[X]]` in una pagina, la pagina `wiki/*/X.md` DEVE esistere o essere creata nella stessa sessione di ingest.**
+
+Tre opzioni quando vuoi menzionare qualcosa:
+1. **L'elemento merita una pagina propria** (concetto sostantivo, entità ricorrente) → crea la pagina (almeno frontmatter + 3 righe sostantive) E usa il wikilink `[[X]]`.
+2. **L'elemento è una menzione di passaggio** (citazione singola, autore secondario di un solo paper, organizzazione nominata in bibliografia) → **testo semplice**, niente wikilink.
+3. **L'elemento è già nel wiki** → usa il wikilink esistente (riusa lo slug, non inventarne uno nuovo).
+
+**Verifica al termine dell'ingest:** prima di chiudere il batch finale, fai un pass su ogni pagina che hai scritto e accertati che ogni `[[X]]` punti a un file `wiki/*/X.md` esistente. Se un link è rotto, decidi: crei la pagina mancante o rimuovi il wikilink. Niente "promesse" non mantenute.
+
+### Coerenza degli slug fonte
+
+Lo slug della pagina fonte (`wiki/fonti/<slug>.md`) può differire dallo slug del file raw (`raw/paper/<slug-raw>.md`) — è normale: il file raw può avere un nome lungo derivato da OpenAlex/arXiv, la pagina fonte può usare uno slug più compatto. **Nei wikilinks usa SEMPRE lo slug della pagina fonte, mai quello del raw**: `[[2019-pytorch-imperative-style-high-performance-dl]]`, non `[[2019-pytorch-an-imperative-style-high-performance-deep-learning-library-1]]`.
+
 ---
 
 ## 6. Convenzioni di citazione
@@ -192,9 +207,31 @@ Quando l'utente dice "ingerisci", "leggi questa fonte", "aggiungi al wiki", o dr
 5. **Cerca contraddizioni** tra la nuova fonte e ciò che è già nel wiki. Se trovi conflitti, segnalali nelle pagine pertinenti con il blocco `⚠️ Contraddizione`. Se la contraddizione è importante, suggerisci all'utente di creare una pagina di sintesi dedicata.
 6. **Aggiorna `index.md`** con le nuove pagine create.
 7. **Appendi entry a `log.md`** nel formato `## [YYYY-MM-DD] ingest | Titolo fonte`, con sotto-elenco delle pagine create/modificate.
-8. **Riassumi all'utente** cosa hai fatto: pagine create, pagine aggiornate, contraddizioni trovate, eventuali domande sollevate. Non un muro di testo — un report conciso.
+8. **PASS DI AUTO-FIX (obbligatorio)**: dopo aver scritto tutte le pagine, esegui un controllo di coerenza prima di chiudere:
+   - `list_dir wiki/fonti`, `wiki/entita`, `wiki/concetti`, `wiki/temi` per ottenere l'elenco esatto delle pagine esistenti.
+   - Per ogni pagina che hai creato, rileggi il contenuto via `read_file` ed estrai i wikilink `[[X]]`.
+   - Per ogni wikilink rotto (X non esiste come file `wiki/*/X.md`), decidi:
+     - Se l'elemento merita una pagina (vedi soglie sopra) → crea la pagina ora con `write_file` (frontmatter + 3+ righe sostantive).
+     - Altrimenti → riscrivi la pagina che contiene il wikilink rotto sostituendo `[[X]]` con testo semplice (rimuovi parentesi quadre).
+   - Verifica anche che `index.md` non contenga voci duplicate (se sì, riscrivilo deduplicato).
+9. **Riassumi all'utente** cosa hai fatto: pagine create, pagine aggiornate, contraddizioni trovate, link auto-fixati. Non un muro di testo — un report conciso.
 
-**Soglia di pagina nuova:** crea una pagina entità/concetto solo se l'elemento è menzionato in modo sostantivo (più di una citazione di passaggio) o se l'utente lo ha indicato come rilevante. Non esplodere il wiki con stub.
+**Soglia di pagina nuova (entità/concetti):**
+
+- **Crea pagina ENTITÀ** quando incontri:
+  - **Prodotti software / dataset / architetture** ricorrenti (PyTorch, TensorFlow, NumPy, AlexNet, ResNet, ImageNet, CIFAR-10, BERT) → `tipo: entita, sottotipo: prodotto`
+  - **Persone**: SOLO l'autore primario di una fonte rilevante o personaggio storicamente importante (Yann LeCun, Geoff Hinton). Coautori e ricercatori citati di passaggio NO → testo semplice.
+  - **Organizzazioni**: SOLO se centrali nella fonte (es. l'editore di una pubblicazione importante o l'organizzazione di provenienza dell'autore primario). Università di un coautore in nota a piè pagina NO.
+  - **Strumenti / framework esterni** centrali nel paper (es. Z3 solver in PELICAN) → sì.
+
+- **Crea pagina CONCETTO** quando il termine:
+  - È trattato in modo sostantivo (mezzo paragrafo o più) in almeno una fonte
+  - O appare in più fonti come idea ricorrente
+  - Tutto il resto = testo semplice nella pagina che lo menziona, senza wikilink.
+
+- **NON CREARE STUB**: una pagina deve avere almeno frontmatter completo + 3 righe sostantive. Se non hai abbastanza materiale per 3 righe, non creare la pagina e usa testo semplice.
+
+- **NON CONFONDERE entità e concetti**: PyTorch è un PRODOTTO (`wiki/entita/pytorch.md`, sottotipo prodotto), NON un concetto. "Deep learning" è un CONCETTO. La differenza: l'entità ha un'identità (creator, anno, organizzazione), il concetto è un'idea astratta.
 
 ---
 
