@@ -237,7 +237,7 @@ def _download_pdf(url: str, dst: Path) -> bool:
 
 
 def _extract_pdf_text(pdf_path: Path) -> str:
-    """Riusa attachment_processor per estrarre testo dal PDF."""
+    """Riusa attachment_processor per estrarre testo dal PDF (gia' sanitizzato per Postgres)."""
     from attachment_processor import extract_text_from_pdf
     try:
         return extract_text_from_pdf(pdf_path) or ""

@@ -44,7 +44,8 @@ from auth import get_current_active_user, require_permission
 from credits import estimate_credits, deduct_credits
 from attachment_processor import (
     process_attachment, save_uploaded_file, delete_attachment_file,
-    build_attachments_context, cleanup_thesis_attachments
+    build_attachments_context, cleanup_thesis_attachments,
+    sanitize_text_for_db,
 )
 from ai_client import get_ai_client, humanize_text_with_claude
 from ai_exceptions import InsufficientCreditsError
@@ -838,10 +839,10 @@ async def add_paper_attachments(
                 summary = None
 
         if summary is not None:
-            extracted_text = render_paper_with_summary(paper, summary)
+            extracted_text = sanitize_text_for_db(render_paper_with_summary(paper, summary))
         else:
             # Solo metadati + abstract: il wiki-ingest ricavera' i takeaway.
-            extracted_text = paper_to_attachment_text(paper)
+            extracted_text = sanitize_text_for_db(paper_to_attachment_text(paper))
 
         # Placeholder per file_path (la colonna è NOT NULL)
         if paper.full_text_url:
