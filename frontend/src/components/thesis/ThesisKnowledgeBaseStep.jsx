@@ -3,7 +3,7 @@ import {
   Brain, BookMarked, Paperclip, Loader, AlertTriangle, CheckCircle2, Play,
   RefreshCw, FileText, ScrollText, ArrowRight,
 } from 'lucide-react';
-import { startWikiIngest, getWikiStatus, getWikiReport } from '../../services/api';
+import { startWikiIngest, getWikiStatus, getWikiReport, cancelWikiIngest } from '../../services/api';
 import WikiLintReport from './WikiLintReport';
 
 const STATUS_LABELS = {
@@ -220,6 +220,21 @@ const ThesisKnowledgeBaseStep = ({
               ? 'Sto leggendo le fonti e popolando il wiki (entità, concetti, temi). Per molte fonti possono volerci alcuni minuti.'
               : 'Sto controllando coerenza, link rotti, contraddizioni e gap.'}
           </p>
+          <button
+            onClick={async () => {
+              if (!confirm('Sicuro di voler annullare l\'ingest in corso? Lo stato verrà marcato come fallito e potrai ripartire da zero.')) return;
+              try {
+                await cancelWikiIngest(thesisId);
+                await fetchStatus();
+                stopPolling();
+              } catch (e) {
+                setError(e?.response?.data?.detail || 'Errore annullamento');
+              }
+            }}
+            className="text-xs text-slate-500 hover:text-red-600 underline mt-2"
+          >
+            Annulla operazione
+          </button>
         </div>
       )}
 

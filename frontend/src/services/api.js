@@ -521,6 +521,16 @@ export const startWikiLint = async (thesisId) => {
   return response.data;
 };
 
+// Sblocca manualmente un ingest bloccato in ingesting/linting.
+export const cancelWikiIngest = async (thesisId) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/wiki/cancel`,
+    {},
+    { timeout: 15000 }
+  );
+  return response.data;
+};
+
 // Stato del wiki di una tesi (per polling). Ritorna anche sources_count e
 // pages_count per la progress bar.
 export const getWikiStatus = async (thesisId) => {

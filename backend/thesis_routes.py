@@ -931,7 +931,7 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
 
         # 4. INGEST con SDK Anthropic
         try:
-            _wr.run_ingest(thesis_id)
+            ingest_summary = _wr.run_ingest(thesis_id)
         except Exception as e:  # noqa: BLE001
             logger.exception("Wiki ingest fallito tesi %s", thesis_id)
             thesis = db.query(Thesis).get(thesis_id)
@@ -940,6 +940,36 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
                 thesis.wiki_lint_report = {"error": str(e)[:500]}
                 db.commit()
             # Rollback al backup pre-ingest
+            if backup is not None:
+                try:
+                    _ww.restore_snapshot(thesis_id, backup)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Restore snapshot fallito tesi %s", thesis_id)
+            return
+
+        # Se nessuna pagina e' stata creata e ci sono fonti raw, l'ingest e' fallito
+        # silenziosamente (es. modello non ha usato i tool). Marca come failed.
+        if ingest_summary.sources_count > 0 and ingest_summary.pages_created == 0:
+            logger.error(
+                "Wiki ingest tesi %s: %d fonti ma 0 pagine create, tool_calls=%d, errors=%s",
+                thesis_id, ingest_summary.sources_count,
+                ingest_summary.total_tool_calls, ingest_summary.errors,
+            )
+            thesis = db.query(Thesis).get(thesis_id)
+            if thesis:
+                thesis.wiki_status = "failed"
+                thesis.wiki_lint_report = {
+                    "error": "Ingest completato senza scrivere pagine. Il modello non ha "
+                             "popolato il wiki. Verifica i log del backend.",
+                    "_ingest_summary": {
+                        "sources_count": ingest_summary.sources_count,
+                        "pages_created": ingest_summary.pages_created,
+                        "total_tool_calls": ingest_summary.total_tool_calls,
+                        "duration_sec": ingest_summary.duration_sec,
+                        "errors": ingest_summary.errors[:5],
+                    },
+                }
+                db.commit()
             if backup is not None:
                 try:
                     _ww.restore_snapshot(thesis_id, backup)
@@ -1092,6 +1122,45 @@ async def start_wiki_lint(
         wiki_path=thesis.wiki_path,
         sources_count=len(_ww.list_raw_files(thesis_id)),
         pages_count=_ww.count_wiki_pages(thesis_id),
+    )
+
+
+@router.post("/{thesis_id}/wiki/cancel", response_model=WikiStatusResponse)
+async def cancel_wiki_ingest(
+    thesis_id: str,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Sblocca manualmente un wiki bloccato in stato ingesting/linting.
+    Forza wiki_status='failed' e rilascia il filelock se presente.
+    Utile quando il processo backend e' stato killato lasciando lo stato
+    transitorio nel DB.
+    """
+    from llm_wiki import wiki_workspace as _ww
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    # Forza failed (anche se non e' transitorio: l'admin/utente vuole sbloccare)
+    thesis.wiki_status = "failed"
+    if not thesis.wiki_lint_report:
+        thesis.wiki_lint_report = {"error": "Cancellato manualmente dall'utente"}
+    db.commit()
+
+    # Tenta di rilasciare il lock filesystem (best-effort)
+    try:
+        lock_file = _ww.get_wiki_root(thesis_id) / ".ingest.lock"
+        if lock_file.exists():
+            lock_file.unlink()
+    except Exception:  # noqa: BLE001
+        logger.exception("Impossibile rimuovere lock per tesi %s", thesis_id)
+
+    return WikiStatusResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus.FAILED,
+        wiki_path=thesis.wiki_path,
+        sources_count=len(_ww.list_raw_files(thesis_id)) if thesis.wiki_path else 0,
+        pages_count=_ww.count_wiki_pages(thesis_id) if thesis.wiki_path else 0,
     )
 
 

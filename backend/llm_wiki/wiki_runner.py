@@ -28,7 +28,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import anthropic
 
@@ -57,6 +57,7 @@ class IngestSummary:
     pages_created: int = 0
     pages_updated: int = 0
     log_entries_added: int = 0
+    total_tool_calls: int = 0
     duration_sec: float = 0.0
     raw_log_tail: str = ""
     errors: List[str] = field(default_factory=list)
@@ -116,24 +117,48 @@ def _run_tool_loop(
     read_only: bool = False,
     max_iterations: int = 30,
     deadline_ts: Optional[float] = None,
-) -> anthropic.types.Message:
+    force_first_tool: bool = False,
+    api_timeout: float = 180.0,
+) -> Tuple[anthropic.types.Message, int]:
     """
     Esegue un loop messages.create -> apply tool_use -> append tool_result.
     Termina quando stop_reason != 'tool_use' o max_iterations.
+    Ritorna (last_response, total_tool_calls).
     """
     last_response: Optional[anthropic.types.Message] = None
+    total_tool_calls = 0
     for iteration in range(max_iterations):
         if deadline_ts is not None and time.time() > deadline_ts:
-            raise TimeoutError(f"Wiki runner timeout dopo {iteration} iter (modalita' {'RO' if read_only else 'RW'})")
+            raise TimeoutError(
+                f"Wiki runner timeout dopo {iteration} iter "
+                f"(modalita' {'RO' if read_only else 'RW'}, tool_calls={total_tool_calls})"
+            )
 
-        resp = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-            tools=tools,
-        )
+        # Forza tool_use al primo turno per evitare che il modello risponda solo testualmente.
+        # Dal secondo turno in poi lascia decidere autonomamente (puo' chiudere con end_turn).
+        kwargs: Dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": messages,
+            "tools": tools,
+            "timeout": api_timeout,
+        }
+        if iteration == 0 and force_first_tool and not read_only:
+            kwargs["tool_choice"] = {"type": "any"}
+
+        t0 = time.time()
+        resp = client.messages.create(**kwargs)
+        latency = time.time() - t0
         last_response = resp
+
+        # Conta i blocchi tool_use in questa risposta
+        n_tool_use = sum(1 for b in resp.content if getattr(b, "type", None) == "tool_use")
+        n_text = sum(1 for b in resp.content if getattr(b, "type", None) == "text")
+        logger.info(
+            "wiki_runner iter=%d stop=%s text_blocks=%d tool_use=%d latency=%.1fs ro=%s",
+            iteration, resp.stop_reason, n_text, n_tool_use, latency, read_only,
+        )
 
         # Append assistant turn
         messages.append({"role": "assistant", "content": resp.content})
@@ -153,6 +178,19 @@ def _run_tool_loop(
                     wiki_root=wiki_root,
                     read_only=read_only,
                 )
+                # Log compatto del tool call (path + ok/error)
+                try:
+                    parsed = json.loads(result_str)
+                    logger.info(
+                        "wiki_runner tool=%s path=%s ok=%s err=%s",
+                        tool_name,
+                        tool_input.get("path", "?"),
+                        parsed.get("ok"),
+                        (parsed.get("error") or "")[:120],
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+                total_tool_calls += 1
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -160,12 +198,13 @@ def _run_tool_loop(
                 })
         if not tool_results:
             # Stop reason "tool_use" ma niente tool_use blocks: anomalia, esci.
+            logger.warning("wiki_runner: stop_reason=tool_use ma 0 blocchi tool_use, esco")
             break
         messages.append({"role": "user", "content": tool_results})
 
     if last_response is None:
         raise RuntimeError("messages.create non ha mai risposto")
-    return last_response
+    return last_response, total_tool_calls
 
 
 def _chunked(seq: List, size: int) -> List[List]:
@@ -246,8 +285,13 @@ def run_ingest(
 
         messages.append({"role": "user", "content": user_msg})
 
+        batch_t0 = time.time()
+        logger.info(
+            "wiki_runner BEGIN batch %d/%d tesi=%s files=%d",
+            idx, total_batches, thesis_id, len(rel_paths),
+        )
         try:
-            _run_tool_loop(
+            _resp, n_tools = _run_tool_loop(
                 client=client,
                 system=system,
                 messages=messages,
@@ -257,6 +301,12 @@ def run_ingest(
                 max_tokens=config.WIKI_INGEST_MAX_TOKENS,
                 read_only=False,
                 deadline_ts=deadline_ts,
+                force_first_tool=True,
+            )
+            summary.total_tool_calls += n_tools
+            logger.info(
+                "wiki_runner END batch %d/%d tesi=%s tool_calls=%d duration=%.1fs",
+                idx, total_batches, thesis_id, n_tools, time.time() - batch_t0,
             )
         except Exception as e:  # noqa: BLE001
             logger.exception("Errore ingest batch %s/%s tesi %s", idx, total_batches, thesis_id)
@@ -271,6 +321,11 @@ def run_ingest(
     summary.pages_created = max(0, pages_after - pages_before)
     summary.log_entries_added = max(0, _count_log_entries(wiki_root) - log_lines_before)
     summary.raw_log_tail = _tail_log(wiki_root, max_chars=2000)
+    logger.info(
+        "wiki_runner FINAL tesi=%s pages_created=%d log_entries=%d tool_calls=%d duration=%.1fs errors=%d",
+        thesis_id, summary.pages_created, summary.log_entries_added,
+        summary.total_tool_calls, summary.duration_sec, len(summary.errors),
+    )
     return summary
 
 
@@ -315,7 +370,7 @@ def run_lint(thesis_id: str) -> Dict[str, Any]:
     deadline_ts = time.time() + config.WIKI_INGEST_TIMEOUT_SEC
 
     messages: List[Dict[str, Any]] = [{"role": "user", "content": LINT_USER_PROMPT}]
-    response = _run_tool_loop(
+    response, _n_tools = _run_tool_loop(
         client=client,
         system=system,
         messages=messages,
