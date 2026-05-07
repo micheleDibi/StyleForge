@@ -220,7 +220,10 @@ def run_ingest(
     total_batches = len(batches)
 
     for idx, batch in enumerate(batches, start=1):
-        rel_paths = [str(p.relative_to(wiki_root)) for p in batch]
+        # `list_raw_files` puo' tornare path relativi (THESIS_UPLOADS_DIR e' "./thesis_uploads")
+        # mentre wiki_root e' stato risolto ad assoluto. Risolviamo ogni p a assoluto
+        # cosi' che relative_to funzioni in entrambi i casi.
+        rel_paths = [str(p.resolve().relative_to(wiki_root)) for p in batch]
         files_block = "\n".join(f"- `{p}`" for p in rel_paths)
 
         if idx == 1:
