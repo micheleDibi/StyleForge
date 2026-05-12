@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   Loader,
@@ -69,6 +69,16 @@ const PaperSearchPanel = ({
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Permetti al genitore di reset/aggiornare la search bar (es. click su un chip
+  // di keyword suggerita): se `initialTopic` cambia e non e' stringa vuota,
+  // sincronizziamo lo state interno.
+  useEffect(() => {
+    if (typeof initialTopic === 'string' && initialTopic && initialTopic !== topic) {
+      setTopic(initialTopic);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTopic]);
 
   const toggleSource = (key) => {
     setSources((prev) =>

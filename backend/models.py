@@ -2,7 +2,7 @@
 Modelli Pydantic per le API di StyleForge.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List, Dict, Any
 from enum import Enum
 from datetime import datetime
@@ -256,6 +256,27 @@ class AIProviderEnum(str, Enum):
     CLAUDE = "claude"
 
 
+class CustomSectionInput(BaseModel):
+    """Singola sezione/paragrafo dell'outline custom fornito dall'utente."""
+    title: str = Field(..., min_length=1, max_length=500)
+    key_points: List[str] = Field(default_factory=list)
+
+
+class CustomChapterInput(BaseModel):
+    """Singolo capitolo dell'outline custom fornito dall'utente."""
+    title: str = Field(..., min_length=1, max_length=500)
+    brief_description: Optional[str] = Field(None, max_length=2000)
+    sections: List[CustomSectionInput] = Field(..., min_length=1)
+
+
+class CustomOutlineInput(BaseModel):
+    """
+    Outline custom completo fornito dall'utente come alternativa
+    ai parametri numerici (num_chapters, sections_per_chapter).
+    """
+    chapters: List[CustomChapterInput] = Field(..., min_length=1, max_length=100)
+
+
 class ThesisCreateRequest(BaseModel):
     """Request per creare una nuova tesi."""
     title: str = Field(..., min_length=5, max_length=500, description="Titolo della tesi")
@@ -274,6 +295,14 @@ class ThesisCreateRequest(BaseModel):
     ai_provider: AIProviderEnum = Field(AIProviderEnum.OPENAI, description="Provider AI (openai o claude)")
     citation_style: Optional[str] = Field("footnotes", description="Stile citazioni: 'footnotes' (note a piè di pagina) o 'bibliography' (citazioni [x])")
     restrict_to_sources: bool = Field(True, description="Se True la generazione si attiene SOLO alle fonti caricate (paper + upload). Se False permette anche conoscenza generale del modello.")
+    use_custom_outline: bool = Field(False, description="Se True l'utente fornisce l'indice custom (custom_outline). Salta la generazione AI di capitoli/sezioni e non addebita i relativi crediti.")
+    custom_outline: Optional[CustomOutlineInput] = Field(None, description="Indice custom fornito dall'utente. Richiesto se use_custom_outline=True.")
+
+    @model_validator(mode="after")
+    def _validate_custom_outline_consistency(self):
+        if self.use_custom_outline and self.custom_outline is None:
+            raise ValueError("use_custom_outline=True richiede custom_outline non-null con almeno 1 capitolo")
+        return self
 
     class Config:
         json_schema_extra = {
@@ -292,7 +321,9 @@ class ThesisCreateRequest(BaseModel):
                 "target_audience_id": 1,
                 "ai_provider": "openai",
                 "citation_style": "footnotes",
-                "restrict_to_sources": True
+                "restrict_to_sources": True,
+                "use_custom_outline": False,
+                "custom_outline": None
             }
         }
 
@@ -353,6 +384,8 @@ class ThesisResponse(BaseModel):
     wiki_lint_report: Optional[Dict[str, Any]] = None
     wiki_ingested_at: Optional[datetime] = None
     wiki_linted_at: Optional[datetime] = None
+    use_custom_outline: bool = False
+    custom_outline: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
@@ -545,6 +578,25 @@ class WikiLintReportResponse(BaseModel):
         description="JSON con {orphan_pages, broken_wikilinks, missing_concepts, contradictions, stale_pages, frontmatter_issues, exploration_suggestions, gaps}"
     )
     generated_at: Optional[datetime] = None
+
+
+# ============================================================================
+# PAPER KEYWORD SUGGESTIONS (estrazione keyword dai documenti caricati)
+# ============================================================================
+
+class PaperKeywordSuggestResponse(BaseModel):
+    """Response dell'endpoint suggest-paper-keywords."""
+    thesis_id: str
+    keywords: List[str] = Field(
+        default_factory=list,
+        description="Lista di 5-8 termini di ricerca estratti dai documenti caricati"
+    )
+    eligible_attachments_count: int = Field(
+        0, description="Numero di allegati testuali considerati"
+    )
+    credits_consumed: int = Field(
+        0, description="Crediti effettivamente addebitati per l'operazione"
+    )
 
 
 # ============================================================================

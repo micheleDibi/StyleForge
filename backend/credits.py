@@ -61,6 +61,11 @@ DEFAULT_CREDIT_COSTS = {
     'research_summary': {
         'base': 3,           # costo base per riassunto AI di un paper
     },
+    # Estrazione keyword dai documenti caricati (per popolare la search bar paper)
+    'paper_keyword_suggest': {
+        'base': 2,           # costo base
+        'per_attachment': 1, # per ogni documento testuale considerato (max 5)
+    },
     # LLM Wiki: ingest delle fonti raw -> wiki/ via SDK Anthropic
     'wiki_ingest': {
         'base': 5,           # costo base per avvio ingest
@@ -344,6 +349,20 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
             "base": total,
             "descrizione": "Riassunto AI di un paper accademico"
         }
+
+    elif operation_type == 'paper_keyword_suggest':
+        base = costs['base']
+        num_attachments = max(0, int(params.get('num_attachments', 0) or 0))
+        per_attachment = costs.get('per_attachment', 1)
+        extra = num_attachments * per_attachment
+        total = base + extra
+        breakdown = {
+            "base": base,
+            "descrizione": "Suggerimento keyword da documenti caricati",
+        }
+        if extra > 0:
+            breakdown["documenti"] = f"{num_attachments} documenti x {per_attachment} = {extra}"
+            breakdown["documenti_crediti"] = extra
 
     elif operation_type == 'wiki_ingest':
         base = costs['base']

@@ -3,8 +3,8 @@ import { Check, Settings, Users, Paperclip, List, FileText, Sparkles, Download, 
 const STEPS = [
   { num: 1, label: 'Parametri', icon: Settings },
   { num: 2, label: 'Pubblico', icon: Users },
-  { num: 3, label: 'Paper', icon: BookMarked },
-  { num: 4, label: 'Allegati', icon: Paperclip },
+  { num: 3, label: 'Allegati', icon: Paperclip },
+  { num: 4, label: 'Paper', icon: BookMarked },
   { num: 5, label: 'Knowledge Base', icon: Brain },
   { num: 6, label: 'Capitoli', icon: List },
   { num: 7, label: 'Sezioni', icon: FileText },
@@ -14,11 +14,11 @@ const STEPS = [
 
 const StepIndicator = ({ currentStep, totalSteps = STEPS.length }) => {
   return (
-    <div className="mb-8">
+    <div className="mb-8 md:pb-10">
       <div className="flex items-center justify-between">
         {STEPS.slice(0, totalSteps).map((step, idx) => (
           <div key={step.num} className="flex items-center flex-1">
-            <div className="flex flex-col items-center">
+            <div className="relative flex flex-col items-center">
               <div className={`
                 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300
                 ${currentStep > step.num
@@ -34,7 +34,8 @@ const StepIndicator = ({ currentStep, totalSteps = STEPS.length }) => {
                 )}
               </div>
               <span className={`
-                mt-2 text-[11px] md:text-xs font-medium hidden md:block text-center leading-tight
+                hidden md:block absolute top-full mt-2 text-[11px] font-medium text-center leading-tight
+                whitespace-nowrap pointer-events-none
                 ${currentStep >= step.num ? 'text-slate-900' : 'text-slate-400'}
               `}>
                 {step.label}

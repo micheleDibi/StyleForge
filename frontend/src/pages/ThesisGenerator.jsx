@@ -39,8 +39,8 @@ import CreditEstimatePreview from '../components/CreditEstimatePreview';
 const STEPS = [
   { id: 1, label: 'Parametri' },
   { id: 2, label: 'Pubblico' },
-  { id: 3, label: 'Paper' },
-  { id: 4, label: 'Allegati' },
+  { id: 3, label: 'Allegati' },
+  { id: 4, label: 'Paper' },
   { id: 5, label: 'Knowledge Base' },
   { id: 6, label: 'Capitoli' },
   { id: 7, label: 'Sezioni' },
@@ -84,6 +84,8 @@ const ThesisGenerator = () => {
     ai_provider: 'openai',
     citation_style: 'footnotes',
     restrict_to_sources: true,
+    use_custom_outline: false,
+    custom_outline: null,
   });
 
   const [audienceData, setAudienceData] = useState({
@@ -189,6 +191,9 @@ const ThesisGenerator = () => {
           num_chapters: thesisData.num_chapters || 5,
           sections_per_chapter: thesisData.sections_per_chapter || 3,
           words_per_section: thesisData.words_per_section || 1000,
+          use_custom_outline: !!thesisData.use_custom_outline,
+          custom_outline: thesisData.custom_outline || null,
+          restrict_to_sources: thesisData.restrict_to_sources !== false,
         }));
 
         // Determine the correct step based on thesis status
@@ -470,10 +475,17 @@ const ThesisGenerator = () => {
   };
 
   const handleBack = () => {
-    if (currentStep > 1 && currentStep <= 5) {
+    // Go-back libero: l'utente puo' tornare a qualsiasi step precedente.
+    // I capitoli/sezioni generati restano salvati su DB (vedi banner avviso).
+    if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
   };
+
+  // Banner di avviso: se l'utente torna prima dello step 5 dopo aver gia'
+  // generato capitoli, lo informiamo che i dati restano salvati.
+  const showBackToParamsWarning =
+    currentStep < 5 && (chapters?.length > 0 || sectionsData?.length > 0 || thesis?.status === 'completed');
 
   const canProceed = () => {
     switch (currentStep) {
@@ -556,6 +568,21 @@ const ThesisGenerator = () => {
           </div>
         )}
 
+        {/* Avviso go-back: l'utente e' tornato prima dello step KB dopo aver gia'
+            generato capitoli o sezioni. I dati restano salvati su DB. */}
+        {showBackToParamsWarning && (
+          <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 flex items-start gap-3">
+            <span className="text-xl">ℹ️</span>
+            <div>
+              <p className="font-medium">I capitoli e le sezioni generate restano salvati</p>
+              <p className="text-sm">
+                Puoi modificare liberamente parametri, allegati o paper. Per rigenerare la struttura,
+                torna allo step <strong>Knowledge Base</strong> e premi <strong>Continua</strong>.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Step Content */}
         <div className="mt-8">
           {currentStep === 1 && (
@@ -580,8 +607,16 @@ const ThesisGenerator = () => {
           )}
 
           {currentStep === 3 && (
+            <ThesisAttachmentsForm
+              data={attachmentsData}
+              onChange={setAttachmentsData}
+              thesisId={thesisId}
+            />
+          )}
+
+          {currentStep === 4 && (
             <>
-              {/* Nav bar in cima allo step paper: la lista risultati può essere lunga,
+              {/* Nav bar in cima allo step Paper: la lista risultati può essere lunga,
                   qui i pulsanti restano sempre raggiungibili senza scroll. */}
               <div className="mb-6">
                 <div className="flex items-center justify-between gap-4 p-4 bg-white rounded-2xl shadow-lg border border-slate-200">
@@ -640,14 +675,6 @@ const ThesisGenerator = () => {
                 isThesisPaid={isThesisPaid}
               />
             </>
-          )}
-
-          {currentStep === 4 && (
-            <ThesisAttachmentsForm
-              data={attachmentsData}
-              onChange={setAttachmentsData}
-              thesisId={thesisId}
-            />
           )}
 
           {currentStep === 5 && thesisId && (
@@ -772,8 +799,9 @@ const ThesisGenerator = () => {
         )}
 
         {/* Navigation Buttons - Migliorati
-            Lo step 3 (Paper) ha la propria nav bar in cima, vista la lunghezza dei risultati. */}
-        {currentStep <= 4 && currentStep !== 3 && (
+            Lo step 4 (Paper) ha la propria nav bar in cima, vista la lunghezza dei risultati.
+            Quindi qui rendiamo la nav bar solo per gli step 1, 2, 3 (Parametri/Pubblico/Allegati). */}
+        {currentStep <= 3 && (
           <div className="mt-10 pb-8">
             <div className="flex items-center justify-between gap-4 p-4 bg-white rounded-2xl shadow-lg border border-slate-200">
               {/* Pulsante Indietro */}
@@ -815,11 +843,6 @@ const ThesisGenerator = () => {
                   <>
                     <Loader className="w-5 h-5 animate-spin" />
                     <span>Elaborazione...</span>
-                  </>
-                ) : currentStep === 4 ? (
-                  <>
-                    <Sparkles className="w-5 h-5" />
-                    <span>Genera Capitoli</span>
                   </>
                 ) : (
                   <>

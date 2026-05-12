@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Info, ChevronDown, BookOpen, FileText } from 'lucide-react';
+import { Info, ChevronDown, BookOpen, FileText, ListTree, Sparkles } from 'lucide-react';
 import ApiCostEstimate from '../ApiCostEstimate';
 import CreditEstimatePreview from '../CreditEstimatePreview';
+import CustomOutlineEditor from './CustomOutlineEditor';
 
 const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, thesisId, attachmentsCount, attachmentsTotalSize }) => {
   const handleChange = (field, value) => {
@@ -16,6 +17,47 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
 
   const handleKeyTopicRemove = (topic) => {
     handleChange('key_topics', (data.key_topics || []).filter(t => t !== topic));
+  };
+
+  // Toggle "Definisci tu indice": passa da modalita' numerica (AI genera) a custom outline.
+  const useCustomOutline = !!data.use_custom_outline;
+
+  const setUseCustomOutline = (on) => {
+    if (on) {
+      // Attiva: se non c'e' ancora un outline, ne inizializzo uno con 1 cap + 1 sez vuoti.
+      const init = data.custom_outline || {
+        chapters: [{ title: '', brief_description: '', sections: [{ title: '', key_points: [] }] }],
+      };
+      const numChapters = init.chapters.length;
+      const totalSec = init.chapters.reduce((acc, c) => acc + (c.sections?.length || 0), 0);
+      const avgSec = Math.max(1, Math.round(totalSec / Math.max(1, numChapters)));
+      onChange({
+        ...data,
+        use_custom_outline: true,
+        custom_outline: init,
+        num_chapters: numChapters,
+        sections_per_chapter: avgSec,
+      });
+    } else {
+      // Disattiva: torno alla modalita' numerica. Mantengo il custom_outline salvato
+      // come backup nel caso l'utente riattivi (UX-friendly).
+      onChange({
+        ...data,
+        use_custom_outline: false,
+      });
+    }
+  };
+
+  const handleCustomOutlineChange = (newOutline) => {
+    const numChapters = newOutline.chapters.length;
+    const totalSec = newOutline.chapters.reduce((acc, c) => acc + (c.sections?.length || 0), 0);
+    const avgSec = Math.max(1, Math.round(totalSec / Math.max(1, numChapters)));
+    onChange({
+      ...data,
+      custom_outline: newOutline,
+      num_chapters: numChapters,
+      sections_per_chapter: avgSec,
+    });
   };
 
   return (
@@ -165,86 +207,157 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
         <div className="border-t border-slate-200 pt-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">Struttura del Documento</h3>
 
-          {/* Parole totali - auto distribuzione */}
-          <div className="mb-6 p-5 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl">
-            <div>
-              <label className="block text-sm font-semibold text-slate-800 mb-1">
-                Hai un obiettivo di parole?
-              </label>
-                <p className="text-xs text-slate-500 mb-3">
-                  Inserisci il totale desiderato e distribuiremo automaticamente le parole tra le sezioni.
-                </p>
-                <div className="flex items-center gap-2">
+          {/* Toggle modalita': AI auto-genera VS utente fornisce indice custom */}
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setUseCustomOutline(false)}
+              className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                !useCustomOutline
+                  ? 'border-orange-500 bg-orange-50 shadow-sm'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className={`w-4 h-4 ${!useCustomOutline ? 'text-orange-600' : 'text-slate-400'}`} />
+                <span className="font-semibold text-slate-900">L'AI genera l'indice</span>
+              </div>
+              <p className="text-xs text-slate-600">
+                Indica il numero di capitoli e paragrafi; l'AI propone titoli che potrai modificare.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setUseCustomOutline(true)}
+              className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                useCustomOutline
+                  ? 'border-orange-500 bg-orange-50 shadow-sm'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <ListTree className={`w-4 h-4 ${useCustomOutline ? 'text-orange-600' : 'text-slate-400'}`} />
+                <span className="font-semibold text-slate-900">Definisci tu l'indice</span>
+              </div>
+              <p className="text-xs text-slate-600">
+                Inserisci capitoli e paragrafi a mano. L'AI rispetterà esattamente la struttura fornita.
+              </p>
+            </button>
+          </div>
+
+          {!useCustomOutline && (
+            <>
+              {/* Parole totali - auto distribuzione */}
+              <div className="mb-6 p-5 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-800 mb-1">
+                    Hai un obiettivo di parole?
+                  </label>
+                    <p className="text-xs text-slate-500 mb-3">
+                      Inserisci il totale desiderato e distribuiremo automaticamente le parole tra le sezioni.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        placeholder="es. 30000"
+                        className="w-40 px-3 py-2 rounded-lg border border-orange-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400"
+                        min="1000"
+                        step="1000"
+                        onChange={(e) => {
+                          const total = parseInt(e.target.value);
+                          if (!total || total < 1000) return;
+                          const chapters = data.num_chapters || 5;
+                          const sections = data.sections_per_chapter || 3;
+                          const wps = Math.round(total / (chapters * sections) / 100) * 100;
+                          handleChange('words_per_section', Math.max(500, Math.min(20000, wps)));
+                        }}
+                      />
+                      <span className="text-sm text-slate-500">parole totali</span>
+                    </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Numero Capitoli */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Numero di Capitoli
+                  </label>
                   <input
                     type="number"
-                    placeholder="es. 30000"
-                    className="w-40 px-3 py-2 rounded-lg border border-orange-200 bg-white text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400"
-                    min="1000"
-                    step="1000"
-                    onChange={(e) => {
-                      const total = parseInt(e.target.value);
-                      if (!total || total < 1000) return;
-                      const chapters = data.num_chapters || 5;
-                      const sections = data.sections_per_chapter || 3;
-                      const wps = Math.round(total / (chapters * sections) / 100) * 100;
-                      handleChange('words_per_section', Math.max(500, Math.min(20000, wps)));
-                    }}
+                    value={data.num_chapters}
+                    onChange={(e) => handleChange('num_chapters', parseInt(e.target.value) || 5)}
+                    className="input w-full"
+                    min="1"
+                    max="100"
                   />
-                  <span className="text-sm text-slate-500">parole totali</span>
+                  <p className="text-xs text-slate-500 mt-1">Default: 5</p>
                 </div>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Numero Capitoli */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Numero di Capitoli
-              </label>
-              <input
-                type="number"
-                value={data.num_chapters}
-                onChange={(e) => handleChange('num_chapters', parseInt(e.target.value) || 5)}
-                className="input w-full"
-                min="1"
-                max="100"
-              />
-              <p className="text-xs text-slate-500 mt-1">Default: 5</p>
-            </div>
+                {/* Sezioni per Capitolo */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Sezioni per Capitolo
+                  </label>
+                  <input
+                    type="number"
+                    value={data.sections_per_chapter}
+                    onChange={(e) => handleChange('sections_per_chapter', parseInt(e.target.value) || 3)}
+                    className="input w-full"
+                    min="1"
+                    max="30"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Default: 3</p>
+                </div>
 
-            {/* Sezioni per Capitolo */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Sezioni per Capitolo
-              </label>
-              <input
-                type="number"
-                value={data.sections_per_chapter}
-                onChange={(e) => handleChange('sections_per_chapter', parseInt(e.target.value) || 3)}
-                className="input w-full"
-                min="1"
-                max="30"
-              />
-              <p className="text-xs text-slate-500 mt-1">Default: 3</p>
-            </div>
+                {/* Parole per Sezione */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Parole per Sezione
+                  </label>
+                  <input
+                    type="number"
+                    value={data.words_per_section}
+                    onChange={(e) => handleChange('words_per_section', parseInt(e.target.value) || 1000)}
+                    className="input w-full"
+                    min="500"
+                    max="20000"
+                    step="500"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Default: 1000</p>
+                </div>
+              </div>
+            </>
+          )}
 
-            {/* Parole per Sezione */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Parole per Sezione
-              </label>
-              <input
-                type="number"
-                value={data.words_per_section}
-                onChange={(e) => handleChange('words_per_section', parseInt(e.target.value) || 1000)}
-                className="input w-full"
-                min="500"
-                max="20000"
-                step="500"
+          {useCustomOutline && (
+            <div className="space-y-4">
+              <CustomOutlineEditor
+                value={data.custom_outline}
+                onChange={handleCustomOutlineChange}
               />
-              <p className="text-xs text-slate-500 mt-1">Default: 1000</p>
+
+              {/* Parole per Sezione resta configurabile anche in modalita' custom,
+                  perche' controlla la lunghezza target del contenuto generato. */}
+              <div className="p-4 rounded-2xl border border-slate-200 bg-white">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Parole target per paragrafo
+                </label>
+                <input
+                  type="number"
+                  value={data.words_per_section}
+                  onChange={(e) => handleChange('words_per_section', parseInt(e.target.value) || 1000)}
+                  className="input w-full max-w-xs"
+                  min="500"
+                  max="20000"
+                  step="500"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Lunghezza obiettivo del contenuto di ogni paragrafo (vale per tutti). Default: 1000.
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Stima totale */}
           <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">

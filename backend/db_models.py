@@ -503,6 +503,12 @@ class Thesis(Base):
     wiki_ingested_at = Column(DateTime, nullable=True)
     wiki_linted_at = Column(DateTime, nullable=True)
 
+    # Custom outline: se True, l'utente ha fornito direttamente l'indice
+    # (capitoli + sezioni). generate_chapters/sections bypassano l'AI e
+    # popolano chapters_structure da custom_outline senza addebito crediti.
+    use_custom_outline = Column(Boolean, default=False, nullable=False)
+    custom_outline = Column(JSONB, nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -556,6 +562,8 @@ class Thesis(Base):
             "wiki_lint_report": self.wiki_lint_report,
             "wiki_ingested_at": self.wiki_ingested_at,
             "wiki_linted_at": self.wiki_linted_at,
+            "use_custom_outline": bool(self.use_custom_outline) if self.use_custom_outline is not None else False,
+            "custom_outline": self.custom_outline,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "completed_at": self.completed_at

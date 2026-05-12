@@ -33,6 +33,7 @@ from models import (
     ThesisResearchSearchRequest, ThesisResearchSummarizeRequest,
     ThesisAddPapersRequest, ThesisAddPapersResponse,
     WikiIngestRequest, WikiStatusResponse, WikiLintReportResponse,
+    PaperKeywordSuggestResponse,
 )
 from db_models import (
     User, Thesis, ThesisAttachment, ThesisGenerationJob,
@@ -59,6 +60,7 @@ from research_summarizer import (
     render_paper_with_summary,
     summarize_paper,
 )
+from keyword_extractor import extract_paper_keywords_from_attachments
 import config
 
 # Mime type convenzionale per allegati di tipo "paper accademico"
@@ -205,6 +207,47 @@ def build_thesis_data_dict(thesis: Thesis, db: DBSession) -> dict:
             data["target_audience_hint"] = target.prompt_hint or ""
 
     return data
+
+
+def _build_chapters_from_custom_outline(custom_outline: dict, include_sections: bool = False) -> dict:
+    """
+    Costruisce `chapters_structure` direttamente dai dati `custom_outline` forniti
+    dall'utente, senza chiamare l'AI. Usato come short-circuit quando
+    thesis.use_custom_outline == True.
+
+    Args:
+        custom_outline: dict con chiave "chapters" -> list di {title, brief_description, sections}.
+        include_sections: se True include le sezioni in ogni capitolo (fase 2).
+                           Se False (fase 1), restituisce solo titolo+descrizione capitolo.
+
+    Returns:
+        dict {"chapters": [...]} compatibile con il formato gia' usato dal frontend.
+    """
+    chapters_out = []
+    for idx, ch in enumerate((custom_outline or {}).get("chapters", []) or [], start=1):
+        title = (ch.get("title") or "").strip()
+        brief = (ch.get("brief_description") or "").strip()
+        entry = {
+            "index": idx,
+            "chapter_index": idx,
+            "title": title,
+            "chapter_title": title,
+            "brief_description": brief,
+            "description": brief,
+        }
+        if include_sections:
+            sections_out = []
+            for sidx, sec in enumerate(ch.get("sections", []) or [], start=1):
+                sec_title = (sec.get("title") or "").strip()
+                kps = [str(kp).strip() for kp in (sec.get("key_points") or []) if str(kp).strip()]
+                sections_out.append({
+                    "index": sidx,
+                    "title": sec_title,
+                    "key_points": kps,
+                })
+            entry["sections"] = sections_out
+        chapters_out.append(entry)
+    return {"chapters": chapters_out}
 
 
 # ============================================================================
@@ -376,6 +419,19 @@ async def create_thesis(
             )
             flat_charged = True
 
+    # Indice custom (se l'utente ha scelto la modalita' "definisci tu l'indice")
+    use_custom_outline = bool(getattr(request, 'use_custom_outline', False))
+    custom_outline_dict = None
+    custom_num_chapters = request.num_chapters
+    custom_sections_per_chapter = request.sections_per_chapter
+    if use_custom_outline and request.custom_outline is not None:
+        custom_outline_dict = request.custom_outline.model_dump()
+        chapters_in = custom_outline_dict.get("chapters") or []
+        if chapters_in:
+            custom_num_chapters = len(chapters_in)
+            total_sec = sum(len(c.get("sections") or []) for c in chapters_in)
+            custom_sections_per_chapter = max(1, round(total_sec / len(chapters_in)))
+
     # Crea la tesi
     thesis = Thesis(
         user_id=current_user.id,
@@ -385,8 +441,8 @@ async def create_thesis(
         key_topics=request.key_topics,
         writing_style_id=request.writing_style_id,
         content_depth_id=request.content_depth_id,
-        num_chapters=request.num_chapters,
-        sections_per_chapter=request.sections_per_chapter,
+        num_chapters=custom_num_chapters,
+        sections_per_chapter=custom_sections_per_chapter,
         words_per_section=request.words_per_section,
         knowledge_level_id=request.knowledge_level_id,
         audience_size_id=request.audience_size_id,
@@ -401,6 +457,9 @@ async def create_thesis(
         # LLM Wiki: vincolo "solo fonti selezionate" (default ON)
         restrict_to_sources=bool(getattr(request, 'restrict_to_sources', True)),
         wiki_status='none',
+        # Indice custom (alternativa ai parametri numerici)
+        use_custom_outline=use_custom_outline,
+        custom_outline=custom_outline_dict,
     )
 
     db.add(thesis)
@@ -786,6 +845,73 @@ async def thesis_research_summarize(
         raise HTTPException(status_code=500, detail=f"Errore nel riassunto: {str(e)[:200]}")
 
     return summary
+
+
+@router.post("/{thesis_id}/suggest-paper-keywords", response_model=PaperKeywordSuggestResponse)
+async def suggest_paper_keywords(
+    thesis_id: str,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Suggerisce 5-8 termini di ricerca utili per cercare paper accademici,
+    estratti dai documenti gia' caricati dall'utente (allegati non-paper con
+    extracted_text). Pensato per la search bar dello step "Paper" del wizard
+    tesi, dopo che l'utente ha caricato i propri documenti nello step "Allegati".
+    """
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    eligible = [
+        a for a in db.query(ThesisAttachment).filter(
+            ThesisAttachment.thesis_id == thesis.id,
+            ThesisAttachment.mime_type != PAPER_MIME_TYPE,
+        ).all()
+        if a.extracted_text and len(a.extracted_text.strip()) >= 100
+    ]
+
+    if not eligible:
+        raise HTTPException(
+            status_code=400,
+            detail="Nessun documento testuale disponibile. Carica almeno un PDF/DOCX/TXT prima di richiedere i suggerimenti.",
+        )
+
+    # Cap: massimo 5 documenti per contenere costo e token.
+    eligible_used = eligible[:5]
+
+    credits_consumed = 0
+    if not getattr(thesis, 'credits_charged', False):
+        credit_estimate = estimate_credits(
+            "paper_keyword_suggest",
+            {"num_attachments": len(eligible_used)},
+            db=db,
+        )
+        credits_consumed = int(credit_estimate.get("credits_needed", 0))
+        deduct_credits(
+            user=current_user,
+            amount=credits_consumed,
+            operation_type="paper_keyword_suggest",
+            description=f"Suggerimento keyword paper da {len(eligible_used)} documenti",
+            db=db,
+        )
+
+    try:
+        keywords = await extract_paper_keywords_from_attachments(
+            [a.extracted_text or "" for a in eligible_used],
+            title=thesis.title,
+            topics=thesis.key_topics,
+        )
+    except InsufficientCreditsError:
+        raise
+    except Exception as e:
+        logger.exception("Errore estrazione keyword da allegati")
+        raise HTTPException(status_code=500, detail=f"Errore nell'estrazione delle keyword: {str(e)[:200]}")
+
+    return PaperKeywordSuggestResponse(
+        thesis_id=str(thesis.id),
+        keywords=keywords,
+        eligible_attachments_count=len(eligible_used),
+        credits_consumed=credits_consumed,
+    )
 
 
 @router.post("/{thesis_id}/attachments/papers", response_model=ThesisAddPapersResponse)
@@ -1216,6 +1342,26 @@ def generate_chapters_task(thesis_id: str, user_id: str):
         if not thesis:
             return
 
+        # Short-circuit: l'utente ha fornito un indice custom.
+        # Skip della chiamata AI, popolazione diretta da custom_outline.
+        if getattr(thesis, 'use_custom_outline', False) and thesis.custom_outline:
+            logger.info(f"[custom_outline] generate_chapters_task: skip AI, popolo da custom_outline (tesi {thesis_id})")
+            result = _build_chapters_from_custom_outline(thesis.custom_outline, include_sections=False)
+            thesis.chapters_structure = result
+            thesis.status = 'chapters_pending'
+            thesis.current_phase = 1
+            thesis.num_chapters = len(result.get("chapters", []))
+            job = db.query(ThesisGenerationJob).filter(
+                ThesisGenerationJob.thesis_id == thesis.id,
+                ThesisGenerationJob.phase == 'chapters'
+            ).order_by(ThesisGenerationJob.created_at.desc()).first()
+            if job:
+                job.status = 'completed'
+                job.result = json.dumps(result)
+                job.completed_at = datetime.utcnow()
+            db.commit()
+            return
+
         # Costruisci i dati per il prompt
         thesis_data = build_thesis_data_dict(thesis, db)
 
@@ -1303,6 +1449,28 @@ async def generate_chapters(
             status_code=400,
             detail=f"Impossibile generare capitoli: stato attuale '{thesis.status}'"
         )
+
+    # Short-circuit: indice custom fornito dall'utente.
+    # Nessuna chiamata AI, nessun debit di crediti aggiuntivi.
+    if getattr(thesis, 'use_custom_outline', False) and thesis.custom_outline:
+        try:
+            result = _build_chapters_from_custom_outline(thesis.custom_outline, include_sections=False)
+            thesis.chapters_structure = result
+            thesis.status = 'chapters_pending'
+            thesis.current_phase = 1
+            thesis.num_chapters = len(result.get("chapters", []))
+            db.commit()
+            return {
+                "thesis_id": str(thesis.id),
+                "status": "chapters_pending",
+                "chapters": result.get("chapters", []),
+                "message": "Capitoli caricati dall'indice personalizzato. Puoi modificarli prima di confermare.",
+                "from_custom_outline": True,
+            }
+        except Exception as e:
+            thesis.status = 'failed'
+            db.commit()
+            raise HTTPException(status_code=500, detail=f"Errore nel caricamento dell'indice personalizzato: {str(e)}")
 
     # Calcola caratteri allegati per crediti
     ch_attachments = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis.id).all()
@@ -1445,6 +1613,29 @@ def generate_sections_task(thesis_id: str, user_id: str):
         if not thesis:
             return
 
+        # Short-circuit: indice custom -> sezioni gia' definite dall'utente.
+        if getattr(thesis, 'use_custom_outline', False) and thesis.custom_outline:
+            logger.info(f"[custom_outline] generate_sections_task: skip AI, popolo sezioni da custom_outline (tesi {thesis_id})")
+            result = _build_chapters_from_custom_outline(thesis.custom_outline, include_sections=True)
+            thesis.chapters_structure = result
+            thesis.status = 'sections_pending'
+            thesis.current_phase = 2
+            chapters_out = result.get("chapters", [])
+            if chapters_out:
+                total_sec = sum(len(c.get("sections") or []) for c in chapters_out)
+                avg_sec = max(1, round(total_sec / len(chapters_out)))
+                thesis.sections_per_chapter = avg_sec
+            job = db.query(ThesisGenerationJob).filter(
+                ThesisGenerationJob.thesis_id == thesis.id,
+                ThesisGenerationJob.phase == 'sections'
+            ).order_by(ThesisGenerationJob.created_at.desc()).first()
+            if job:
+                job.status = 'completed'
+                job.result = json.dumps(result)
+                job.completed_at = datetime.utcnow()
+            db.commit()
+            return
+
         # Costruisci dati
         thesis_data = build_thesis_data_dict(thesis, db)
         chapters = thesis.chapters_structure.get("chapters", [])
@@ -1534,6 +1725,31 @@ async def generate_sections(
             status_code=400,
             detail=f"Devi prima confermare i capitoli. Stato attuale: '{thesis.status}'"
         )
+
+    # Short-circuit: indice custom -> bypass AI e debit crediti
+    if getattr(thesis, 'use_custom_outline', False) and thesis.custom_outline:
+        try:
+            result = _build_chapters_from_custom_outline(thesis.custom_outline, include_sections=True)
+            thesis.chapters_structure = result
+            thesis.status = 'sections_pending'
+            thesis.current_phase = 2
+            chapters_out = result.get("chapters", [])
+            if chapters_out:
+                total_sec = sum(len(c.get("sections") or []) for c in chapters_out)
+                avg_sec = max(1, round(total_sec / len(chapters_out)))
+                thesis.sections_per_chapter = avg_sec
+            db.commit()
+            return {
+                "thesis_id": str(thesis.id),
+                "status": "sections_pending",
+                "chapters": chapters_out,
+                "message": "Sezioni caricate dall'indice personalizzato. Puoi modificarle prima di confermare.",
+                "from_custom_outline": True,
+            }
+        except Exception as e:
+            thesis.status = 'failed'
+            db.commit()
+            raise HTTPException(status_code=500, detail=f"Errore nel caricamento delle sezioni custom: {str(e)}")
 
     # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
     # Le tesi nuove sono già pagate flat alla creazione (credits_charged=True).

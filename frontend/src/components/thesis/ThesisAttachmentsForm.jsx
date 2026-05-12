@@ -131,7 +131,8 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
         <h2 className="text-2xl font-bold text-slate-900 mb-2">Allegati e Contenuti di Riferimento</h2>
         <p className="text-slate-600">
           Carica documenti che vuoi utilizzare come riferimento per la generazione.
-          L'AI analizzerà il contenuto per creare una tesi più accurata e pertinente.
+          Negli step successivi potrai cercare paper accademici (usando anche i tuoi documenti
+          per suggerire le query) e indicizzare tutto nella Knowledge Base.
         </p>
       </div>
 

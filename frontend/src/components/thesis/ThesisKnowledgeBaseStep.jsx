@@ -188,7 +188,7 @@ const ThesisKnowledgeBaseStep = ({
         <div className="glass rounded-2xl p-6 text-center">
           <p className="text-sm text-slate-600 mb-4">
             {totalSources === 0
-              ? 'Non hai caricato fonti. Puoi procedere comunque (la tesi sarà generata sulla conoscenza generale del modello), oppure tornare allo step Allegati per caricarne.'
+              ? 'Non hai caricato fonti. Puoi procedere comunque (la tesi sarà generata sulla conoscenza generale del modello), oppure tornare agli step precedenti per caricare allegati o paper.'
               : `Pronto a indicizzare ${totalSources} font${totalSources === 1 ? 'e' : 'i'}.`}
           </p>
           <div className="flex gap-3 justify-center flex-wrap">
@@ -246,7 +246,7 @@ const ThesisKnowledgeBaseStep = ({
           </div>
           <p className="text-sm text-slate-600 mb-4">
             Qualcosa è andato storto durante l'ingestione. Puoi riprovare oppure tornare
-            allo step Allegati per ridurre il numero di fonti.
+            agli step precedenti (Allegati o Paper) per ridurre il numero di fonti.
           </p>
           <div className="flex gap-3">
             <button onClick={() => handleStart(true)} className="btn btn-primary inline-flex items-center gap-2">

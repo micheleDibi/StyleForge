@@ -495,6 +495,18 @@ export const addPaperAttachments = async (thesisId, items) => {
   return response.data;
 };
 
+// Estrae 5-8 keyword da usare come termini di ricerca paper, analizzando
+// gli allegati testuali (non-paper) gia' caricati per la tesi.
+// Costa pochi crediti (paper_keyword_suggest = base + per_attachment).
+export const suggestPaperKeywords = async (thesisId) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/suggest-paper-keywords`,
+    {},
+    { timeout: 60000 }
+  );
+  return response.data;
+};
+
 // ============================================================================
 // LLM WIKI (second-brain) — knowledge base per-tesi
 // ============================================================================

@@ -18,6 +18,7 @@ import {
   estimateCredits,
 } from '../../services/api';
 import PaperSearchPanel from '../research/PaperSearchPanel';
+import PaperKeywordSuggestions from './PaperKeywordSuggestions';
 
 const PAPER_MIME_TYPE = 'application/x-research-paper';
 
@@ -30,6 +31,14 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
   const [info, setInfo] = useState(null);
   const [removingId, setRemovingId] = useState(null);
   const [summaryCost, setSummaryCost] = useState(3);
+  // Search bar pre-popolata (es. click su un chip di keyword suggerita)
+  const [pendingSearchTopic, setPendingSearchTopic] = useState('');
+
+  const handleKeywordSelect = (keyword) => {
+    setPendingSearchTopic(keyword);
+    setSearchOpen(true);
+    if (onCreditsChanged) onCreditsChanged();
+  };
 
   // Recupera il costo effettivo di un riassunto AI per la stima.
   // Se la tesi ha gia' pagato il flat, l'informazione non serve.
@@ -179,6 +188,14 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
         </div>
       )}
 
+      {/* Suggerimento keyword dai documenti caricati nello step "Allegati". */}
+      <PaperKeywordSuggestions
+        thesisId={thesisId}
+        attachments={data.attachments || []}
+        onSelect={handleKeywordSelect}
+        isThesisPaid={isThesisPaid}
+      />
+
       {!searchOpen ? (
         <div className="card text-center py-10 space-y-3">
           <div className="w-12 h-12 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mx-auto">
@@ -187,7 +204,7 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
           <p className="text-sm text-slate-700">
             {paperAttachments.length === 0
               ? 'Vuoi cercare paper scientifici da includere come fonti?'
-              : 'Aggiungi altri paper o procedi al prossimo step.'}
+              : 'Aggiungi altri paper o procedi alla Knowledge Base.'}
           </p>
           <button
             type="button"
@@ -198,13 +215,14 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
             Cerca paper
           </button>
           <p className="text-xs text-slate-500">
-            Step opzionale — puoi saltarlo e procedere direttamente agli allegati.
+            Step opzionale — puoi saltarlo e procedere direttamente alla Knowledge Base.
           </p>
         </div>
       ) : (
         <>
           <PaperSearchPanel
             mode="pick"
+            initialTopic={pendingSearchTopic}
             searchFn={(params) => searchResearchForThesis(thesisId, params)}
             summarizeFn={(paper) => summarizePaperForThesis(thesisId, paper)}
             onCreditsChanged={onCreditsChanged}
@@ -288,7 +306,7 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
             <ul className="list-disc list-inside space-y-1">
               <li>I metadati (titolo, autori, anno, venue, citazioni) e l'abstract entrano nel contesto della generazione tesi.</li>
               <li>Per ogni paper viene aggiunto anche un riassunto tecnico AI con keywords e limiti dello studio.</li>
-              <li>I paper aggiunti compaiono nello step "Allegati" insieme a documenti e link.</li>
+              <li>I paper aggiunti vengono indicizzati nella Knowledge Base insieme ai documenti caricati nello step precedente.</li>
               <li>Puoi rimuoverli in qualsiasi momento prima di confermare i capitoli.</li>
             </ul>
           </div>
