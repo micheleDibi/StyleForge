@@ -12,44 +12,86 @@ const STEPS = [
   { num: 9, label: 'Download', icon: Download }
 ];
 
-const StepIndicator = ({ currentStep, totalSteps = STEPS.length }) => {
+/**
+ * StepIndicator
+ *
+ * Props:
+ *  - currentStep: step attualmente visualizzato
+ *  - totalSteps:  numero di step (default tutti)
+ *  - onStepClick: callback(stepNum). Se fornita, i cerchi diventano cliccabili
+ *                 (solo per step considerati "accessibili" — la logica di
+ *                 accessibilita' e' del genitore via `isStepAccessible`).
+ *  - isStepAccessible: (stepNum) => bool. Default: tutti gli step <= currentStep.
+ */
+const StepIndicator = ({
+  currentStep,
+  totalSteps = STEPS.length,
+  onStepClick,
+  isStepAccessible,
+}) => {
+  const accessible = isStepAccessible || ((n) => n <= currentStep);
+
   return (
     <div className="mb-8 md:pb-10">
       <div className="flex items-center justify-between">
-        {STEPS.slice(0, totalSteps).map((step, idx) => (
-          <div key={step.num} className="flex items-center flex-1">
-            <div className="relative flex flex-col items-center">
-              <div className={`
-                w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300
-                ${currentStep > step.num
-                  ? 'bg-green-500 text-white shadow-lg shadow-green-500/30'
-                  : currentStep === step.num
-                    ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 scale-110'
-                    : 'bg-slate-200 text-slate-500'}
-              `}>
+        {STEPS.slice(0, totalSteps).map((step, idx) => {
+          const isClickable = !!onStepClick && accessible(step.num) && step.num !== currentStep;
+          const circleBaseCls = `
+            w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300
+            ${currentStep > step.num
+              ? 'bg-green-500 text-white shadow-lg shadow-green-500/30'
+              : currentStep === step.num
+                ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/30 scale-110'
+                : 'bg-slate-200 text-slate-500'}
+            ${isClickable ? 'cursor-pointer hover:ring-4 hover:ring-orange-200' : ''}
+          `;
+
+          const labelCls = `
+            hidden md:block absolute top-full mt-2 text-[11px] font-medium text-center leading-tight
+            whitespace-nowrap
+            ${isClickable ? 'cursor-pointer' : 'pointer-events-none'}
+            ${currentStep >= step.num ? 'text-slate-900' : 'text-slate-400'}
+          `;
+
+          const inner = (
+            <>
+              <div className={circleBaseCls}>
                 {currentStep > step.num ? (
                   <Check className="w-5 h-5" />
                 ) : (
                   <step.icon className="w-5 h-5" />
                 )}
               </div>
-              <span className={`
-                hidden md:block absolute top-full mt-2 text-[11px] font-medium text-center leading-tight
-                whitespace-nowrap pointer-events-none
-                ${currentStep >= step.num ? 'text-slate-900' : 'text-slate-400'}
-              `}>
-                {step.label}
-              </span>
-            </div>
+              <span className={labelCls}>{step.label}</span>
+            </>
+          );
 
-            {idx < totalSteps - 1 && (
-              <div className={`
-                flex-1 h-1 mx-1.5 md:mx-2 rounded-full transition-all duration-300
-                ${currentStep > step.num ? 'bg-green-500' : 'bg-slate-200'}
-              `} />
-            )}
-          </div>
-        ))}
+          return (
+            <div key={step.num} className="flex items-center flex-1">
+              <div className="relative flex flex-col items-center">
+                {isClickable ? (
+                  <button
+                    type="button"
+                    onClick={() => onStepClick(step.num)}
+                    className="flex flex-col items-center bg-transparent border-0 p-0"
+                    title={`Vai allo step "${step.label}"`}
+                  >
+                    {inner}
+                  </button>
+                ) : (
+                  inner
+                )}
+              </div>
+
+              {idx < totalSteps - 1 && (
+                <div className={`
+                  flex-1 h-1 mx-1.5 md:mx-2 rounded-full transition-all duration-300
+                  ${currentStep > step.num ? 'bg-green-500' : 'bg-slate-200'}
+                `} />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

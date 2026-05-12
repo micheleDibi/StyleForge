@@ -133,6 +133,9 @@ const ThesisGenerator = () => {
       const msg = err.creditErrorMessage || err.response?.data?.detail || 'Crediti AI insufficienti.';
       setError(typeof msg === 'string' ? msg : fallbackMessage);
       setIsCreditError(true);
+    } else if (err.isClientValidation && err.message) {
+      setError(err.message);
+      setIsCreditError(false);
     } else {
       const detail = err.response?.data?.detail;
       // Pydantic 422 restituisce un array di errori di validazione
@@ -251,6 +254,36 @@ const ThesisGenerator = () => {
       ...parametersData,
       ...audienceData
     };
+
+    // Sanifica il payload custom_outline:
+    //  - Se il toggle e' OFF, NON inviamo l'outline (anche se in state per UX-friendly:
+    //    l'utente puo' tornare ad attivarlo). Pydantic validerebbe i campi interni
+    //    anche con use_custom_outline=false e darebbe 422 sui titoli vuoti.
+    //  - Se ON, rimuovo capitoli/sezioni con titolo vuoto.
+    if (!thesisData.use_custom_outline) {
+      thesisData.custom_outline = null;
+    } else if (thesisData.custom_outline) {
+      const cleaned = {
+        chapters: (thesisData.custom_outline.chapters || [])
+          .map((c) => ({
+            title: (c.title || '').trim(),
+            brief_description: (c.brief_description || '').trim(),
+            sections: (c.sections || [])
+              .map((s) => ({
+                title: (s.title || '').trim(),
+                key_points: (s.key_points || []).map((k) => (k || '').trim()).filter(Boolean),
+              }))
+              .filter((s) => s.title),
+          }))
+          .filter((c) => c.title && c.sections.length > 0),
+      };
+      thesisData.custom_outline = cleaned;
+      if (cleaned.chapters.length === 0) {
+        const err = new Error('L\'indice personalizzato deve avere almeno 1 capitolo con titolo e almeno 1 paragrafo con titolo.');
+        err.isClientValidation = true;
+        throw err;
+      }
+    }
 
     const newThesis = await createThesis(thesisData);
     setThesisId(newThesis.id);
@@ -482,6 +515,26 @@ const ThesisGenerator = () => {
     }
   };
 
+  // Step accessibili dinamicamente: una volta arrivati a step N, l'utente
+  // puo' rientrare in N e in tutti i precedenti — anche dopo aver generato.
+  // Sblocco progressivo basato sullo stato della tesi e dei dati locali.
+  const maxAccessibleStep = (() => {
+    if (thesis?.status === 'completed' || generatedContent) return 9;
+    if (thesis?.status === 'generating' || thesis?.status === 'failed') return 8;
+    if (sectionsData && sectionsData.length > 0) return 7;
+    if (chapters && chapters.length > 0) return 6;
+    // Se siamo gia' visivamente oltre, mantenere quello (es. arrivati a KB)
+    return Math.max(currentStep, 1);
+  })();
+
+  const isStepAccessible = (stepNum) => stepNum <= maxAccessibleStep;
+
+  const handleStepClick = (stepNum) => {
+    if (stepNum === currentStep) return;
+    if (!isStepAccessible(stepNum)) return;
+    setCurrentStep(stepNum);
+  };
+
   // Banner di avviso: se l'utente torna prima dello step 5 dopo aver gia'
   // generato capitoli, lo informiamo che i dati restano salvati.
   const showBackToParamsWarning =
@@ -541,8 +594,13 @@ const ThesisGenerator = () => {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Step Indicator */}
-        <StepIndicator steps={STEPS} currentStep={currentStep} />
+        {/* Step Indicator (cliccabile per step gia' raggiunti) */}
+        <StepIndicator
+          steps={STEPS}
+          currentStep={currentStep}
+          onStepClick={handleStepClick}
+          isStepAccessible={isStepAccessible}
+        />
 
         {/* Error Message */}
         {error && (
@@ -579,6 +637,27 @@ const ThesisGenerator = () => {
                 Puoi modificare liberamente parametri, allegati o paper. Per rigenerare la struttura,
                 torna allo step <strong>Knowledge Base</strong> e premi <strong>Continua</strong>.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Nav top per step 5-9 (KB, Capitoli, Sezioni, Generazione, Download):
+            solo bottone Indietro; il bottone "Avanti" e' all'interno di ogni step
+            (es. "Procedi ai capitoli", "Conferma capitoli", ecc.). Per step 1-4
+            la nav bar c'e' gia' (in cima per Paper, in fondo per gli altri). */}
+        {currentStep >= 5 && (
+          <div className="mb-6 flex items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-slate-200">
+            <button
+              onClick={handleBack}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900 font-semibold transition-all active:scale-95"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Indietro</span>
+            </button>
+            <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
+              <span className="font-medium text-orange-600">Step {currentStep}</span>
+              <span>di</span>
+              <span>{STEPS.length}</span>
             </div>
           </div>
         )}

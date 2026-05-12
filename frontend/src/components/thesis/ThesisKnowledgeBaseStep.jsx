@@ -109,6 +109,13 @@ const ThesisKnowledgeBaseStep = ({
   const isFailed = ws === 'failed';
   const totalSources = paperCount + attachmentCount;
 
+  // Confronto fonti correnti vs. fonti indicizzate: se l'utente ha aggiunto
+  // o rimosso documenti/paper dopo l'ultimo ingest, lo segnaliamo cosi'
+  // possa rilanciare la KB.
+  const indexedSources = status?.sources_count || 0;
+  const sourcesDelta = isReady ? totalSources - indexedSources : 0;
+  const hasSourcesMismatch = isReady && sourcesDelta !== 0;
+
   const stLabel = STATUS_LABELS[ws] || STATUS_LABELS.none;
 
   return (
@@ -257,6 +264,36 @@ const ThesisKnowledgeBaseStep = ({
                 Torna agli allegati
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Avviso "le fonti sono cambiate dall'ultimo ingest" — mostrato sopra
+          il blocco "Knowledge base pronta" cosi' l'utente non puo' non vederlo. */}
+      {hasSourcesMismatch && (
+        <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-semibold text-amber-900">
+              {sourcesDelta > 0
+                ? `Hai aggiunto ${sourcesDelta} ${sourcesDelta === 1 ? 'fonte' : 'fonti'} dopo l'ultima indicizzazione`
+                : `Hai rimosso ${Math.abs(sourcesDelta)} ${Math.abs(sourcesDelta) === 1 ? 'fonte' : 'fonti'} dopo l'ultima indicizzazione`}
+            </p>
+            <p className="text-sm text-amber-800 mt-0.5">
+              La Knowledge Base attuale non rispecchia le {totalSources} fonti che hai ora
+              (indicizzate: {indexedSources}). Rilancia per allinearla, oppure procedi pure
+              con i capitoli usando il wiki precedente.
+            </p>
+            <div className="mt-3 flex gap-2 flex-wrap">
+              <button
+                onClick={() => handleStart(true)}
+                disabled={loadingAction}
+                className="btn btn-primary inline-flex items-center gap-2 disabled:opacity-50"
+              >
+                {loadingAction ? <Loader className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Rilancia indicizzazione
+              </button>
+            </div>
           </div>
         </div>
       )}
