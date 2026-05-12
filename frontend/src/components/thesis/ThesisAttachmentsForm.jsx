@@ -48,9 +48,10 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
     }
   };
 
-  const handleFileSelect = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
+  const processFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    // Guard: evita doppia esecuzione concorrente (es. drop + onChange spurio)
+    if (uploading) return;
 
     // Validazione
     const validFiles = files.filter(file => {
@@ -100,6 +101,11 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
     }
   };
 
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    processFiles(files);
+  };
+
   const handleRemoveAttachment = async (attachmentId) => {
     try {
       await deleteThesisAttachment(thesisId, attachmentId);
@@ -115,15 +121,11 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
 
   const handleDrop = (e) => {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      const dataTransfer = new DataTransfer();
-      files.forEach(f => dataTransfer.items.add(f));
-      if (fileInputRef.current) {
-        fileInputRef.current.files = dataTransfer.files;
-        handleFileSelect({ target: fileInputRef.current });
-      }
-    }
+    // Non assegnamo piu' i file all'<input>: su alcuni browser (Firefox)
+    // l'assegnazione `.files = ...` triggera onChange e causava un doppio
+    // upload (barra 0->100, poi 0->100 di nuovo). Processiamo direttamente.
+    const files = Array.from(e.dataTransfer.files || []);
+    processFiles(files);
   };
 
   const handleDragOver = (e) => {
