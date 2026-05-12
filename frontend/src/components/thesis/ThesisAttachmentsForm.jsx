@@ -85,7 +85,12 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
       });
     } catch (err) {
       console.error('Errore upload:', err);
-      setError(err.response?.data?.detail || 'Errore durante il caricamento dei file');
+      const isTimeout = err.code === 'ECONNABORTED' || (err.message || '').toLowerCase().includes('timeout');
+      if (isTimeout) {
+        setError('Il caricamento ha impiegato troppo tempo (timeout). Riprova con file più piccoli o verifica la connessione di rete.');
+      } else {
+        setError(err.response?.data?.detail || 'Errore durante il caricamento dei file');
+      }
     } finally {
       setUploading(false);
       setUploadProgress(0);

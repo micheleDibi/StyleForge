@@ -427,6 +427,10 @@ export const uploadThesisAttachments = async (thesisId, files, onProgress = null
 
   const response = await api.post(`/api/thesis/${thesisId}/attachments`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    // 5 minuti: l'upload include estrazione testo (PyMuPDF/docx2txt) e
+    // sanitizzazione NUL su PDF anche grandi. Senza override usavamo il
+    // default di 30s e Firefox abortiva la fetch (NS_BINDING_ABORTED).
+    timeout: 300000,
     onUploadProgress: onProgress ? (progressEvent) => {
       const progress = (progressEvent.loaded / progressEvent.total) * 100;
       onProgress(progress);
