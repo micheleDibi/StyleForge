@@ -19,6 +19,7 @@ import {
   getThesisLookupData,
   createThesis,
   getThesis,
+  getThesisAttachments,
   generateThesisChapters,
   confirmThesisChapters,
   generateThesisSections,
@@ -181,23 +182,68 @@ const ThesisGenerator = () => {
     const resumeThesis = async () => {
       try {
         setIsLoading(true);
-        const thesisData = await getThesis(resumeId);
+        const [thesisData, attachmentsResp] = await Promise.all([
+          getThesis(resumeId),
+          getThesisAttachments(resumeId).catch(() => ({ attachments: [] })),
+        ]);
         setThesisId(thesisData.id);
         setThesis(thesisData);
 
-        // Restore form data
+        // Ripristina gli allegati (documenti + paper aggiunti come fonti)
+        // — senza questo passaggio, tornando a step 3/4 dopo la rientrata in
+        // resume l'utente non vedeva i file caricati in precedenza.
+        setAttachmentsData({
+          attachments: attachmentsResp?.attachments || [],
+        });
+
+        // Restore form data — TUTTI i parametri salvati nella tesi, cosi'
+        // tornando agli step 1/2 dopo il resume l'utente li vede compilati.
         setParametersData(prev => ({
           ...prev,
           title: thesisData.title || '',
+          session_id: thesisData.session_id || null,
           description: thesisData.description || '',
           key_topics: thesisData.key_topics || [],
+          writing_style_id: thesisData.writing_style_id ?? null,
+          content_depth_id: thesisData.content_depth_id ?? null,
           num_chapters: thesisData.num_chapters || 5,
           sections_per_chapter: thesisData.sections_per_chapter || 3,
           words_per_section: thesisData.words_per_section || 1000,
+          ai_provider: thesisData.ai_provider || 'openai',
+          citation_style: thesisData.citation_style || 'footnotes',
           use_custom_outline: !!thesisData.use_custom_outline,
           custom_outline: thesisData.custom_outline || null,
           restrict_to_sources: thesisData.restrict_to_sources !== false,
         }));
+
+        // Restore audience data — anche questi non venivano ripristinati
+        setAudienceData({
+          knowledge_level_id: thesisData.knowledge_level_id ?? null,
+          audience_size_id: thesisData.audience_size_id ?? null,
+          industry_id: thesisData.industry_id ?? null,
+          target_audience_id: thesisData.target_audience_id ?? null,
+        });
+
+        // Restore chapters/sections gia' generate dalla chapters_structure
+        // (la tesi salva tutto in JSONB. Il vecchio codice cercava un
+        // thesisData.chapters che NON esiste — chapters_structure e' il campo)
+        const cs = thesisData.chapters_structure;
+        if (cs && Array.isArray(cs.chapters) && cs.chapters.length > 0) {
+          const hasSections = cs.chapters.some(c => Array.isArray(c.sections) && c.sections.length > 0);
+          // ChapterEditor usa c.title, c.description/brief_description
+          setChapters(cs.chapters.map(c => ({
+            title: c.title || c.chapter_title || '',
+            description: c.description || c.brief_description || '',
+          })));
+          if (hasSections) {
+            // SectionEditor usa c.chapter_title + c.sections
+            setSectionsData(cs.chapters.map(c => ({
+              chapter_index: c.chapter_index ?? c.index,
+              chapter_title: c.chapter_title || c.title || '',
+              sections: c.sections || [],
+            })));
+          }
+        }
 
         // Determine the correct step based on thesis status
         const status = thesisData.status;
