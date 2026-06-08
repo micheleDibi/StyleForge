@@ -580,6 +580,110 @@ REGOLE FINALI:
 
 
 # ============================================================================
+# DE-AI ACCADEMICA (per le tesi)
+# ============================================================================
+# Template a segnaposto (NON f-string) per non dover escapare le graffe di
+# {{nota: ...}} che il testo accademico usa per le note.
+_ACADEMIC_DEAI_TEMPLATE = """Sei un revisore editoriale di tesi universitarie. Ricevi un brano di una tesi in italiano. Il tuo compito e' RISCRIVERLO mantenendolo un testo accademico serio e formale, ma facendo in modo che NON sembri generato da un'intelligenza artificiale. I rilevatori AI riconoscono i pattern stilistici troppo regolari: il tuo obiettivo e' eliminarli senza toccare contenuto, dati e argomentazione.
+
+═══════════════════════════════════════════════════════════════
+COSA DEVI ROMPERE (firme tipiche dei testi AI)
+═══════════════════════════════════════════════════════════════
+- Triadi e quadriadi: serie di 3-4 elementi paralleli ("definire, giustificare, metodizzare e misurare"; "X, Y e Z"). Spezzale, riducile a due, o distribuiscile su frasi distinte di lunghezza diversa.
+- Antitesi bilanciate: "non solo... ma anche", "da un lato... dall'altro", "tanto... quanto", "non X; e' Y". Riformula in modo asimmetrico.
+- Strutture parallele tra frasi vicine ("Una scuola che... Una scuola che..."; "Non bastano X, non bastano Y"). Cambia la costruzione di una delle due.
+- Transizioni formulaiche e connettivi da manuale: "Inoltre", "Pertanto", "Dunque", "Tuttavia", "Di conseguenza", "In conclusione", "In sintesi", "In questo contesto", "E' importante notare/sottolineare che". Usa nessi piu' naturali oppure, a volte, nessuna transizione esplicita.
+- Scaffolding saggistico: paragrafi costruiti tutti allo stesso modo (frase-tema -> sviluppo -> chiusura a effetto). Evita la chiusura a effetto e la frase riassuntiva alla fine di ogni paragrafo.
+- Ritmo uniforme: frasi e paragrafi quasi della stessa lunghezza.
+
+═══════════════════════════════════════════════════════════════
+COME DEVE DIVENTARE
+═══════════════════════════════════════════════════════════════
+- Ritmo irregolare (burstiness): alterna frasi brevi e dirette (8-14 parole) a frasi lunghe e articolate (30-45 parole con subordinate). Qualche frase molto semplice, qualcuna complessa.
+- Paragrafi di lunghezza chiaramente diversa tra loro (da 3-4 frasi a 9-10).
+- Non iniziare due frasi o due paragrafi vicini nello stesso modo.
+- A volte lascia implicito il nesso logico tra due frasi, senza connettivo.
+- Lessico accademico vario: evita di ripetere gli stessi termini e le stesse strutture.
+
+═══════════════════════════════════════════════════════════════
+REGISTRO — VINCOLI INDEROGABILI
+═══════════════════════════════════════════════════════════════
+- Resta FORMALE e accademico. VIETATO introdurre colloquialismi, interiezioni ("beh", "cioe'", "diciamo", "insomma", "ecco"), autocorrezioni ("anzi no", "o meglio"), incisi informali tra trattini, parentetiche ironiche, domande retoriche seguite dalla risposta, esclamazioni.
+- Niente "errori finti": il testo deve restare corretto e scorrevole, solo meno meccanico.
+
+═══════════════════════════════════════════════════════════════
+DA PRESERVARE OBBLIGATORIAMENTE
+═══════════════════════════════════════════════════════════════
+- LUNGHEZZA: la riscrittura deve avere ALMENO __WORDCOUNT__ parole (come l'originale). Non riassumere, non tagliare contenuti; semmai approfondisci.
+- CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni nel formato [n] (es. [1], [2]) e tutte le note nel formato {{nota: ...}}. Non rimuoverle, non rinumerarle, non modificarne il contenuto, non spostarle fuori dalla frase cui appartengono.
+- Dati, numeri, percentuali, nomi propri, titoli di opere e termini tecnici vanno mantenuti identici.
+
+═══════════════════════════════════════════════════════════════
+TESTO DA RISCRIVERE (__WORDCOUNT__ parole)
+═══════════════════════════════════════════════════════════════
+__TEXTBODY__
+
+═══════════════════════════════════════════════════════════════
+Restituisci SOLO il testo riscritto, senza commenti, titoli aggiunti o premesse."""
+
+
+# Cache dei client di riscrittura per modello (evita di re-istanziare l'SDK)
+_rewrite_clients: Dict[str, ClaudeClient] = {}
+
+
+def _get_rewrite_client(model_id: str) -> ClaudeClient:
+    client = _rewrite_clients.get(model_id)
+    if client is None:
+        client = ClaudeClient(model_id=model_id)
+        _rewrite_clients[model_id] = client
+    return client
+
+
+def academic_deai_rewrite(text: str, model_id: Optional[str] = None) -> str:
+    """
+    Riscrive un testo accademico per ridurre il punteggio dei detector AI
+    (es. Compilatio) SENZA scendere di registro: mantiene il tono formale di una
+    tesi ma rompe i pattern stilometrici tipici dei testi generati da AI
+    (parallelismi/tricolon, antitesi bilanciate, transizioni formulaiche, ritmo
+    uniforme) introducendo la naturale irregolarita' della scrittura umana.
+
+    A differenza di humanize_text_with_claude(): NON introduce colloquialismi e
+    NON applica l'anti_ai_processor (il pass algoritmico e' uno stage separato,
+    gestito dal chiamante in modo da poterne misurare il contributo).
+
+    Preserva lunghezza (>= originale), citazioni [x] e note {{nota:...}}, dati,
+    nomi e terminologia. In caso di errore (non crediti) ritorna il testo
+    originale invariato.
+    """
+    if not text or not text.strip():
+        return text
+
+    word_count = len(text.split())
+    estimated_tokens = int(word_count * 2.5) + 2000
+    max_tokens = max(estimated_tokens, 8192)
+
+    prompt = (
+        _ACADEMIC_DEAI_TEMPLATE
+        .replace("__WORDCOUNT__", str(word_count))
+        .replace("__TEXTBODY__", text)
+    )
+
+    model = model_id or os.getenv("THESIS_REWRITE_MODEL", DEFAULT_CLAUDE_MODEL)
+    try:
+        client = _get_rewrite_client(model)
+        rewritten = client.generate_text(prompt, max_tokens=max_tokens)
+        return rewritten.strip() if rewritten else text
+    except InsufficientCreditsError:
+        raise  # l'utente deve sapere dei crediti
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"academic_deai_rewrite fallita ({e}); uso il testo originale"
+        )
+        return text
+
+
+# ============================================================================
 # TEST
 # ============================================================================
 if __name__ == "__main__":

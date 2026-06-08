@@ -441,6 +441,14 @@ ISTRUZIONI DI SCRITTURA
    - MAI chiudere sezioni con "In conclusione/In sintesi/Per concludere"
    - MAI usare piu' di 2 virgole nella stessa frase (spezza in frasi diverse)
    - MAI ripetere la stessa struttura di transizione tra paragrafi
+   - MAI serie di 4 elementi paralleli né formule tipo "X senza Y, Z senza W"
+     o "X, Y, Z e W" usate come schema ricorrente
+   - MAI elenchi con lettere o numeri (a), b), c) — oppure 1., 2., 3.) per
+     enumerare concetti: scrivi in prosa discorsiva, sciogliendo gli elenchi
+   - MAI anafore: due o più frasi vicine che iniziano con le stesse parole
+     ("Una scuola che... Una scuola che...", "Non bastano..., non bastano...")
+   - MAI la formula "non X; è Y" oppure "non si tratta di X, ma di Y" come schema
+   - MAI chiudere la sezione con una frase a effetto, una massima o un aforisma
 
    ═══ NATURALEZZA ═══
    - Ogni tanto una frase puo' essere leggermente meno precisa del necessario
@@ -626,8 +634,9 @@ SCRIVI COME UNO STUDENTE UNIVERSITARIO REALE:
 - NON iniziare mai due frasi consecutive con la stessa struttura
 - NON iniziare piu' di 2 frasi per paragrafo con articoli (Il, La, Lo)
 - Inizia almeno 3 frasi con congiunzioni: "E", "Ma", "Pero'"
-- NON usare strutture simmetriche ("da un lato... dall'altro")
-- MAI liste di 3 elementi simmetrici ("X, Y e Z")
+- NON usare strutture simmetriche ("da un lato... dall'altro", "non solo... ma anche")
+- MAI liste di 3 o 4 elementi simmetrici ("X, Y e Z"; "X, Y, Z e W") né elenchi a), b), c)
+- MAI anafore (frasi vicine che iniziano con le stesse parole) né la formula "non X; è Y"
 - NON chiudere paragrafi con frasi a effetto o riassuntive
 - Paragrafi di lunghezze MOLTO diverse (da 3 frasi a 10 frasi)
 - Qualche passaggio logico puo' restare implicito
@@ -740,7 +749,9 @@ SCRIVI COME UNO STUDENTE UNIVERSITARIO REALE:
 - Frasi di lunghezze IRREGOLARI: alterna corte (6-10 parole) e lunghe (25-40)
 - NON iniziare mai due frasi consecutive con la stessa struttura
 - Inizia almeno 2 frasi con "E", "Ma", "Pero'"
-- MAI liste di 3 elementi simmetrici ("X, Y e Z")
+- MAI liste di 3 o 4 elementi simmetrici ("X, Y e Z"; "X, Y, Z e W") né elenchi a), b), c)
+- MAI anafore né la formula "non X; è Y" / "non si tratta di X, ma di Y"
+- NON aprire con "In conclusione/In sintesi/Per concludere" né chiudere con una massima
 - NON chiudere paragrafi con frasi a effetto o riassuntive
 - Paragrafi di lunghezze MOLTO diverse tra loro
 - Il tono sia riflessivo ma naturale, non magniloquente

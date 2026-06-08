@@ -1896,6 +1896,63 @@ Output SOLO il testo riscritto.
         return content
 
 
+def _apply_anti_ai(content: str, label: str = "Sezione", target_words: int = 0) -> str:
+    """
+    Applica gli stage anti-rilevamento AI al contenuto di una tesi:
+      1) riscrittura "de-AI accademica" via LLM (ai_client.academic_deai_rewrite)
+      2) pass algoritmico register-safe (anti_ai_processor, profilo 'academic')
+
+    Controllato dai flag THESIS_ANTI_AI_ENABLED / THESIS_REWRITE_ENABLED /
+    THESIS_ALGO_ENABLED / THESIS_REWRITE_MODEL / THESIS_ANTI_AI_PROFILE.
+
+    Fallback: se la riscrittura LLM accorcia il testo di oltre il 10% rispetto
+    a max(parole originali, target), scarta la riscrittura e tiene il testo
+    pre-rewrite (il pass algoritmico viene comunque applicato).
+    NON va usato sulla bibliografia (lista formale).
+    """
+    import config
+
+    if not getattr(config, 'THESIS_ANTI_AI_ENABLED', True):
+        return content
+    if not content or not content.strip():
+        return content
+
+    result = content
+    original_words = len(content.split())
+
+    # Stage 1: riscrittura de-AI accademica (LLM)
+    if getattr(config, 'THESIS_REWRITE_ENABLED', True):
+        try:
+            from ai_client import academic_deai_rewrite
+            rewritten = academic_deai_rewrite(
+                content, model_id=getattr(config, 'THESIS_REWRITE_MODEL', None)
+            )
+            rew_words = len(rewritten.split())
+            floor = int(max(original_words, target_words) * 0.9)
+            if rew_words >= floor:
+                result = rewritten
+            else:
+                logger.warning(
+                    f"Anti-AI rewrite scartata per '{label}': {rew_words} parole < {floor}; "
+                    f"uso il testo pre-rewrite"
+                )
+        except InsufficientCreditsError:
+            raise
+        except Exception as e:
+            logger.warning(f"Anti-AI rewrite errore per '{label}': {e}; uso il testo pre-rewrite")
+
+    # Stage 2: pass algoritmico (profilo accademico, register-safe)
+    if getattr(config, 'THESIS_ALGO_ENABLED', True):
+        try:
+            from anti_ai_processor import humanize_text_post_processing
+            profile = getattr(config, 'THESIS_ANTI_AI_PROFILE', 'academic')
+            result = humanize_text_post_processing(result, profile=profile)
+        except Exception as e:
+            logger.warning(f"Anti-AI algo pass errore per '{label}': {e}")
+
+    return result
+
+
 def _ensure_word_count(client, content: str, target_words: int, context_info: str, max_tokens: int) -> str:
     """
     Verifica che il contenuto raggiunga il target di parole.
@@ -2029,8 +2086,10 @@ def generate_content_task(thesis_id: str, user_id: str):
                 # Salva contenuto raw per la bibliografia (con citazioni [x] intatte)
                 raw_chapter_content += f"\n{raw_content}\n"
 
-                # Applica umanizzazione
+                # Applica umanizzazione (stile autore, solo se sessione addestrata)
                 content = _humanize_content(raw_content, trained_session_client, section.get('title', 'Sezione'))
+                # Anti-AI come ultimo layer: riscrittura de-AI accademica + pass algoritmico
+                content = _apply_anti_ai(content, section_label, target_words=words_per_section)
 
                 section_text = f"\n## {section.get('title', 'Sezione')}\n\n{content}\n"
                 chapter_content += section_text
@@ -2065,6 +2124,7 @@ def generate_content_task(thesis_id: str, user_id: str):
             client, intro_content, words_per_section, "Introduzione", dynamic_max_tokens
         )
         intro_content = _humanize_content(intro_content, trained_session_client, "Introduzione")
+        intro_content = _apply_anti_ai(intro_content, "Introduzione", target_words=words_per_section)
 
         completed_sections += 1
         progress = int((completed_sections / total_sections) * 100)
@@ -2089,6 +2149,7 @@ def generate_content_task(thesis_id: str, user_id: str):
             client, conclusion_content, words_per_section, "Conclusione", dynamic_max_tokens
         )
         conclusion_content = _humanize_content(conclusion_content, trained_session_client, "Conclusione")
+        conclusion_content = _apply_anti_ai(conclusion_content, "Conclusione", target_words=words_per_section)
 
         completed_sections += 1
         progress = int((completed_sections / total_sections) * 100)

@@ -22,6 +22,22 @@ OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "16000"))
 THESIS_AI_PROVIDER = os.getenv("THESIS_AI_PROVIDER", "openai")
 THESIS_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-opus-4-8")
 
+# ----------------------------------------------------------------------------
+# Anti-AI per la tesi (riduzione del punteggio "Rilevamento AI" dei detector)
+# ----------------------------------------------------------------------------
+# Master switch: applica gli stage anti-rilevamento al contenuto generato.
+THESIS_ANTI_AI_ENABLED = os.getenv("THESIS_ANTI_AI_ENABLED", "true").lower() == "true"
+# Stage 1: riscrittura "de-AI accademica" via LLM. OFF di default: rompe i
+# pattern visibili a un lettore umano ma NON abbassa il punteggio Compilatio
+# (anzi può alzarlo). Attivabile se serve prosa più "de-patternizzata".
+THESIS_REWRITE_ENABLED = os.getenv("THESIS_REWRITE_ENABLED", "false").lower() == "true"
+# Stage 2: pass algoritmico (profilo accademico) di anti_ai_processor.
+THESIS_ALGO_ENABLED = os.getenv("THESIS_ALGO_ENABLED", "true").lower() == "true"
+# Modello usato per la riscrittura de-AI (sempre Claude: miglior controllo stilistico).
+THESIS_REWRITE_MODEL = os.getenv("THESIS_REWRITE_MODEL", "claude-opus-4-8")
+# Profilo del pass algoritmico: "academic" (no colloquialismi) per le tesi.
+THESIS_ANTI_AI_PROFILE = os.getenv("THESIS_ANTI_AI_PROFILE", "academic")
+
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")

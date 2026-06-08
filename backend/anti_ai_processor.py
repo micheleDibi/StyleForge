@@ -47,15 +47,23 @@ class AntiAIProcessor:
     introdurre caratteristiche tipicamente umane.
     """
 
-    def __init__(self, seed: Optional[int] = None):
+    def __init__(self, seed: Optional[int] = None, profile: str = 'informal'):
         """
         Inizializza il processore anti-AI.
 
         Args:
             seed: Seed opzionale per riproducibilità (utile per testing)
+            profile: 'informal' (default) applica l'anti-AI completo, inclusa
+                l'iniezione di elementi colloquiali; 'academic' esegue SOLO le
+                trasformazioni meccaniche register-safe (burstiness, riordino
+                clausole, rimozione hedging, variazione punteggiatura, pulizia)
+                adatte alle tesi, senza alcun colloquialismo.
         """
         if seed is not None:
             random.seed(seed)
+
+        # Profilo di trasformazione (vedi process()).
+        self.profile = profile
 
         # ═══════════════════════════════════════════════════════════════
         # PATTERN AI DA RILEVARE E RIMUOVERE (14 pattern specifici)
@@ -1335,6 +1343,62 @@ class AntiAIProcessor:
 
         return testo
 
+    def _perturba_lessico_academic(self, testo: str) -> str:
+        """
+        Perturbazione lessicale REGISTER-SAFE per testo accademico.
+
+        Sostituisce i marcatori ad alta frequenza tipici dei testi AI
+        (connettivi, verbi/aggettivi "gonfiati", locuzioni formulaiche) con
+        alternative FORMALI e meno prevedibili. Aumenta l'entropia/perplessità
+        (le statistiche su cui si basa il detector di Compilatio) senza alcun
+        colloquialismo. Sostituzioni scelte per essere drop-in grammaticali.
+        Preserva la capitalizzazione.
+        """
+        mappa = {
+            # connettivi ad alta frequenza (sostituti drop-in)
+            'inoltre': ['per di più', 'oltre a ciò'],
+            'tuttavia': ['nondimeno', 'per contro', 'di contro'],
+            'pertanto': ['perciò', 'sicché', 'di qui'],
+            'dunque': ['perciò', 'sicché'],
+            'quindi': ['perciò', 'sicché'],
+            'di conseguenza': ['per questo', 'di riflesso'],
+            'in particolare': ['segnatamente', 'nello specifico', 'in special modo'],
+            'in questo contesto': ['in tale quadro', 'su questo sfondo'],
+            'in tal senso': ['in questa direzione', 'sotto questo profilo'],
+            'al fine di': ['allo scopo di', 'in vista di'],
+            'allo stesso tempo': ['parallelamente', 'nel contempo'],
+            'attraverso': ['mediante', 'per mezzo di', 'tramite'],
+            # verbi / aggettivi "gonfiati"
+            'fondamentale': ['centrale', 'determinante', 'capitale', 'nodale'],
+            'fondamentali': ['centrali', 'determinanti', 'nodali'],
+            'significativo': ['notevole', 'apprezzabile', 'sensibile', 'marcato'],
+            'significativa': ['notevole', 'apprezzabile', 'sensibile', 'marcata'],
+            'cruciale': ['decisivo', 'nevralgico', 'dirimente'],
+            'rilevante': ['di rilievo', 'cospicuo', 'considerevole'],
+            'essenziale': ['imprescindibile', 'irrinunciabile', 'basilare'],
+            'rappresenta': ['costituisce', 'configura', 'vale come'],
+            'costituisce': ['forma', 'compone', 'configura'],
+            'evidenzia': ['mostra', 'segnala', 'rivela'],
+            'evidenziare': ['mostrare', 'segnalare', 'porre in luce'],
+            'sottolinea': ['rimarca', 'rileva', 'osserva'],
+            'sottolineare': ['rimarcare', 'rilevare', 'osservare'],
+            'emerge': ['affiora', 'si delinea', 'traspare', 'risalta'],
+            'permette di': ['consente di', 'rende possibile'],
+            'consente di': ['permette di', 'rende possibile'],
+            'numerosi': ['svariati', 'molteplici', 'parecchi'],
+            'numerose': ['svariate', 'molteplici', 'parecchie'],
+        }
+        for parola, alternative in mappa.items():
+            pattern = re.compile(r'\b' + re.escape(parola) + r'\b', re.IGNORECASE)
+            matches = list(pattern.finditer(testo))
+            for match in reversed(matches):
+                if random.random() < 0.6:
+                    sost = random.choice(alternative)
+                    if match.group()[0].isupper():
+                        sost = sost[0].upper() + sost[1:]
+                    testo = testo[:match.start()] + sost + testo[match.end():]
+        return testo
+
     def aumenta_entropia_lessicale(self, testo: str) -> str:
         """
         Introduce scelte lessicali rare che aumentano l'entropia a livello di token.
@@ -1507,8 +1571,16 @@ class AntiAIProcessor:
             Tuple (testo_con_placeholder, mappa_ripristino)
         """
         import re
-        citations = re.findall(r'\[\d+\]', testo)
         mappa = {}
+        # Proteggi PRIMA le note {{nota: ...}} (possono contenere parentesi
+        # quadre o numeri al loro interno che non vanno toccati).
+        note = re.findall(r'\{\{nota:.*?\}\}', testo, flags=re.DOTALL)
+        for i, nota in enumerate(note):
+            placeholder = f"__NOTE{i}__"
+            mappa[placeholder] = nota
+            testo = testo.replace(nota, placeholder, 1)
+        # Poi le citazioni inline [n].
+        citations = re.findall(r'\[\d+\]', testo)
         for i, cit in enumerate(citations):
             placeholder = f"__CITE{i}__"
             mappa[placeholder] = cit
@@ -1550,57 +1622,74 @@ class AntiAIProcessor:
         # ═══════════════════════════════════════════════════════════════
         testo, mappa_citazioni = self._protect_citations(testo)
 
+        # Profilo accademico (tesi): esegue SOLO le trasformazioni meccaniche
+        # register-safe (burstiness, riordino clausole, rimozione hedging,
+        # variazione punteggiatura, pulizia). Salta tutte le fasi che iniettano
+        # colloquialismi o sostituiscono il lessico con forme informali: quel
+        # lavoro, per le tesi, lo fa la riscrittura LLM (academic_deai_rewrite).
+        academic = (self.profile == 'academic')
+
         # ═══════════════════════════════════════════════════════════════
-        # FASE 1: PULIZIA
+        # FASE 1: PULIZIA  (register-safe)
         # ═══════════════════════════════════════════════════════════════
         testo = self.rimuovi_separatori(testo)
 
         # ═══════════════════════════════════════════════════════════════
-        # FASE 2: FRASI AI AD ALTA FREQUENZA
+        # FASE 2: FRASI AI AD ALTA FREQUENZA  (informale: sostituzioni colloquiali)
         # ═══════════════════════════════════════════════════════════════
-        # Sostituisce frasi ad alta frequenza rilevate dai detector AI
-        # Va eseguita PRIMA delle altre trasformazioni per massimizzare l'efficacia
-        testo = self.sostituisci_frasi_ai_alta_frequenza(testo)
-        testo = self.trasforma_inizi_formali(testo)
+        if not academic:
+            # Va eseguita PRIMA delle altre trasformazioni per massimizzarne l'efficacia.
+            testo = self.sostituisci_frasi_ai_alta_frequenza(testo)
+            testo = self.trasforma_inizi_formali(testo)
 
         # ═══════════════════════════════════════════════════════════════
-        # FASE 3: TRASFORMAZIONE PATTERN AI
+        # FASE 3: TRASFORMAZIONE PATTERN AI  (informale: iniezione colloquiale)
         # ═══════════════════════════════════════════════════════════════
-        testo = self.trasforma_aperture_numero(testo)
-        testo = self.espandi_risposte_brevi(testo)
-        testo = self.trasforma_carta_pratica(testo)
-        testo = self.rompi_parallelismi(testo)
-        testo = self.trasforma_parentesi_editoriali(testo)
-        testo = self.riduci_chi_sa_che(testo)
-        testo = self.trasforma_non_significa(testo)
-        testo = self.trasforma_quindi_inizio(testo)
-        testo = self.trasforma_liste_mascherate(testo)
+        if not academic:
+            testo = self.trasforma_aperture_numero(testo)
+            testo = self.espandi_risposte_brevi(testo)
+            testo = self.trasforma_carta_pratica(testo)
+            testo = self.rompi_parallelismi(testo)
+            testo = self.trasforma_parentesi_editoriali(testo)
+            testo = self.riduci_chi_sa_che(testo)
+            testo = self.trasforma_non_significa(testo)
+            testo = self.trasforma_quindi_inizio(testo)
+            testo = self.trasforma_liste_mascherate(testo)
 
         # ═══════════════════════════════════════════════════════════════
         # FASE 4: SOSTITUZIONE LESSICALE + DIVERSIFICAZIONE
         # ═══════════════════════════════════════════════════════════════
-        testo = self.sostituisci_lista_nera(testo)
-        testo = self.diversifica_vocabolario_ripetitivo(testo)
+        if not academic:
+            testo = self.sostituisci_lista_nera(testo)
+            testo = self.diversifica_vocabolario_ripetitivo(testo)
+        else:
+            # Versione register-safe: marcatori AI -> alternative formali, più
+            # diversificazione delle ripetizioni (entrambe neutre di registro).
+            testo = self._perturba_lessico_academic(testo)
+            testo = self.diversifica_vocabolario_ripetitivo(testo)
 
         # ═══════════════════════════════════════════════════════════════
-        # FASE 5: RIMOZIONE HEDGING ECCESSIVO
+        # FASE 5: RIMOZIONE HEDGING ECCESSIVO  (register-safe)
         # ═══════════════════════════════════════════════════════════════
         testo = self.rimuovi_hedging_eccessivo(testo)
 
         # ═══════════════════════════════════════════════════════════════
-        # FASE 5.5: TRASFORMAZIONI COMPILATIO-SPECIFICHE
+        # FASE 5.5: TRASFORMAZIONI COMPILATIO-SPECIFICHE  (informale)
         # ═══════════════════════════════════════════════════════════════
-        # Compilatio usa analisi perplessità, n-gram e distribuzione token
-        # diversa da altri detector. Queste fasi target specifiche.
-        testo = self.sostituisci_collocazioni_compilatio(testo)
-        testo = self.aumenta_entropia_lessicale(testo)
-        testo = self.inserisci_micro_imperfezioni(testo)
-        testo = self.varia_perplexita_tra_frasi(testo)
+        if not academic:
+            # Mirate ma colloquiali (micro-imperfezioni, collocazioni informali).
+            testo = self.sostituisci_collocazioni_compilatio(testo)
+            testo = self.aumenta_entropia_lessicale(testo)
+            testo = self.inserisci_micro_imperfezioni(testo)
+            testo = self.varia_perplexita_tra_frasi(testo)
 
         # ═══════════════════════════════════════════════════════════════
         # FASE 6: VARIAZIONE STRUTTURALE NATURALE
         # ═══════════════════════════════════════════════════════════════
-        testo = self.diversifica_inizi_frase(testo)
+        if not academic:
+            testo = self.diversifica_inizi_frase(testo)
+        # spezza_frasi_uniformi + riordina_clausole sono register-safe (burstiness
+        # e riordino sintattico): utili anche per le tesi.
         testo = self.spezza_frasi_uniformi(testo)
         testo = self.riordina_clausole(testo)
 
@@ -1608,7 +1697,10 @@ class AntiAIProcessor:
         # FASE 7: VARIAZIONE PUNTEGGIATURA E TITOLI
         # ═══════════════════════════════════════════════════════════════
         testo = self.varia_punteggiatura(testo)
-        testo = self.varia_titoli(testo)
+        if not academic:
+            # varia_titoli puo' trasformare/rimuovere i titoli markdown: per le
+            # tesi va evitato (romperebbe l'indice/TOC).
+            testo = self.varia_titoli(testo)
 
         # ═══════════════════════════════════════════════════════════════
         # FASE 8: NORMALIZZAZIONE FINALE
@@ -1684,37 +1776,47 @@ class AntiAIProcessor:
 # FUNZIONE DI INTERFACCIA PRINCIPALE
 # ═══════════════════════════════════════════════════════════════════════════
 
-_processor_instance: Optional[AntiAIProcessor] = None
+_processor_instances: Dict[str, AntiAIProcessor] = {}
 
 
-def get_processor() -> AntiAIProcessor:
-    """Restituisce l'istanza singleton del processore anti-AI."""
-    global _processor_instance
-    if _processor_instance is None:
-        _processor_instance = AntiAIProcessor()
-    return _processor_instance
+def get_processor(profile: str = 'informal') -> AntiAIProcessor:
+    """Restituisce l'istanza singleton del processore anti-AI per il profilo dato."""
+    processor = _processor_instances.get(profile)
+    if processor is None:
+        processor = AntiAIProcessor(profile=profile)
+        _processor_instances[profile] = processor
+    return processor
 
 
-def humanize_text_post_processing(testo: str) -> str:
+def humanize_text_post_processing(testo: str, profile: str = 'informal') -> str:
     """
     Funzione principale da chiamare per il post-processing anti-AI.
 
-    Questa funzione viene chiamata DOPO aver ottenuto la risposta da Claude
-    per applicare trasformazioni algoritmiche che rendono il testo
-    completamente non rilevabile dai detector AI.
+    Viene chiamata DOPO aver ottenuto la risposta dal modello per applicare
+    trasformazioni algoritmiche che riducono la rilevabilità AI del testo.
 
     Args:
-        testo: Il testo generato da Claude da processare
+        testo: Il testo generato dal modello da processare
+        profile: 'informal' (default) anti-AI completo con colloquialismi;
+            'academic' solo trasformazioni meccaniche register-safe (per le tesi).
 
     Returns:
         Il testo trasformato, anti-AI
 
     Example:
         >>> from anti_ai_processor import humanize_text_post_processing
-        >>> testo_ai = "Il testo generato da Claude..."
-        >>> testo_umano = humanize_text_post_processing(testo_ai)
+        >>> testo_umano = humanize_text_post_processing(testo_ai, profile='academic')
     """
-    processor = get_processor()
+    processor = get_processor(profile)
+    # Profilo accademico: processa per paragrafo per PRESERVARE la struttura in
+    # paragrafi (le tesi ne dipendono per leggibilità ed export/TOC). Le fasi
+    # academic operano a livello di frase/clausola, quindi processare i blocchi
+    # separatamente non cambia il risultato se non per il mantenimento dei \n\n.
+    if profile == 'academic' and '\n\n' in testo:
+        blocchi = testo.split('\n\n')
+        return '\n\n'.join(
+            processor.process(b) if b.strip() else b for b in blocchi
+        )
     return processor.process(testo)
 
 
