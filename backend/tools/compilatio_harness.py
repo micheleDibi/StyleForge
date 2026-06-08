@@ -118,6 +118,11 @@ def scan_once(text: str, label: str, user_id: Optional[str], dry_run: bool,
         retryable.append(CompilatioError)
     except Exception:
         pass
+    try:
+        from sqlalchemy.exc import OperationalError as _SAOpErr
+        retryable.append(_SAOpErr)  # blip DNS/connettività verso il DB
+    except Exception:
+        pass
     retryable = tuple(retryable)
 
     from database import SessionLocal
@@ -146,6 +151,10 @@ def scan_once(text: str, label: str, user_id: Optional[str], dry_run: bool,
                 return row
             except retryable as e:
                 last_err = e
+                try:
+                    db.rollback()  # resetta la sessione dopo un blip DB
+                except Exception:
+                    pass
                 print(f"  [scan] errore di rete ({type(e).__name__}); nuovo tentativo tra 15s…", flush=True)
                 time.sleep(15)
             except Exception as e:
