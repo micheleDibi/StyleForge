@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Shield, AlertTriangle, FileText, Loader, Search } from 'lucide-react';
 import { startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import FileTextUpload from '../components/FileTextUpload';
 
 const DetectorAI = () => {
   const navigate = useNavigate();
@@ -22,8 +23,12 @@ const DetectorAI = () => {
     return 'text-red-600 bg-red-50 border-red-200';
   };
 
-  const handleScan = async () => {
-    if (!text.trim() || text.trim().length < 50 || scanning) return;
+  const handleScan = async (textOverride = null) => {
+    // textOverride è una stringa quando chiamato da codice (es. dopo upload);
+    // quando è un onClick handler riceve l'evento, che ignoriamo.
+    const t = typeof textOverride === 'string' ? textOverride : text;
+
+    if (!t.trim() || t.trim().length < 50 || scanning) return;
 
     setScanning(true);
     setError(null);
@@ -31,7 +36,7 @@ const DetectorAI = () => {
     setProgress(0);
 
     try {
-      const response = await startCompilatioScan(text, 'manual', null);
+      const response = await startCompilatioScan(t, 'manual', null);
 
       // Se risultato cached, mostra subito
       if (response.cached && response.cached_scan) {
@@ -65,6 +70,14 @@ const DetectorAI = () => {
     } finally {
       setScanning(false);
     }
+  };
+
+  // Testo estratto da file caricato: riempi la textarea e avvia la scansione
+  const handleFileExtracted = (extractedText) => {
+    setText(extractedText);
+    setError(null);
+    setResult(null);
+    handleScan(extractedText);
   };
 
   const handleDownloadReport = async () => {
@@ -106,6 +119,9 @@ const DetectorAI = () => {
           {/* Input */}
           <div>
             <div className="card space-y-4">
+              {/* Caricamento file: estrae il testo e avvia in automatico la scansione */}
+              <FileTextUpload onExtracted={handleFileExtracted} disabled={scanning} />
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Testo da analizzare

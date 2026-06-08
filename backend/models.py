@@ -3,7 +3,7 @@ Modelli Pydantic per le API di StyleForge.
 """
 
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from enum import Enum
 from datetime import datetime
 
@@ -137,12 +137,17 @@ class HumanizeRequest(BaseModel):
     """Request per l'umanizzazione di un testo AI."""
     session_id: str = Field(..., description="ID della sessione addestrata")
     testo: str = Field(..., min_length=50, description="Testo generato da AI da riscrivere")
+    profile: Literal['informal', 'academic'] = Field(
+        'informal',
+        description="Profilo anti-AI: 'informal' (più aggressivo) o 'academic' (registro formale, protegge citazioni e note)"
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
                 "session_id": "session_123",
-                "testo": "Il testo generato da AI che deve essere riscritto per sembrare umano..."
+                "testo": "Il testo generato da AI che deve essere riscritto per sembrare umano...",
+                "profile": "informal"
             }
         }
 
@@ -159,13 +164,26 @@ class HumanizeResponse(BaseModel):
 class AntiAICorrectionRequest(BaseModel):
     """Request per la Correzione Anti-AI (senza sessione addestrata)."""
     testo: str = Field(..., min_length=50, description="Testo da correggere (micro-modifiche per ridurre AI detection)")
+    profile: Literal['informal', 'academic'] = Field(
+        'informal',
+        description="Profilo anti-AI: 'informal' (più aggressivo) o 'academic' (registro formale, protegge citazioni e note)"
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "testo": "Il testo da correggere con micro-modifiche anti-AI..."
+                "testo": "Il testo da correggere con micro-modifiche anti-AI...",
+                "profile": "informal"
             }
         }
+
+
+class ExtractTextResponse(BaseModel):
+    """Response dell'estrazione testo da file caricato (file non persistito)."""
+    text: str
+    filename: str
+    word_count: int
+    char_count: int
 
 
 class AntiAICorrectionResponse(BaseModel):

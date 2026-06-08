@@ -209,7 +209,7 @@ class ClaudeClient:
 
         return final_text
 
-    def umanizzazione(self, testo_originale: str) -> str:
+    def umanizzazione(self, testo_originale: str, profile: str = 'informal') -> str:
         """
         Riscrive un testo generato da AI per renderlo non rilevabile dai detector AI,
         applicando lo stile appreso durante l'addestramento.
@@ -228,6 +228,7 @@ class ClaudeClient:
 
         Args:
             testo_originale: Il testo generato da AI da riscrivere.
+            profile: Profilo del post-processing anti-AI ('informal' o 'academic').
 
         Returns:
             Il testo riscritto nello stile appreso e completamente anti-AI.
@@ -337,9 +338,9 @@ REGOLE:
             "content": assistant_message
         })
 
-        # Post-processing anti-AI
+        # Post-processing anti-AI (profilo selezionabile: informal/academic)
         from anti_ai_processor import humanize_text_post_processing
-        final_text = humanize_text_post_processing(assistant_message)
+        final_text = humanize_text_post_processing(assistant_message, profile=profile)
 
         return final_text
 

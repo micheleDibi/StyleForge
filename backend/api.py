@@ -5,6 +5,8 @@ API scalabile per la generazione di contenuti con Claude Opus 4.8.
 """
 
 import asyncio
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -20,6 +22,7 @@ from models import (
     GenerationRequest, GenerationResponse,
     HumanizeRequest, HumanizeResponse,
     AntiAICorrectionRequest, AntiAICorrectionResponse,
+    ExtractTextResponse,
     CompilatioScanRequest, CompilatioScanResponse, CompilatioScanResult, CompilatioScanListResponse,
     RenameRequest,
     JobStatusResponse, SessionInfo, SessionListResponse,
@@ -484,7 +487,8 @@ async def generate_content(
 
 def humanize_content_task(
     session_id: str,
-    testo: str
+    testo: str,
+    profile: str = 'informal'
 ) -> str:
     """
     Task sincrono per l'umanizzazione di un testo AI.
@@ -492,12 +496,13 @@ def humanize_content_task(
     Args:
         session_id: ID della sessione addestrata.
         testo: Il testo generato da AI da riscrivere.
+        profile: Profilo anti-AI ('informal' o 'academic').
 
     Returns:
         Testo riscritto nello stile appreso e non rilevabile dai detector.
     """
     client = session_manager.get_session(session_id)
-    result = client.umanizzazione(testo_originale=testo)
+    result = client.umanizzazione(testo_originale=testo, profile=profile)
 
     # Salva la conversation history
     session_manager.save_conversation_history(session_id)
@@ -566,7 +571,8 @@ async def humanize_content(
         job_type='humanization',
         task_func=humanize_content_task,
         name=job_name,
-        testo=request.testo
+        testo=request.testo,
+        profile=request.profile
     )
 
     # Aggiungi job alla sessione
@@ -588,7 +594,7 @@ async def humanize_content(
 # ANTI-AI CORRECTION ENDPOINTS
 # ============================================================================
 
-def anti_ai_correction_task(testo: str) -> str:
+def anti_ai_correction_task(testo: str, profile: str = 'informal') -> str:
     """
     Task sincrono per la correzione Anti-AI.
 
@@ -597,12 +603,13 @@ def anti_ai_correction_task(testo: str) -> str:
 
     Args:
         testo: Il testo da correggere.
+        profile: Profilo anti-AI ('informal' o 'academic').
 
     Returns:
         Testo corretto con micro-modifiche.
     """
     from ai_client import anti_ai_correction
-    return anti_ai_correction(testo)
+    return anti_ai_correction(testo, profile=profile)
 
 
 @app.post("/anti-ai-correction", response_model=AntiAICorrectionResponse, tags=["Anti-AI Correction"])
@@ -647,7 +654,8 @@ async def anti_ai_correction_endpoint(
         job_type='humanization',
         task_func=anti_ai_correction_task,
         name=job_name,
-        testo=request.testo
+        testo=request.testo,
+        profile=request.profile
     )
 
     # Esegui job in background
@@ -658,6 +666,74 @@ async def anti_ai_correction_endpoint(
         status='pending',
         message=f"Correzione Anti-AI avviata. Monitora lo stato con GET /jobs/{job_id}",
         created_at=datetime.now()
+    )
+
+
+@app.post("/extract-text", response_model=ExtractTextResponse, tags=["Utility"])
+async def extract_text_from_upload(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Estrae il testo da un file caricato (PDF, DOCX, TXT) SENZA salvarlo su disco.
+
+    Usato dalle pagine Umanizzazione e Detector AI per caricare un documento
+    al posto di incollare il testo manualmente. Il file viene letto in memoria,
+    scritto su un file temporaneo solo per l'estrazione e subito eliminato.
+    Non consuma crediti.
+    """
+    from attachment_processor import validate_file, extract_text, sanitize_text_for_db
+
+    filename = file.filename or "documento"
+
+    # Guard pre-lettura: evita di caricare in RAM file enormi (se la size è nota)
+    if file.size is not None:
+        is_valid, error = validate_file(filename, file.size)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error)
+
+    # Leggi il contenuto in memoria e valida (estensione + dimensione)
+    content = await file.read()
+    is_valid, error = validate_file(filename, len(content))
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error)
+
+    # Estrai il testo da un file temporaneo NON persistente
+    ext = Path(filename).suffix.lower()
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        text = extract_text(Path(tmp_path))
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=422, detail=f"Impossibile estrarre il testo dal file: {e}")
+    finally:
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    text = sanitize_text_for_db(text or "").strip()
+
+    if len(text) < 50:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Nessun testo estraibile (minimo 50 caratteri). Il file potrebbe essere "
+                "vuoto o un PDF scansionato senza testo selezionabile."
+            )
+        )
+
+    word_count = len([w for w in text.split() if w])
+
+    return ExtractTextResponse(
+        text=text,
+        filename=filename,
+        word_count=word_count,
+        char_count=len(text),
     )
 
 

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Wand2, Download, Copy, Check, AlertTriangle, RefreshCw, Shield, Sparkles, FileText, Loader } from 'lucide-react';
+import { ArrowLeft, Wand2, Download, Copy, Check, AlertTriangle, RefreshCw, Shield, Sparkles, FileText, Loader, GraduationCap } from 'lucide-react';
 import { getSessions, humanizeContent, antiAICorrection, pollJobStatus, estimateCredits, startCompilatioScan, downloadCompilatioReport } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
 import ApiCostEstimate from '../components/ApiCostEstimate';
 import CreditEstimatePreview from '../components/CreditEstimatePreview';
+import FileTextUpload from '../components/FileTextUpload';
 import { jsPDF } from 'jspdf';
 
 const Humanize = () => {
@@ -22,6 +23,9 @@ const Humanize = () => {
 
   // Mode: 'correction' (Anti-AI) or 'full' (Umanizzazione con Profilo)
   const [mode, setMode] = useState('correction');
+
+  // Profilo anti-AI: 'informal' (aggressivo) o 'academic' (registro formale)
+  const [profile, setProfile] = useState('informal');
 
   // Credit confirmation state
   const [showCreditDialog, setShowCreditDialog] = useState(false);
@@ -53,10 +57,12 @@ const Humanize = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e, textOverride = null) => {
+    if (e) e.preventDefault();
 
-    if (testoOriginale.trim().length < 50) {
+    const txt = textOverride ?? testoOriginale;
+
+    if (txt.trim().length < 50) {
       alert('Il testo deve contenere almeno 50 caratteri');
       return;
     }
@@ -71,7 +77,7 @@ const Humanize = () => {
     setShowCreditDialog(true);
 
     try {
-      const estimate = await estimateCredits('humanize', { text_length: testoOriginale.length });
+      const estimate = await estimateCredits('humanize', { text_length: txt.length });
       setCreditEstimate(estimate);
     } catch (err) {
       console.error('Errore stima crediti:', err);
@@ -79,6 +85,16 @@ const Humanize = () => {
     } finally {
       setCreditLoading(false);
     }
+  };
+
+  // Testo estratto da file caricato: riempi la textarea e avvia in automatico
+  const handleFileExtracted = (text) => {
+    setTestoOriginale(text);
+    setResult('');
+    setJobStatus(null);
+    setCompilatioResult(null);
+    setCompilatioError(null);
+    handleSubmit(null, text);
   };
 
   const handleConfirmedHumanize = async () => {
@@ -89,9 +105,9 @@ const Humanize = () => {
     try {
       let response;
       if (mode === 'correction') {
-        response = await antiAICorrection(testoOriginale);
+        response = await antiAICorrection(testoOriginale, profile);
       } else {
-        response = await humanizeContent(selectedSession, testoOriginale);
+        response = await humanizeContent(selectedSession, testoOriginale, profile);
       }
       setJobStatus({ ...response, status: 'pending', progress: 0 });
 
@@ -342,6 +358,47 @@ const Humanize = () => {
             )}
 
             <form onSubmit={handleSubmit} className="card space-y-6">
+              {/* Caricamento file: estrae il testo e avvia in automatico */}
+              <FileTextUpload onExtracted={handleFileExtracted} disabled={processing} />
+
+              {/* Profilo anti-AI (valido per entrambe le modalita) */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Profilo anti-AI
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProfile('informal')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                      profile === 'informal'
+                        ? 'bg-orange-50 border-orange-400 text-orange-700'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Informale
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProfile('academic')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                      profile === 'academic'
+                        ? 'bg-blue-50 border-blue-400 text-blue-700'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <GraduationCap className="w-4 h-4" />
+                    Accademico
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  {profile === 'academic'
+                    ? 'Registro formale: protegge citazioni [x] e note, nessun colloquialismo.'
+                    : 'Piu aggressivo: introduce colloquialismi e variazioni piu marcate.'}
+                </p>
+              </div>
+
               {/* Session selector - only in full mode */}
               {mode === 'full' && (
                 <div>

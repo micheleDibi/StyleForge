@@ -471,7 +471,7 @@ REGOLE FINALI:
         return humanize_text_post_processing(text)
 
 
-def anti_ai_correction(text: str) -> str:
+def anti_ai_correction(text: str, profile: str = 'informal') -> str:
     """
     Correzione Anti-AI: applica SOLO micro-modifiche conservative al testo
     per ridurre la percentuale di rilevamento AI, senza riscriverlo da zero.
@@ -486,6 +486,8 @@ def anti_ai_correction(text: str) -> str:
 
     Args:
         text: Il testo da correggere
+        profile: Profilo del post-processing anti-AI ('informal' o 'academic').
+            'academic' mantiene il registro formale e protegge citazioni/note.
 
     Returns:
         Il testo con micro-correzioni anti-AI
@@ -570,13 +572,13 @@ REGOLE FINALI:
 
         # Applica anche l'algoritmo anti-AI post-processing (leggero)
         from anti_ai_processor import humanize_text_post_processing
-        return humanize_text_post_processing(corrected)
+        return humanize_text_post_processing(corrected, profile=profile)
     except InsufficientCreditsError:
         raise
     except Exception as e:
         # Fallback: solo algoritmo anti-AI
         from anti_ai_processor import humanize_text_post_processing
-        return humanize_text_post_processing(text)
+        return humanize_text_post_processing(text, profile=profile)
 
 
 # ============================================================================

@@ -286,16 +286,35 @@ export const generateContent = async (sessionId, argomento, numeroParole, destin
   return response.data;
 };
 
-export const humanizeContent = async (sessionId, testo) => {
+export const humanizeContent = async (sessionId, testo, profile = 'informal') => {
   const response = await api.post('/humanize', {
     session_id: sessionId,
     testo,
+    profile,
   });
   return response.data;
 };
 
-export const antiAICorrection = async (testo) => {
-  const response = await api.post('/anti-ai-correction', { testo });
+export const antiAICorrection = async (testo, profile = 'informal') => {
+  const response = await api.post('/anti-ai-correction', { testo, profile });
+  return response.data;
+};
+
+// Estrazione testo da file caricato (PDF/DOCX/TXT). Il file NON viene salvato.
+export const extractTextFromFile = async (file, onProgress = null) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await api.post('/extract-text', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    // 5 minuti: l'estrazione include parsing PDF/DOCX e sanitizzazione,
+    // che su file grandi può superare il default di 30s.
+    timeout: 300000,
+    onUploadProgress: onProgress ? (progressEvent) => {
+      const progress = (progressEvent.loaded / progressEvent.total) * 100;
+      onProgress(progress);
+    } : undefined
+  });
   return response.data;
 };
 
