@@ -20,7 +20,7 @@ OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "16000"))
 # AI Provider per Thesis Generation
 # Valori: "openai" (default) o "claude"
 THESIS_AI_PROVIDER = os.getenv("THESIS_AI_PROVIDER", "openai")
-THESIS_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-opus-4-6")
+THESIS_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-opus-4-8")
 
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -30,7 +30,7 @@ SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 # Configurazione Claude
 MAX_TOKENS_TRAIN = int(os.getenv("MAX_TOKENS_TRAIN", "4096"))
 MAX_TOKENS_TEST = int(os.getenv("MAX_TOKENS_TEST", "8192"))
-CLAUDE_MODEL_ID = "claude-opus-4-6"
+CLAUDE_MODEL_ID = "claude-opus-4-8"
 
 # Configurazione Server
 HOST = os.getenv("HOST", "0.0.0.0")
@@ -65,9 +65,9 @@ THESIS_MAX_CONTEXT_CHARS = int(os.getenv("THESIS_MAX_CONTEXT_CHARS", "50000"))
 # Path del template del wiki: contiene CLAUDE.md (la "costituzione") + struttura
 # di sottocartelle vuote che viene clonata in thesis_uploads/{tid}/llm_wiki/.
 WIKI_TEMPLATE_DIR = Path(os.getenv("WIKI_TEMPLATE_DIR", str(Path(__file__).resolve().parent.parent / "llm_wiki")))
-# Modello Claude usato per ingest/lint. Sonnet e' il default (good cost/perf ratio
-# con prompt caching del CLAUDE.md). L'utente puo' overridare via env.
-WIKI_CLAUDE_MODEL = os.getenv("WIKI_CLAUDE_MODEL", "claude-sonnet-4-6")
+# Modello Claude usato per ingest/lint. Opus 4.8 e' il default (massima qualita'
+# sull'ingest, con prompt caching del CLAUDE.md). L'utente puo' overridare via env.
+WIKI_CLAUDE_MODEL = os.getenv("WIKI_CLAUDE_MODEL", "claude-opus-4-8")
 # Max fonti raw per tesi prima di andare in errore (taglia il costo dell'ingest)
 WIKI_MAX_SOURCES = int(os.getenv("WIKI_MAX_SOURCES", "15"))
 # Timeout HTTP per il download dei PDF dei paper (secondi)
@@ -109,15 +109,6 @@ COMPILATIO_MAX_RETRIES = int(os.getenv("COMPILATIO_MAX_RETRIES", "120"))
 COMPILATIO_REPORTS_DIR = Path(os.getenv("COMPILATIO_REPORTS_DIR", "./compilatio_reports"))
 COMPILATIO_REPORTS_DIR.mkdir(exist_ok=True, parents=True)
 
-# Configurazione Carousel Creator
-CAROUSEL_CLAUDE_MODEL = os.getenv("CAROUSEL_CLAUDE_MODEL", "claude-opus-4-6")
-
-# Configurazione Image Enhancement
-IMAGE_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
-IMAGE_MAX_UPLOAD_SIZE = int(os.getenv("IMAGE_MAX_UPLOAD_SIZE", "10")) * 1024 * 1024  # 10MB
-IMAGE_MAX_DIMENSION = int(os.getenv("IMAGE_MAX_DIMENSION", "4096"))
-IMAGE_ENHANCE_MODEL = os.getenv("IMAGE_ENHANCE_MODEL", "claude-opus-4-6")
-
 # MiniMax Video Generation (Admin-only)
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimaxi.chat/v1")
@@ -125,9 +116,9 @@ MINIMAX_DEFAULT_MODEL = os.getenv("MINIMAX_DEFAULT_MODEL", "MiniMax-Hailuo-2.3")
 VIDEO_MAX_UPLOAD_SIZE = int(os.getenv("VIDEO_MAX_UPLOAD_SIZE", "10")) * 1024 * 1024
 VIDEO_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
-# API Pricing (Claude Opus 4-6) — per stima costi admin
-CLAUDE_OPUS_INPUT_PRICE_USD = 15.0   # $ per 1M input tokens
-CLAUDE_OPUS_OUTPUT_PRICE_USD = 75.0  # $ per 1M output tokens
+# API Pricing (Claude Opus 4.8) — per stima costi admin
+CLAUDE_OPUS_INPUT_PRICE_USD = 5.0    # $ per 1M input tokens
+CLAUDE_OPUS_OUTPUT_PRICE_USD = 25.0  # $ per 1M output tokens
 USD_TO_EUR_RATE = 0.88               # Tasso di cambio approssimativo
 
 # API Pricing (OpenAI o3) — per stima costi admin thesis
@@ -179,7 +170,7 @@ PAGOPA_SOAP_TIMEOUT = int(os.getenv("PAGOPA_SOAP_TIMEOUT", "30"))
 API_VERSION = "1.0.0"
 API_TITLE = "StyleForge API"
 API_DESCRIPTION = """
-API per la generazione di contenuti utilizzando Claude Opus 4.5.
+API per la generazione di contenuti utilizzando Claude Opus 4.8.
 
 ## Funzionalità principali:
 

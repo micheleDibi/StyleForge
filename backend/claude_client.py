@@ -1,5 +1,5 @@
 """
-Client per Claude Opus 4.5 con funzionalità di addestramento e generazione.
+Client per Claude Opus 4.8 con funzionalità di addestramento e generazione.
 
 Questo modulo fornisce due funzionalità principali:
 1. ADDESTRAMENTO: Invia un file con un prompt a Claude per "addestrare" il contesto
@@ -40,9 +40,9 @@ def lettura_pdf(file_path: str, max_pagine: int = 50) -> str:
     return testo
 
 class ClaudeClient:
-    """Client per interagire con Claude Opus 4.6 mantenendo il contesto della sessione."""
+    """Client per interagire con Claude Opus 4.8 mantenendo il contesto della sessione."""
 
-    MODEL_ID = "claude-opus-4-6"
+    MODEL_ID = "claude-opus-4-8"
 
     def __init__(self):
         """

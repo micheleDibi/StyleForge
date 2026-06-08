@@ -1,7 +1,7 @@
 """
 FastAPI Application per StyleForge.
 
-API scalabile per la generazione di contenuti con Claude Opus 4.5.
+API scalabile per la generazione di contenuti con Claude Opus 4.8.
 """
 
 import asyncio
