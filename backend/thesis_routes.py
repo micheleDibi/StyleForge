@@ -380,9 +380,8 @@ async def create_thesis(
     Crea una nuova tesi/relazione.
 
     Richiede tutti i parametri di configurazione.
-    Addebita la tariffa flat in base al tipo ente dell'utente
-    (250 ente privato, 125 ente di formazione, configurabili da admin).
-    Gli admin StyleForge non vengono addebitati.
+    Addebita la tariffa flat tesi unica (default 1000 crediti, uguale per tutti
+    gli utenti, configurabile da admin). Gli admin StyleForge non vengono addebitati.
     """
     # Verifica sessione se specificata
     session_uuid = None
@@ -394,27 +393,18 @@ async def create_thesis(
         if session:
             session_uuid = session.id
 
-    # Addebito flat in base al tipo di ente (solo per non-admin)
-    entity_type = (getattr(current_user, 'entity_type', None) or 'private').strip().lower()
-    if entity_type not in ('private', 'training'):
-        entity_type = 'private'
-
+    # Addebito flat tesi (valore unico per tutti gli utenti; solo per non-admin)
     flat_charged = False
     if not current_user.is_admin:
-        estimate = estimate_credits(
-            'thesis_total',
-            {'entity_type': entity_type},
-            db,
-        )
+        estimate = estimate_credits('thesis_total', {}, db)
         cost = int(estimate.get('credits_needed', 0) or 0)
         if cost > 0:
-            label_ente = 'ente di formazione' if entity_type == 'training' else 'ente privato'
             title_short = (request.title or 'Tesi senza titolo')[:80]
             deduct_credits(
                 current_user,
                 cost,
                 'thesis_total',
-                f"Tesi flat ({label_ente}): {title_short}",
+                f"Tesi flat: {title_short}",
                 db,
             )
             flat_charged = True

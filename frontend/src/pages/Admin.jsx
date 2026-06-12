@@ -15,6 +15,7 @@ import {
   getAdminRoles, updateRolePermissions, getAdminStats,
   adminCreateUser, getAdminCreditCosts, updateAdminCreditCosts,
   resetAdminCreditCosts, getAdminEurPerCredit, updateAdminEurPerCredit,
+  getAdminTrainingDiscount, updateAdminTrainingDiscount,
   getAdminTemplates, updateAdminTemplates,
   deleteAdminTemplate, uploadTemplateBackground, deleteTemplateBackground,
   createApiKey, getApiKeys, revokeApiKey
@@ -39,7 +40,7 @@ const COST_OPERATION_LABELS = {
   train: { label: 'Training', icon: '🎓', fields: { base: 'Costo base', per_page: 'Per pagina PDF' } },
   generate: { label: 'Generazione Contenuto', icon: '✍️', fields: { base: 'Costo base', per_1000_words: 'Per 1000 parole' } },
   humanize: { label: 'Umanizzazione', icon: '🤖', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
-  thesis_total: { label: 'Tesi - Tariffa flat per ente', icon: '🎯', description: 'Addebito unico alla creazione di una nuova tesi, in base al tipo di ente dell\'utente. Sostituisce i costi per step (capitoli/sezioni/contenuto) per le tesi nuove.', fields: { private: 'Ente privato', training: 'Ente di formazione' } },
+  thesis_total: { label: 'Tesi - Tariffa flat', icon: '🎯', description: 'Addebito unico alla creazione di una nuova tesi (valore unico per tutti gli utenti). Sostituisce i costi per step (capitoli/sezioni/contenuto) per le tesi nuove.', fields: { base: 'Costo tesi' } },
   thesis_chapters: { label: 'Tesi - Capitoli (legacy)', icon: '📚', fields: { base: 'Costo base', per_1000_attachment_chars: 'Per 1000 caratteri allegati' } },
   thesis_sections: { label: 'Tesi - Sezioni (legacy)', icon: '📄', fields: { base: 'Costo base' } },
   thesis_content: { label: 'Tesi - Contenuto (legacy)', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
@@ -93,6 +94,8 @@ const Admin = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [eurPerCredit, setEurPerCredit] = useState(0.10);
   const [eurPerCreditSaved, setEurPerCreditSaved] = useState(0.10);
+  const [trainingDiscount, setTrainingDiscount] = useState(40);
+  const [trainingDiscountSaved, setTrainingDiscountSaved] = useState(40);
 
   // Template state
   const [templates, setTemplates] = useState([]);
@@ -140,15 +143,18 @@ const Admin = () => {
         const data = await getAdminStats();
         setStats(data);
       } else if (activeTab === 'settings') {
-        const [costsData, eurData] = await Promise.all([
+        const [costsData, eurData, discData] = await Promise.all([
           getAdminCreditCosts(),
-          getAdminEurPerCredit().catch(() => ({ eur_per_credit: 0.10 }))
+          getAdminEurPerCredit().catch(() => ({ eur_per_credit: 0.10 })),
+          getAdminTrainingDiscount().catch(() => ({ training_discount_percent: 40 }))
         ]);
         setCreditCosts(costsData.costs);
         setEditedCosts(JSON.parse(JSON.stringify(costsData.costs)));
         setIsDefaultCosts(costsData.is_default);
         setEurPerCredit(eurData.eur_per_credit);
         setEurPerCreditSaved(eurData.eur_per_credit);
+        setTrainingDiscount(discData.training_discount_percent);
+        setTrainingDiscountSaved(discData.training_discount_percent);
       } else if (activeTab === 'templates') {
         const data = await getAdminTemplates();
         setTemplates(data.templates || []);
@@ -1291,6 +1297,50 @@ const Admin = () => {
                   </div>
                   <p className="text-xs text-gray-400 mt-2">
                     Tasso di conversione per implementazioni future (pricing utenti, acquisto crediti).
+                  </p>
+                </div>
+
+                {/* Sconto enti di formazione */}
+                <div className="glass rounded-2xl p-5">
+                  <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="text-xl">🏷️</span>
+                    Sconto Enti di Formazione
+                  </h3>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="text-sm text-gray-600">Sconto sull'acquisto crediti =</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        className="input w-24 text-center text-sm py-1.5"
+                        value={trainingDiscount}
+                        onChange={(e) => setTrainingDiscount(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                      />
+                      <span className="text-sm text-gray-600">%</span>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const data = await updateAdminTrainingDiscount(trainingDiscount);
+                          setTrainingDiscountSaved(data.training_discount_percent);
+                          setTrainingDiscount(data.training_discount_percent);
+                          setCostsSuccess('Sconto enti di formazione aggiornato!');
+                          setTimeout(() => setCostsSuccess(''), 3000);
+                        } catch {
+                          setCostsError('Errore nel salvataggio dello sconto enti di formazione');
+                          setTimeout(() => setCostsError(''), 3000);
+                        }
+                      }}
+                      disabled={trainingDiscount === trainingDiscountSaved}
+                      className="btn btn-primary text-sm disabled:opacity-50"
+                    >
+                      Salva
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Riduzione percentuale sul prezzo in EUR per gli utenti "ente di formazione". Non incide sul numero di crediti erogati né sul costo della tesi.
                   </p>
                 </div>
 

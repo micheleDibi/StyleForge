@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 import config
 import pagopa_client as pgc
 from auth import get_current_active_user
+from credits import get_training_discount_percent
 from database import get_db
 from db_models import CreditPackage, PagoPAEvent, PaymentOrder, User
 from models import (
@@ -49,6 +50,20 @@ def _admin_blocked() -> HTTPException:
         status_code=400,
         detail="Gli admin StyleForge hanno crediti illimitati e non possono effettuare acquisti.",
     )
+
+
+def _user_discount_percent(user: User, db: Session) -> int:
+    """Sconto % applicabile all'utente: solo enti di formazione, altrimenti 0."""
+    if (getattr(user, 'entity_type', None) or 'private').strip().lower() == 'training':
+        return get_training_discount_percent(db)
+    return 0
+
+
+def _apply_discount(price_cents: int, discount: int) -> int:
+    """Prezzo scontato in centesimi, mai sotto 1c (vincolo SOAP importo > 0)."""
+    if discount <= 0:
+        return price_cents
+    return max(1, round(price_cents * (100 - discount) / 100))
 
 
 def _record_event(
@@ -94,9 +109,17 @@ def list_packages(
         .order_by(CreditPackage.sort_order.asc(), CreditPackage.id.asc())
         .all()
     )
-    return CreditPackageListResponse(
-        packages=[CreditPackageResponse(**r.to_dict()) for r in rows]
-    )
+
+    discount = _user_discount_percent(current_user, db)
+
+    def _to_resp(r):
+        d = r.to_dict()
+        if discount > 0:
+            d['discount_percent'] = discount
+            d['discounted_price_cents'] = _apply_discount(r.price_cents, discount)
+        return CreditPackageResponse(**d)
+
+    return CreditPackageListResponse(packages=[_to_resp(r) for r in rows])
 
 
 @router.post("/initiate", response_model=InitiatePaymentResponse)
@@ -139,13 +162,17 @@ def initiate_payment(
     )
     payer_email = request.payer_email or current_user.email
     expires_at = datetime.utcnow() + timedelta(days=config.PAGOPA_POSITION_TTL_DAYS)
+
+    # Sconto enti di formazione: riduce solo l'importo in EUR, non i crediti erogati.
+    discount = _user_discount_percent(current_user, db)
+    effective_cents = _apply_discount(pkg.price_cents, discount)
     causale = f"StyleForge crediti — {pkg.name} ({pkg.credits} crediti)"
 
     order = PaymentOrder(
         user_id=current_user.id,
         package_id=pkg.id,
         credits=pkg.credits,
-        amount_cents=pkg.price_cents,
+        amount_cents=effective_cents,
         causale=causale,
         payer_codice_fiscale=cf,
         payer_partita_iva=request.partita_iva,
@@ -163,7 +190,7 @@ def initiate_payment(
         iuv = pgc.carica_pagamento_in_attesa(
             payer_codice_fiscale=cf,
             payer_anagrafica=payer_anagrafica,
-            importo_totale_cents=pkg.price_cents,
+            importo_totale_cents=effective_cents,
             causale=causale,
             id_tenant=order_id[:35],
             payer_email=payer_email,

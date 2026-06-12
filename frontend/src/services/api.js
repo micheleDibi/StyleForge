@@ -835,6 +835,16 @@ export const updateAdminEurPerCredit = async (value) => {
   return response.data;
 };
 
+export const getAdminTrainingDiscount = async () => {
+  const response = await api.get('/admin/settings/training-discount');
+  return response.data;
+};
+
+export const updateAdminTrainingDiscount = async (value) => {
+  const response = await api.put('/admin/settings/training-discount', { training_discount_percent: value });
+  return response.data;
+};
+
 // ============================================================================
 // ADMIN - TEMPLATE ESPORTAZIONE
 // ============================================================================

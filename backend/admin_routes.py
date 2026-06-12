@@ -635,6 +635,48 @@ async def update_eur_per_credit(
     return {"eur_per_credit": value}
 
 
+@router.get("/settings/training-discount")
+async def get_training_discount(
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Recupera lo sconto % sull'acquisto crediti per gli enti di formazione."""
+    setting = db.query(SystemSetting).filter(SystemSetting.key == 'training_discount_percent').first()
+    value = int(float(setting.value)) if setting and setting.value is not None else 40
+    return {"training_discount_percent": max(0, min(100, value))}
+
+
+@router.put("/settings/training-discount")
+async def update_training_discount(
+    request: dict,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Aggiorna lo sconto % enti di formazione sull'acquisto crediti (0-100)."""
+    from datetime import datetime
+    value = request.get("training_discount_percent")
+    if value is None or not isinstance(value, (int, float)) or value < 0 or value > 100:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Valore deve essere un intero tra 0 e 100")
+    value = int(value)
+
+    setting = db.query(SystemSetting).filter(SystemSetting.key == 'training_discount_percent').first()
+    if setting:
+        setting.value = str(value)
+        setting.updated_at = datetime.utcnow()
+        setting.updated_by = admin_user.id
+    else:
+        setting = SystemSetting(
+            key='training_discount_percent',
+            value=str(value),
+            updated_at=datetime.utcnow(),
+            updated_by=admin_user.id
+        )
+        db.add(setting)
+    db.commit()
+    return {"training_discount_percent": value}
+
+
 # ============================================================================
 # TEMPLATE ESPORTAZIONE
 # ============================================================================

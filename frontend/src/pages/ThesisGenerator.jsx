@@ -866,7 +866,7 @@ const ThesisGenerator = () => {
                       { type: 'thesis_content', params: { num_chapters: parametersData.num_chapters, sections_per_chapter: parametersData.sections_per_chapter, words_per_section: parametersData.words_per_section }, label: 'Contenuto' },
                     ]
                   : [
-                      { type: 'thesis_total', params: { entity_type: entityType }, label: entityType === 'training' ? 'Tesi (flat - ente formazione)' : 'Tesi (flat - ente privato)' },
+                      { type: 'thesis_total', params: {}, label: 'Tesi (tariffa flat)' },
                     ]
               }
             />
@@ -914,8 +914,7 @@ const ThesisGenerator = () => {
                 </p>
                 <p className="text-amber-800">
                   Cliccando su <strong>Continua</strong> verrà creata la tesi e verrà addebitata in un'unica
-                  soluzione la tariffa flat per il tuo ente ({entityType === 'training' ? 'ente di formazione' : 'ente privato'}).
-                  Tutti gli step successivi (paper, allegati, capitoli, sezioni, contenuto) sono inclusi.
+                  soluzione la tariffa flat. Tutti gli step successivi (paper, allegati, capitoli, sezioni, contenuto) sono inclusi.
                   <strong> L'importo non è rimborsabile in caso di abbandono del wizard.</strong>
                 </p>
               </div>

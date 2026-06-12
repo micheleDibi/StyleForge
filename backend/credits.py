@@ -76,11 +76,11 @@ DEFAULT_CREDIT_COSTS = {
         'base': 3,
     },
     # Tariffa flat tesi: addebito unico alla creazione della tesi.
-    # Differenziato per tipo di ente impostato sull'utente (User.entity_type).
+    # Valore UNICO per tutti gli utenti (indipendente da User.entity_type):
+    # lo sconto agli enti di formazione vive sull'acquisto crediti, non sulla tesi.
     # Copre tutto il flusso wizard tesi (paper, allegati, capitoli, sezioni, contenuto).
     'thesis_total': {
-        'private': 250,      # ente privato
-        'training': 125,     # ente di formazione
+        'base': 1000,        # costo tesi (uguale per enti privati e di formazione)
     },
 }
 
@@ -168,6 +168,12 @@ def save_credit_costs(costs: dict, admin_user_id, db: Session) -> dict:
                     detail=f"Il valore '{key}' per '{op_type}' deve essere un numero >= 0"
                 )
 
+    # Normalizza thesis_total al solo campo 'base' (ripulisce eventuali
+    # override legacy {private, training}: ora la tesi ha un costo unico).
+    if isinstance(costs.get('thesis_total'), dict):
+        tt = costs['thesis_total']
+        costs['thesis_total'] = {'base': tt.get('base', tt.get('private', 1000))}
+
     # Salva o aggiorna
     setting = db.query(SystemSetting).filter(
         SystemSetting.key == 'credit_costs'
@@ -206,6 +212,30 @@ def reset_credit_costs(admin_user_id, db: Session) -> dict:
         db.commit()
 
     return copy.deepcopy(DEFAULT_CREDIT_COSTS)
+
+
+# Sconto default (%) sull'acquisto crediti per gli enti di formazione.
+DEFAULT_TRAINING_DISCOUNT_PERCENT = 40
+
+
+def get_training_discount_percent(db: Optional[Session] = None) -> int:
+    """
+    Sconto percentuale sul prezzo in EUR per gli utenti con entity_type='training'.
+    Configurabile dall'admin (SystemSetting 'training_discount_percent').
+    Default 40, clamp 0-100. Non incide sul numero di crediti erogati.
+    """
+    if db is None:
+        return DEFAULT_TRAINING_DISCOUNT_PERCENT
+    try:
+        setting = db.query(SystemSetting).filter(
+            SystemSetting.key == 'training_discount_percent'
+        ).first()
+        if setting and setting.value is not None:
+            val = int(float(setting.value))
+            return max(0, min(100, val))
+    except Exception as e:
+        logger.warning(f"Errore lettura training_discount_percent, uso default: {e}")
+    return DEFAULT_TRAINING_DISCOUNT_PERCENT
 
 
 # ============================================================================
@@ -385,16 +415,13 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
         }
 
     elif operation_type == 'thesis_total':
-        # Tariffa flat per tesi, scelta in base al tipo di ente dell'utente.
-        et = (params.get('entity_type') or 'private').strip().lower()
-        if et not in ('private', 'training'):
-            et = 'private'
-        total = int(costs.get(et, costs.get('private', 250)) or 0)
-        label_ente = "Ente di formazione" if et == 'training' else "Ente privato"
+        # Tariffa flat per tesi: valore UNICO per tutti gli utenti.
+        # 'entity_type' può ancora essere passato dai chiamanti ma viene ignorato
+        # (lo sconto enti di formazione è applicato all'acquisto crediti, non qui).
+        total = int(costs.get('base', 1000) or 0)
         breakdown = {
             "base": total,
-            "descrizione": f"Tesi completa (tariffa flat - {label_ente})",
-            "tipo_ente": et,
+            "descrizione": "Tesi completa (tariffa flat)",
         }
 
     return {

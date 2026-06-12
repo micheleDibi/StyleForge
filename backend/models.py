@@ -1066,6 +1066,10 @@ class CreditPackageResponse(BaseModel):
     description: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Sconto enti di formazione (popolati solo per utenti entity_type='training';
+    # l'endpoint admin pacchetti lascia i default -> mostra il prezzo base).
+    discount_percent: int = 0
+    discounted_price_cents: Optional[int] = None
 
 
 class CreditPackageListResponse(BaseModel):

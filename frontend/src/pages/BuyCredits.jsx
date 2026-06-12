@@ -179,7 +179,17 @@ const BuyCredits = () => {
                     {pkg.credits.toLocaleString('it-IT')}
                   </div>
                   <div className="text-xs text-slate-500 mb-3">crediti</div>
-                  <div className="text-xl font-bold text-orange-600">{formatEur(pkg.price_cents)}</div>
+                  {pkg.discount_percent > 0 && pkg.discounted_price_cents != null ? (
+                    <div>
+                      <div className="text-sm text-slate-400 line-through">{formatEur(pkg.price_cents)}</div>
+                      <div className="text-xl font-bold text-orange-600">{formatEur(pkg.discounted_price_cents)}</div>
+                      <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
+                        Sconto {pkg.discount_percent}% ente di formazione
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-xl font-bold text-orange-600">{formatEur(pkg.price_cents)}</div>
+                  )}
                   {pkg.description && (
                     <p className="mt-2 text-xs text-slate-500">{pkg.description}</p>
                   )}
@@ -296,12 +306,24 @@ const BuyCredits = () => {
           <div className="flex items-center justify-between gap-4 flex-wrap pt-2">
             <div>
               <p className="text-xs text-slate-500 uppercase font-medium">Totale</p>
+              {selectedPkg.discount_percent > 0 && selectedPkg.discounted_price_cents != null && (
+                <p className="text-sm text-slate-400 line-through">{formatEur(selectedPkg.price_cents)}</p>
+              )}
               <p className="text-2xl font-bold text-orange-600">
-                {formatEur(selectedPkg.price_cents)}
+                {formatEur(
+                  selectedPkg.discount_percent > 0 && selectedPkg.discounted_price_cents != null
+                    ? selectedPkg.discounted_price_cents
+                    : selectedPkg.price_cents
+                )}
                 <span className="text-sm text-slate-500 font-normal ml-2">
                   · {selectedPkg.credits.toLocaleString('it-IT')} crediti
                 </span>
               </p>
+              {selectedPkg.discount_percent > 0 && (
+                <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-bold">
+                  Sconto {selectedPkg.discount_percent}% ente di formazione
+                </span>
+              )}
             </div>
             <button
               type="submit"
