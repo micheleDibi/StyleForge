@@ -116,6 +116,11 @@ export const AuthProvider = ({ children }) => {
   const isAdmin = user?.role === 'admin' || user?.is_admin || false;
 
   /**
+   * Controlla se l'utente e' un distributore (accede alla dashboard rivenditori).
+   */
+  const isDistributor = user?.entity_type === 'distributore' || false;
+
+  /**
    * Ottieni il saldo crediti. -1 = infiniti (admin).
    */
   const credits = user?.credits ?? 0;
@@ -134,6 +139,7 @@ export const AuthProvider = ({ children }) => {
       // Nuovi helper per permessi e crediti
       hasPermission,
       isAdmin,
+      isDistributor,
       credits
     }}>
       {children}

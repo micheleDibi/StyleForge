@@ -700,7 +700,8 @@ class AdminUserResponse(BaseModel):
     credits: int
     permissions: List[str] = []
     user_overrides: Dict[str, bool] = {}  # {permission_code: granted}
-    entity_type: Optional[str] = 'private'
+    entity_type: Optional[str] = 'privato'
+    distributor_id: Optional[str] = None  # distributore di riferimento (solo rivenditori)
     codice_fiscale: Optional[str] = None
     partita_iva: Optional[str] = None
     ragione_sociale: Optional[str] = None
@@ -722,7 +723,11 @@ class AdminUpdateUserRequest(BaseModel):
     full_name: Optional[str] = None
     entity_type: Optional[str] = Field(
         None,
-        description="Tipo ente: 'private' o 'training'. Determina la tariffa flat per la generazione tesi.",
+        description="Sottotipo utente: 'distributore', 'rivenditore' o 'privato'. Determina i pacchetti acquistabili.",
+    )
+    distributor_id: Optional[str] = Field(
+        None,
+        description="Distributore di riferimento (solo per i rivenditori). None = non modificare; '' = azzera.",
     )
     codice_fiscale: Optional[str] = Field(None, max_length=16)
     partita_iva: Optional[str] = Field(None, max_length=11)
@@ -1064,12 +1069,9 @@ class CreditPackageResponse(BaseModel):
     is_active: bool
     sort_order: int
     description: Optional[str] = None
+    entity_type: str = 'privato'  # sottotipo destinatario del pacchetto
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    # Sconto enti di formazione (popolati solo per utenti entity_type='training';
-    # l'endpoint admin pacchetti lascia i default -> mostra il prezzo base).
-    discount_percent: int = 0
-    discounted_price_cents: Optional[int] = None
 
 
 class CreditPackageListResponse(BaseModel):
@@ -1084,6 +1086,7 @@ class AdminCreditPackageRequest(BaseModel):
     is_active: bool = True
     sort_order: int = 0
     description: Optional[str] = None
+    entity_type: str = Field('privato', description="Sottotipo destinatario: distributore|rivenditore|privato")
 
 
 class InitiatePaymentRequest(BaseModel):
@@ -1137,6 +1140,22 @@ class PaymentOrderResponse(BaseModel):
 
 class PaymentOrderListResponse(BaseModel):
     orders: List[PaymentOrderResponse]
+    total: int
+
+
+class DistributorResellerItem(BaseModel):
+    """Riga riepilogo di un rivenditore nella dashboard distributore (sola lettura)."""
+    id: str
+    username: str
+    full_name: Optional[str] = None
+    email: str
+    credits: int
+    total_spent_eur: float
+    purchase_count: int
+
+
+class DistributorResellerListResponse(BaseModel):
+    resellers: List[DistributorResellerItem]
     total: int
 
 

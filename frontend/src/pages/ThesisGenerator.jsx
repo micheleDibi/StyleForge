@@ -54,8 +54,7 @@ const PAPER_MIME = 'application/x-research-paper';
 const ThesisGenerator = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, isAdmin, credits, refreshUser } = useAuth();
-  const entityType = (user?.entity_type || 'private');
+  const { isAdmin, credits, refreshUser } = useAuth();
   // Una volta creata la tesi, l'addebito flat e' gia' avvenuto (oppure utente admin):
   // gli step successivi (paper, capitoli, sezioni, contenuto) non vanno mostrati come a pagamento.
   // `thesis.credits_charged` viene impostato a true dal backend al momento della create_thesis.
@@ -117,16 +116,16 @@ const ThesisGenerator = () => {
   const [creditOperationName, setCreditOperationName] = useState('');
   const [pendingCreditAction, setPendingCreditAction] = useState(null);
 
-  // Costo della tariffa flat tesi per il tipo ente dell'utente (configurabile da admin).
+  // Costo della tariffa flat tesi (valore unico, configurabile da admin).
   const [thesisFlatCost, setThesisFlatCost] = useState(null);
   useEffect(() => {
     if (isAdmin) return;
     let cancelled = false;
-    estimateCredits('thesis_total', { entity_type: entityType }).then((res) => {
+    estimateCredits('thesis_total', {}).then((res) => {
       if (!cancelled && res?.credits_needed != null) setThesisFlatCost(res.credits_needed);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [isAdmin, entityType]);
+  }, [isAdmin]);
 
   // Helper: extract error message with credit error detection
   const handleApiError = (err, fallbackMessage) => {

@@ -62,7 +62,8 @@ class UserResponse(BaseModel):
     role: Optional[str] = None
     credits: int = 0
     permissions: list = []
-    entity_type: Optional[str] = 'private'
+    entity_type: Optional[str] = 'privato'
+    distributor_id: Optional[str] = None
     codice_fiscale: Optional[str] = None
     partita_iva: Optional[str] = None
     ragione_sociale: Optional[str] = None
@@ -271,7 +272,8 @@ def build_user_response(user: User, db: Session) -> UserResponse:
         role=role_name,
         credits=user.credits if not (user.is_admin or (user.role and user.role.name == 'admin')) else -1,  # -1 = infiniti
         permissions=permissions,
-        entity_type=getattr(user, 'entity_type', None) or 'private',
+        entity_type=getattr(user, 'entity_type', None) or 'privato',
+        distributor_id=str(user.distributor_id) if getattr(user, 'distributor_id', None) else None,
         codice_fiscale=getattr(user, 'codice_fiscale', None),
         partita_iva=getattr(user, 'partita_iva', None),
         ragione_sociale=getattr(user, 'ragione_sociale', None),
@@ -508,6 +510,21 @@ async def get_current_admin_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permessi insufficienti"
+        )
+    return current_user
+
+
+async def get_current_distributor(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """
+    Dependency per le rotte della dashboard distributore.
+    Consente l'accesso solo agli utenti con entity_type='distributore'.
+    """
+    if (getattr(current_user, 'entity_type', None) or '') != 'distributore':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accesso riservato ai distributori"
         )
     return current_user
 

@@ -9,6 +9,7 @@ import Humanize from './pages/Humanize';
 import SessionDetail from './pages/SessionDetail';
 import ThesisGenerator from './pages/ThesisGenerator';
 import Admin from './pages/Admin';
+import Distributor from './pages/Distributor';
 import DetectorAI from './pages/DetectorAI';
 import ImageToVideo from './pages/ImageToVideo';
 import ResearchSearch from './pages/ResearchSearch';
@@ -58,6 +59,13 @@ const AdminRoute = ({ children }) => {
   if (isLoading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return isAdmin ? children : <Navigate to="/" replace />;
+};
+
+const DistributorRoute = ({ children }) => {
+  const { isAuthenticated, isLoading, isDistributor } = useAuth();
+  if (isLoading) return <PageLoader />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return isDistributor ? children : <Navigate to="/" replace />;
 };
 
 // Helper visibile solo per utenti autenticati
@@ -147,6 +155,14 @@ const AppRoutes = () => {
           <AdminRoute>
             <Admin />
           </AdminRoute>
+        }
+      />
+      <Route
+        path="/distributor"
+        element={
+          <DistributorRoute>
+            <Distributor />
+          </DistributorRoute>
         }
       />
       <Route

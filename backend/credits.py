@@ -214,30 +214,6 @@ def reset_credit_costs(admin_user_id, db: Session) -> dict:
     return copy.deepcopy(DEFAULT_CREDIT_COSTS)
 
 
-# Sconto default (%) sull'acquisto crediti per gli enti di formazione.
-DEFAULT_TRAINING_DISCOUNT_PERCENT = 40
-
-
-def get_training_discount_percent(db: Optional[Session] = None) -> int:
-    """
-    Sconto percentuale sul prezzo in EUR per gli utenti con entity_type='training'.
-    Configurabile dall'admin (SystemSetting 'training_discount_percent').
-    Default 40, clamp 0-100. Non incide sul numero di crediti erogati.
-    """
-    if db is None:
-        return DEFAULT_TRAINING_DISCOUNT_PERCENT
-    try:
-        setting = db.query(SystemSetting).filter(
-            SystemSetting.key == 'training_discount_percent'
-        ).first()
-        if setting and setting.value is not None:
-            val = int(float(setting.value))
-            return max(0, min(100, val))
-    except Exception as e:
-        logger.warning(f"Errore lettura training_discount_percent, uso default: {e}")
-    return DEFAULT_TRAINING_DISCOUNT_PERCENT
-
-
 # ============================================================================
 # FUNZIONI DI STIMA CREDITI
 # ============================================================================

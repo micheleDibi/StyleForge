@@ -58,8 +58,11 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
     credits = Column(Integer, default=0, nullable=False)
-    # Tipo ente cliente: 'private' (default, costo tesi pieno) o 'training' (costo ridotto)
-    entity_type = Column(String(20), default='private', nullable=False)
+    # Sottotipo dell'utente normale: 'distributore' | 'rivenditore' | 'privato'
+    # (default). Determina i pacchetti crediti acquistabili. Asse indipendente dal Role.
+    entity_type = Column(String(20), default='privato', nullable=False)
+    # Distributore di riferimento (solo per i rivenditori). FK self, assegnata dall'admin.
+    distributor_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     # Dati anagrafici per pagamenti PagoPA (opzionali, salvati al primo acquisto se l'utente sceglie di memorizzarli).
     codice_fiscale = Column(String(16), nullable=True)
     partita_iva = Column(String(11), nullable=True)
@@ -750,6 +753,8 @@ class CreditPackage(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     sort_order = Column(Integer, default=0, nullable=False)
     description = Column(Text, nullable=True)
+    # Sottotipo destinatario: 'distributore' | 'rivenditore' | 'privato'
+    entity_type = Column(String(20), default='privato', nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -766,6 +771,7 @@ class CreditPackage(Base):
             "is_active": bool(self.is_active),
             "sort_order": self.sort_order,
             "description": self.description,
+            "entity_type": self.entity_type,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

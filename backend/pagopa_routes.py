@@ -22,7 +22,6 @@ from sqlalchemy.orm import Session
 import config
 import pagopa_client as pgc
 from auth import get_current_active_user
-from credits import get_training_discount_percent
 from database import get_db
 from db_models import CreditPackage, PagoPAEvent, PaymentOrder, User
 from models import (
@@ -52,18 +51,8 @@ def _admin_blocked() -> HTTPException:
     )
 
 
-def _user_discount_percent(user: User, db: Session) -> int:
-    """Sconto % applicabile all'utente: solo enti di formazione, altrimenti 0."""
-    if (getattr(user, 'entity_type', None) or 'private').strip().lower() == 'training':
-        return get_training_discount_percent(db)
-    return 0
-
-
-def _apply_discount(price_cents: int, discount: int) -> int:
-    """Prezzo scontato in centesimi, mai sotto 1c (vincolo SOAP importo > 0)."""
-    if discount <= 0:
-        return price_cents
-    return max(1, round(price_cents * (100 - discount) / 100))
+def _is_admin(user: User) -> bool:
+    return bool(user.is_admin or (user.role and user.role.name == "admin"))
 
 
 def _record_event(
@@ -100,26 +89,18 @@ def list_packages(
     current_user: User = Depends(get_current_active_user),
 ):
     """
-    Restituisce la lista dei pacchetti crediti attivi, ordinati per sort_order.
-    Richiede login (vetrina pacchetti, non pubblica).
+    Restituisce i pacchetti crediti attivi del sottotipo dell'utente, ordinati
+    per sort_order. Richiede login (vetrina pacchetti, non pubblica).
     """
-    rows = (
-        db.query(CreditPackage)
-        .filter(CreditPackage.is_active == True)  # noqa: E712
-        .order_by(CreditPackage.sort_order.asc(), CreditPackage.id.asc())
-        .all()
-    )
+    q = db.query(CreditPackage).filter(CreditPackage.is_active == True)  # noqa: E712
+    # Ogni utente vede solo i pacchetti del proprio sottotipo (l'admin vede tutto,
+    # ma non acquista comunque).
+    if not _is_admin(current_user):
+        subtype = (getattr(current_user, 'entity_type', None) or 'privato').strip().lower()
+        q = q.filter(CreditPackage.entity_type == subtype)
 
-    discount = _user_discount_percent(current_user, db)
-
-    def _to_resp(r):
-        d = r.to_dict()
-        if discount > 0:
-            d['discount_percent'] = discount
-            d['discounted_price_cents'] = _apply_discount(r.price_cents, discount)
-        return CreditPackageResponse(**d)
-
-    return CreditPackageListResponse(packages=[_to_resp(r) for r in rows])
+    rows = q.order_by(CreditPackage.sort_order.asc(), CreditPackage.id.asc()).all()
+    return CreditPackageListResponse(packages=[CreditPackageResponse(**r.to_dict()) for r in rows])
 
 
 @router.post("/initiate", response_model=InitiatePaymentResponse)
@@ -140,12 +121,17 @@ def initiate_payment(
       6. Se save_to_profile=true, salva i dati anagrafici sull'utente
       7. Ritorna { order_id, checkout_url, ... }
     """
-    if current_user.is_admin or (current_user.role and current_user.role.name == "admin"):
+    if _is_admin(current_user):
         raise _admin_blocked()
 
     pkg = db.query(CreditPackage).filter(CreditPackage.id == request.package_id).first()
     if not pkg or not pkg.is_active:
         raise HTTPException(status_code=404, detail="Pacchetto non disponibile")
+
+    # Difesa: un utente può acquistare solo i pacchetti del proprio sottotipo.
+    subtype = (getattr(current_user, 'entity_type', None) or 'privato').strip().lower()
+    if (pkg.entity_type or 'privato') != subtype:
+        raise HTTPException(status_code=403, detail="Pacchetto non disponibile per il tuo profilo")
 
     cf = pgc.normalize_codice_fiscale(request.codice_fiscale)
     if not (pgc.is_valid_codice_fiscale(cf) or pgc.is_valid_partita_iva(cf)):
@@ -162,17 +148,13 @@ def initiate_payment(
     )
     payer_email = request.payer_email or current_user.email
     expires_at = datetime.utcnow() + timedelta(days=config.PAGOPA_POSITION_TTL_DAYS)
-
-    # Sconto enti di formazione: riduce solo l'importo in EUR, non i crediti erogati.
-    discount = _user_discount_percent(current_user, db)
-    effective_cents = _apply_discount(pkg.price_cents, discount)
     causale = f"StyleForge crediti — {pkg.name} ({pkg.credits} crediti)"
 
     order = PaymentOrder(
         user_id=current_user.id,
         package_id=pkg.id,
         credits=pkg.credits,
-        amount_cents=effective_cents,
+        amount_cents=pkg.price_cents,
         causale=causale,
         payer_codice_fiscale=cf,
         payer_partita_iva=request.partita_iva,
@@ -190,7 +172,7 @@ def initiate_payment(
         iuv = pgc.carica_pagamento_in_attesa(
             payer_codice_fiscale=cf,
             payer_anagrafica=payer_anagrafica,
-            importo_totale_cents=effective_cents,
+            importo_totale_cents=pkg.price_cents,
             causale=causale,
             id_tenant=order_id[:35],
             payer_email=payer_email,

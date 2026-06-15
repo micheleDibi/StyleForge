@@ -15,7 +15,6 @@ import {
   getAdminRoles, updateRolePermissions, getAdminStats,
   adminCreateUser, getAdminCreditCosts, updateAdminCreditCosts,
   resetAdminCreditCosts, getAdminEurPerCredit, updateAdminEurPerCredit,
-  getAdminTrainingDiscount, updateAdminTrainingDiscount,
   getAdminTemplates, updateAdminTemplates,
   deleteAdminTemplate, uploadTemplateBackground, deleteTemplateBackground,
   createApiKey, getApiKeys, revokeApiKey
@@ -94,8 +93,8 @@ const Admin = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [eurPerCredit, setEurPerCredit] = useState(0.10);
   const [eurPerCreditSaved, setEurPerCreditSaved] = useState(0.10);
-  const [trainingDiscount, setTrainingDiscount] = useState(40);
-  const [trainingDiscountSaved, setTrainingDiscountSaved] = useState(40);
+  // Elenco distributori (per assegnare il distributore di riferimento ai rivenditori)
+  const [distributori, setDistributori] = useState([]);
 
   // Template state
   const [templates, setTemplates] = useState([]);
@@ -136,6 +135,10 @@ const Admin = () => {
       if (activeTab === 'users') {
         const data = await getAdminUsers(searchTerm || null);
         setUsers(data.users);
+        // Distributori per il selettore "Distributore di riferimento" dei rivenditori
+        getAdminUsers(null, null, null, 'distributore')
+          .then((d) => setDistributori(d.users || []))
+          .catch(() => {});
       } else if (activeTab === 'roles') {
         const data = await getAdminRoles();
         setRoles(data.roles);
@@ -143,18 +146,15 @@ const Admin = () => {
         const data = await getAdminStats();
         setStats(data);
       } else if (activeTab === 'settings') {
-        const [costsData, eurData, discData] = await Promise.all([
+        const [costsData, eurData] = await Promise.all([
           getAdminCreditCosts(),
-          getAdminEurPerCredit().catch(() => ({ eur_per_credit: 0.10 })),
-          getAdminTrainingDiscount().catch(() => ({ training_discount_percent: 40 }))
+          getAdminEurPerCredit().catch(() => ({ eur_per_credit: 0.10 }))
         ]);
         setCreditCosts(costsData.costs);
         setEditedCosts(JSON.parse(JSON.stringify(costsData.costs)));
         setIsDefaultCosts(costsData.is_default);
         setEurPerCredit(eurData.eur_per_credit);
         setEurPerCreditSaved(eurData.eur_per_credit);
-        setTrainingDiscount(discData.training_discount_percent);
-        setTrainingDiscountSaved(discData.training_discount_percent);
       } else if (activeTab === 'templates') {
         const data = await getAdminTemplates();
         setTemplates(data.templates || []);
@@ -207,6 +207,16 @@ const Admin = () => {
       setUsers(users.map(u => u.id === userId ? updated : u));
     } catch (error) {
       console.error('Errore cambio tipo ente:', error);
+    }
+  };
+
+  const handleDistributorChange = async (userId, distributorId) => {
+    try {
+      // '' = azzera il distributore di riferimento
+      const updated = await updateAdminUser(userId, { distributor_id: distributorId });
+      setUsers(users.map(u => u.id === userId ? updated : u));
+    } catch (error) {
+      console.error('Errore assegnazione distributore:', error);
     }
   };
 
@@ -956,17 +966,36 @@ const Admin = () => {
                             </div>
 
                             {u.role_name !== 'admin' && (
-                              <div className="bg-white rounded-xl p-3 flex items-center gap-3">
-                                <label className="text-sm font-medium text-gray-600">Tipo ente:</label>
+                              <div className="bg-white rounded-xl p-3 flex items-center gap-3 flex-wrap">
+                                <label className="text-sm font-medium text-gray-600">Tipo utente:</label>
                                 <select
                                   className="input py-1 px-2 text-sm"
-                                  value={u.entity_type || 'private'}
+                                  value={u.entity_type || 'privato'}
                                   onChange={(e) => handleEntityTypeChange(u.id, e.target.value)}
-                                  title="Determina la tariffa flat per la generazione tesi"
+                                  title="Determina i pacchetti crediti acquistabili"
                                 >
-                                  <option value="private">Ente privato</option>
-                                  <option value="training">Ente di formazione</option>
+                                  <option value="distributore">Distributore</option>
+                                  <option value="rivenditore">Rivenditore</option>
+                                  <option value="privato">Privato</option>
                                 </select>
+                                {u.entity_type === 'rivenditore' && (
+                                  <>
+                                    <label className="text-sm font-medium text-gray-600">Distributore:</label>
+                                    <select
+                                      className="input py-1 px-2 text-sm"
+                                      value={u.distributor_id || ''}
+                                      onChange={(e) => handleDistributorChange(u.id, e.target.value)}
+                                      title="Distributore di riferimento del rivenditore"
+                                    >
+                                      <option value="">— nessuno —</option>
+                                      {distributori.map((d) => (
+                                        <option key={d.id} value={d.id}>
+                                          {d.full_name || d.username}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1297,50 +1326,6 @@ const Admin = () => {
                   </div>
                   <p className="text-xs text-gray-400 mt-2">
                     Tasso di conversione per implementazioni future (pricing utenti, acquisto crediti).
-                  </p>
-                </div>
-
-                {/* Sconto enti di formazione */}
-                <div className="glass rounded-2xl p-5">
-                  <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                    <span className="text-xl">🏷️</span>
-                    Sconto Enti di Formazione
-                  </h3>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 flex-1">
-                      <span className="text-sm text-gray-600">Sconto sull'acquisto crediti =</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="1"
-                        className="input w-24 text-center text-sm py-1.5"
-                        value={trainingDiscount}
-                        onChange={(e) => setTrainingDiscount(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-                      />
-                      <span className="text-sm text-gray-600">%</span>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const data = await updateAdminTrainingDiscount(trainingDiscount);
-                          setTrainingDiscountSaved(data.training_discount_percent);
-                          setTrainingDiscount(data.training_discount_percent);
-                          setCostsSuccess('Sconto enti di formazione aggiornato!');
-                          setTimeout(() => setCostsSuccess(''), 3000);
-                        } catch {
-                          setCostsError('Errore nel salvataggio dello sconto enti di formazione');
-                          setTimeout(() => setCostsError(''), 3000);
-                        }
-                      }}
-                      disabled={trainingDiscount === trainingDiscountSaved}
-                      className="btn btn-primary text-sm disabled:opacity-50"
-                    >
-                      Salva
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-2">
-                    Riduzione percentuale sul prezzo in EUR per gli utenti "ente di formazione". Non incide sul numero di crediti erogati né sul costo della tesi.
                   </p>
                 </div>
 

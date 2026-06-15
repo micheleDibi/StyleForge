@@ -728,11 +728,12 @@ export const estimateApiCost = async (params) => {
 // ADMIN - USERS
 // ============================================================================
 
-export const getAdminUsers = async (search = null, roleId = null, isActive = null) => {
+export const getAdminUsers = async (search = null, roleId = null, isActive = null, entityType = null) => {
   const params = {};
   if (search) params.search = search;
   if (roleId !== null) params.role_id = roleId;
   if (isActive !== null) params.is_active = isActive;
+  if (entityType) params.entity_type = entityType;
   const response = await api.get('/admin/users', { params });
   return response.data;
 };
@@ -835,15 +836,6 @@ export const updateAdminEurPerCredit = async (value) => {
   return response.data;
 };
 
-export const getAdminTrainingDiscount = async () => {
-  const response = await api.get('/admin/settings/training-discount');
-  return response.data;
-};
-
-export const updateAdminTrainingDiscount = async (value) => {
-  const response = await api.put('/admin/settings/training-discount', { training_discount_percent: value });
-  return response.data;
-};
 
 // ============================================================================
 // ADMIN - TEMPLATE ESPORTAZIONE
@@ -1068,6 +1060,22 @@ export const revokeApiKey = async (keyId) => {
 
 export const listCreditPackages = async () => {
   const response = await api.get('/api/payments/packages');
+  return response.data;
+};
+
+// ============================================================================
+// DISTRIBUTORE - dashboard rivenditori (sola lettura)
+// ============================================================================
+
+export const getMyResellers = async () => {
+  const response = await api.get('/api/distributor/resellers');
+  return response.data;
+};
+
+export const getResellerPayments = async (resellerId, limit = 50, offset = 0) => {
+  const response = await api.get(`/api/distributor/resellers/${resellerId}/payments`, {
+    params: { limit, offset }
+  });
   return response.data;
 };
 

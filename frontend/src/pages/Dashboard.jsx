@@ -6,7 +6,7 @@ import {
   Layers, Brain, BookOpen, Calendar, Download,
   ChevronDown, Eye, Play, Coins, Shield, Pencil, Search,
   ArrowUpRight, ScanSearch, FileDown, BarChart3, Film,
-  BookMarked
+  BookMarked, Store
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, downloadCompilatioReport } from '../services/api';
@@ -15,7 +15,7 @@ import Logo from '../components/Logo';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { logout, user, hasPermission, isAdmin, credits } = useAuth();
+  const { logout, user, hasPermission, isAdmin, isDistributor, credits } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [theses, setTheses] = useState([]);
@@ -180,6 +180,7 @@ const Dashboard = () => {
                 <span className="text-sm font-medium text-gray-700">{user?.username}</span>
                 {isAdmin && <span className="badge badge-warning text-[10px]">ADMIN</span>}
               </div>
+              {isDistributor && <button onClick={() => navigate('/distributor')} className="btn btn-ghost" title="Dashboard distributore"><Store className="w-[18px] h-[18px]" /></button>}
               {isAdmin && <button onClick={() => navigate('/admin')} className="btn btn-ghost" title="Admin"><Settings className="w-[18px] h-[18px]" /></button>}
               <button onClick={handleRefresh} disabled={refreshing} className="btn btn-ghost"><RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} /></button>
               <button onClick={handleLogout} className="btn btn-ghost text-red-500 hover:text-red-600 hover:bg-red-50"><LogOut className="w-[18px] h-[18px]" /></button>

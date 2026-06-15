@@ -74,7 +74,8 @@ def build_admin_user_response(user: User, db: Session) -> AdminUserResponse:
         credits=user.credits,
         permissions=permissions,
         user_overrides=user_overrides,
-        entity_type=getattr(user, 'entity_type', None) or 'private',
+        entity_type=getattr(user, 'entity_type', None) or 'privato',
+        distributor_id=str(user.distributor_id) if getattr(user, 'distributor_id', None) else None,
         codice_fiscale=getattr(user, 'codice_fiscale', None),
         partita_iva=getattr(user, 'partita_iva', None),
         ragione_sociale=getattr(user, 'ragione_sociale', None),
@@ -94,6 +95,7 @@ async def list_users(
     search: Optional[str] = None,
     role_id: Optional[int] = None,
     is_active: Optional[bool] = None,
+    entity_type: Optional[str] = None,
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -113,6 +115,9 @@ async def list_users(
 
     if is_active is not None:
         query = query.filter(User.is_active == is_active)
+
+    if entity_type is not None:
+        query = query.filter(User.entity_type == entity_type)
 
     users = query.order_by(User.created_at.desc()).all()
 
@@ -143,7 +148,7 @@ async def update_user(
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
-    """Aggiorna dati utente (is_active, full_name, entity_type)."""
+    """Aggiorna dati utente (is_active, full_name, entity_type, distributor_id)."""
     user = db.query(User).options(joinedload(User.role)).filter(User.id == UUID(user_id)).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utente non trovato")
@@ -154,12 +159,34 @@ async def update_user(
         user.full_name = request.full_name
     if request.entity_type is not None:
         et = request.entity_type.strip().lower()
-        if et not in ('private', 'training'):
+        if et not in ('distributore', 'rivenditore', 'privato'):
             raise HTTPException(
                 status_code=400,
-                detail="entity_type deve essere 'private' o 'training'",
+                detail="entity_type deve essere 'distributore', 'rivenditore' o 'privato'",
             )
         user.entity_type = et
+        # Il distributore di riferimento ha senso solo per i rivenditori.
+        if et != 'rivenditore':
+            user.distributor_id = None
+    # Assegnazione/azzeramento del distributore di riferimento (solo rivenditori).
+    if request.distributor_id is not None:
+        did = (request.distributor_id or "").strip()
+        if did == "":
+            user.distributor_id = None
+        else:
+            if (user.entity_type or 'privato') != 'rivenditore':
+                raise HTTPException(
+                    status_code=400,
+                    detail="Il distributore di riferimento si assegna solo ai rivenditori",
+                )
+            parent = db.query(User).filter(User.id == UUID(did)).first()
+            if not parent:
+                raise HTTPException(status_code=404, detail="Distributore non trovato")
+            if (parent.entity_type or '') != 'distributore':
+                raise HTTPException(status_code=400, detail="L'utente selezionato non è un distributore")
+            if parent.id == user.id:
+                raise HTTPException(status_code=400, detail="Un utente non può essere distributore di sé stesso")
+            user.distributor_id = parent.id
     if request.codice_fiscale is not None:
         user.codice_fiscale = (request.codice_fiscale or "").upper().strip() or None
     if request.partita_iva is not None:
@@ -633,48 +660,6 @@ async def update_eur_per_credit(
         db.add(setting)
     db.commit()
     return {"eur_per_credit": value}
-
-
-@router.get("/settings/training-discount")
-async def get_training_discount(
-    admin_user: User = Depends(get_current_admin_user),
-    db: Session = Depends(get_db)
-):
-    """Recupera lo sconto % sull'acquisto crediti per gli enti di formazione."""
-    setting = db.query(SystemSetting).filter(SystemSetting.key == 'training_discount_percent').first()
-    value = int(float(setting.value)) if setting and setting.value is not None else 40
-    return {"training_discount_percent": max(0, min(100, value))}
-
-
-@router.put("/settings/training-discount")
-async def update_training_discount(
-    request: dict,
-    admin_user: User = Depends(get_current_admin_user),
-    db: Session = Depends(get_db)
-):
-    """Aggiorna lo sconto % enti di formazione sull'acquisto crediti (0-100)."""
-    from datetime import datetime
-    value = request.get("training_discount_percent")
-    if value is None or not isinstance(value, (int, float)) or value < 0 or value > 100:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail="Valore deve essere un intero tra 0 e 100")
-    value = int(value)
-
-    setting = db.query(SystemSetting).filter(SystemSetting.key == 'training_discount_percent').first()
-    if setting:
-        setting.value = str(value)
-        setting.updated_at = datetime.utcnow()
-        setting.updated_by = admin_user.id
-    else:
-        setting = SystemSetting(
-            key='training_discount_percent',
-            value=str(value),
-            updated_at=datetime.utcnow(),
-            updated_by=admin_user.id
-        )
-        db.add(setting)
-    db.commit()
-    return {"training_discount_percent": value}
 
 
 # ============================================================================
@@ -1153,6 +1138,9 @@ async def admin_create_package(
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):
+    et = (request.entity_type or 'privato').strip().lower()
+    if et not in ('distributore', 'rivenditore', 'privato'):
+        raise HTTPException(status_code=400, detail="entity_type deve essere 'distributore', 'rivenditore' o 'privato'")
     pkg = CreditPackage(
         name=request.name,
         credits=request.credits,
@@ -1160,6 +1148,7 @@ async def admin_create_package(
         is_active=request.is_active,
         sort_order=request.sort_order,
         description=request.description,
+        entity_type=et,
     )
     db.add(pkg)
     db.commit()
@@ -1178,12 +1167,17 @@ async def admin_update_package(
     if not pkg:
         raise HTTPException(status_code=404, detail="Pacchetto non trovato")
 
+    et = (request.entity_type or 'privato').strip().lower()
+    if et not in ('distributore', 'rivenditore', 'privato'):
+        raise HTTPException(status_code=400, detail="entity_type deve essere 'distributore', 'rivenditore' o 'privato'")
+
     pkg.name = request.name
     pkg.credits = request.credits
     pkg.price_cents = request.price_cents
     pkg.is_active = request.is_active
     pkg.sort_order = request.sort_order
     pkg.description = request.description
+    pkg.entity_type = et
     pkg.updated_at = datetime.utcnow()
 
     db.commit()

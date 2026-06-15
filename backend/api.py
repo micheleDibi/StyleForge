@@ -44,6 +44,7 @@ from video_routes import router as video_router
 from research_routes import router as research_router
 from pagopa_routes import router as pagopa_router
 from pagopa_webhooks import router as pagopa_webhook_router
+from distributor_routes import router as distributor_router
 from db_models import User
 from database import init_db, get_db
 from ai_exceptions import InsufficientCreditsError
@@ -103,6 +104,9 @@ app.include_router(research_router)
 # Registra router PagoPA (acquisto crediti utente + webhook esito da SolutionPA)
 app.include_router(pagopa_router)
 app.include_router(pagopa_webhook_router)
+
+# Registra router dashboard distributore (sola lettura sui propri rivenditori)
+app.include_router(distributor_router)
 
 
 # ============================================================================

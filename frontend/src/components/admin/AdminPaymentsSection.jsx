@@ -380,6 +380,7 @@ const PackagesSubtab = () => {
       is_active: !!form.is_active,
       sort_order: parseInt(form.sort_order, 10) || 0,
       description: form.description?.trim() || null,
+      entity_type: form.entity_type || 'privato',
     };
     if (!payload.name || !payload.credits || !payload.price_cents) {
       alert('Compila tutti i campi obbligatori.');
@@ -427,6 +428,9 @@ const PackagesSubtab = () => {
                   <p className="text-xs text-slate-500 uppercase font-medium">{p.name}</p>
                   <p className="text-2xl font-bold text-slate-900">{p.credits.toLocaleString('it-IT')}</p>
                   <p className="text-xs text-slate-400">crediti · ordine {p.sort_order}</p>
+                  <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold capitalize">
+                    {p.entity_type || 'privato'}
+                  </span>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded ${p.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                   {p.is_active ? 'Attivo' : 'Inattivo'}
@@ -474,6 +478,7 @@ const PackageEditDialog = ({ pkg, onSave, onClose }) => {
     is_active: pkg.is_active !== false,
     sort_order: pkg.sort_order || 0,
     description: pkg.description || '',
+    entity_type: pkg.entity_type || 'privato',
   });
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
@@ -498,6 +503,18 @@ const PackageEditDialog = ({ pkg, onSave, onClose }) => {
           <div>
             <label className="text-xs text-slate-600 font-medium">Ordine</label>
             <input type="number" className="input w-full" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} />
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs text-slate-600 font-medium">Destinatario (sottotipo)</label>
+            <select
+              className="input w-full"
+              value={form.entity_type}
+              onChange={(e) => setForm({ ...form, entity_type: e.target.value })}
+            >
+              <option value="distributore">Distributore</option>
+              <option value="rivenditore">Rivenditore</option>
+              <option value="privato">Privato</option>
+            </select>
           </div>
           <div className="flex items-end">
             <label className="inline-flex items-center gap-2 text-sm text-slate-600">
