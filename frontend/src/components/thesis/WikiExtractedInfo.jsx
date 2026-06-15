@@ -1,55 +1,65 @@
 import { useState } from 'react';
 import {
   BookMarked, Users, Lightbulb, Layers, GitMerge, HelpCircle, FileText, Tag,
+  LayoutGrid, FileStack,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 // Stile per categoria del wiki (chiave = nome cartella backend).
+// Classi Tailwind esplicite (niente interpolazione: il purge le richiede intere).
 const CATEGORY_META = {
-  fonti:    { icon: BookMarked, color: 'text-orange-500',  bg: 'bg-orange-50 border-orange-200' },
-  entita:   { icon: Users,      color: 'text-blue-500',    bg: 'bg-blue-50 border-blue-200' },
-  concetti: { icon: Lightbulb,  color: 'text-amber-500',   bg: 'bg-amber-50 border-amber-200' },
-  temi:     { icon: Layers,     color: 'text-purple-500',  bg: 'bg-purple-50 border-purple-200' },
-  sintesi:  { icon: GitMerge,   color: 'text-emerald-500', bg: 'bg-emerald-50 border-emerald-200' },
-  domande:  { icon: HelpCircle, color: 'text-rose-500',    bg: 'bg-rose-50 border-rose-200' },
+  fonti:    { icon: BookMarked, iconBg: 'bg-orange-100 text-orange-600',  ring: 'border-orange-200',  pill: 'bg-orange-100 text-orange-700' },
+  entita:   { icon: Users,      iconBg: 'bg-blue-100 text-blue-600',      ring: 'border-blue-200',    pill: 'bg-blue-100 text-blue-700' },
+  concetti: { icon: Lightbulb,  iconBg: 'bg-amber-100 text-amber-600',    ring: 'border-amber-200',   pill: 'bg-amber-100 text-amber-700' },
+  temi:     { icon: Layers,     iconBg: 'bg-purple-100 text-purple-600',  ring: 'border-purple-200',  pill: 'bg-purple-100 text-purple-700' },
+  sintesi:  { icon: GitMerge,   iconBg: 'bg-emerald-100 text-emerald-600',ring: 'border-emerald-200', pill: 'bg-emerald-100 text-emerald-700' },
+  domande:  { icon: HelpCircle, iconBg: 'bg-rose-100 text-rose-600',      ring: 'border-rose-200',    pill: 'bg-rose-100 text-rose-700' },
+};
+
+const FALLBACK_META = {
+  icon: FileText, iconBg: 'bg-slate-100 text-slate-600', ring: 'border-slate-200', pill: 'bg-slate-100 text-slate-700',
 };
 
 const PREVIEW = 5;
 
+const metaFor = (key) => CATEGORY_META[key] || FALLBACK_META;
+
 const CategoryCard = ({ cat, t }) => {
   const [showAll, setShowAll] = useState(false);
-  const meta = CATEGORY_META[cat.key]
-    || { icon: FileText, color: 'text-slate-500', bg: 'bg-slate-50 border-slate-200' };
+  const meta = metaFor(cat.key);
   const Icon = meta.icon;
   const items = showAll ? cat.items : cat.items.slice(0, PREVIEW);
 
   return (
-    <div className={`rounded-2xl border p-4 ${meta.bg}`}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Icon className={`w-4 h-4 ${meta.color}`} />
-          <h4 className="font-semibold text-slate-800">{t(cat.label)}</h4>
+    <div className={`rounded-2xl border ${meta.ring} bg-white/70 overflow-hidden`}>
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${meta.iconBg}`}>
+          <Icon className="w-[18px] h-[18px]" />
         </div>
-        <span className="text-xs font-bold text-slate-500">{cat.count}</span>
+        <h4 className="font-semibold text-slate-800 flex-1">{t(cat.label)}</h4>
+        <span className={`text-xs font-bold rounded-full px-2.5 py-1 ${meta.pill}`}>{cat.count}</span>
       </div>
-      <ul className="space-y-2.5">
+
+      {/* Items */}
+      <ul className="divide-y divide-slate-100">
         {items.map((it) => (
-          <li key={it.slug} className="text-sm">
-            <div className="font-medium text-slate-800">
-              {it.title}
+          <li key={it.slug} className="px-4 py-3 hover:bg-slate-50/70 transition-colors">
+            <div className="flex items-start justify-between gap-2">
+              <span className="font-medium text-slate-800 text-sm leading-snug">{it.title}</span>
               {it.subtype && (
-                <span className="ml-2 text-[11px] font-normal text-slate-400">{it.subtype}</span>
+                <span className="flex-shrink-0 text-[10px] uppercase tracking-wide text-slate-400 mt-0.5">{it.subtype}</span>
               )}
             </div>
             {it.summary && (
-              <p className="text-xs text-slate-500 mt-0.5 leading-snug">{it.summary}</p>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed line-clamp-2">{it.summary}</p>
             )}
             {it.tag?.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {it.tag.slice(0, 4).map((tg, i) => (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {it.tag.slice(0, 5).map((tg, i) => (
                   <span
                     key={`${tg}-${i}`}
-                    className="inline-flex items-center gap-0.5 text-[10px] text-slate-500 bg-white/70 border border-slate-200 rounded px-1.5 py-0.5"
+                    className="inline-flex items-center gap-0.5 text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded-md px-1.5 py-0.5"
                   >
                     <Tag className="w-2.5 h-2.5" />{tg}
                   </span>
@@ -59,10 +69,11 @@ const CategoryCard = ({ cat, t }) => {
           </li>
         ))}
       </ul>
+
       {cat.items.length > PREVIEW && (
         <button
           onClick={() => setShowAll((s) => !s)}
-          className="mt-3 text-xs text-slate-500 hover:text-slate-700 underline"
+          className="w-full text-center py-2.5 text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 border-t border-slate-100 transition-colors"
         >
           {showAll ? t('Mostra meno') : t('Mostra tutti ({{count}})', { count: cat.items.length })}
         </button>
@@ -73,18 +84,19 @@ const CategoryCard = ({ cat, t }) => {
 
 /**
  * Vista user-friendly delle informazioni estratte dai documenti caricati.
- * Mostra le pagine del wiki raggruppate per categoria (fonti/entità/concetti/
- * temi/sintesi/domande). Sostituisce il report tecnico di lint per l'utente.
+ * Mostra le pagine del wiki raggruppate per categoria con una barra di
+ * riepilogo che fa anche da filtro rapido.
  */
 const WikiExtractedInfo = ({ content }) => {
   const { t } = useTranslation();
+  const [filter, setFilter] = useState(null); // null = tutte
   if (!content) return null;
 
-  const categories = (content.categories || []).filter((c) => c.count > 0);
+  const all = (content.categories || []).filter((c) => c.count > 0);
   const totalPages = content.totals?.pages || 0;
   const totalSources = content.totals?.sources || 0;
 
-  if (categories.length === 0) {
+  if (all.length === 0) {
     return (
       <p className="text-sm text-slate-500">
         {t('Nessuna informazione estratta dai documenti.')}
@@ -92,13 +104,48 @@ const WikiExtractedInfo = ({ content }) => {
     );
   }
 
+  const visible = filter ? all.filter((c) => c.key === filter) : all;
+
   return (
-    <div>
-      <p className="text-sm text-slate-500 mb-4">
-        {t('{{pages}} pagine di conoscenza estratte da {{sources}} fonti.', { pages: totalPages, sources: totalSources })}
-      </p>
+    <div className="space-y-4">
+      {/* Barra di riepilogo / filtro rapido */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 text-xs text-slate-500 mr-1">
+          <FileStack className="w-4 h-4 text-slate-400" />
+          {t('{{pages}} pagine · {{sources}} fonti', { pages: totalPages, sources: totalSources })}
+        </span>
+        <button
+          onClick={() => setFilter(null)}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+            filter === null ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <LayoutGrid className="w-3.5 h-3.5" />
+          {t('Tutte')}
+        </button>
+        {all.map((cat) => {
+          const meta = metaFor(cat.key);
+          const Icon = meta.icon;
+          const active = filter === cat.key;
+          return (
+            <button
+              key={cat.key}
+              onClick={() => setFilter(active ? null : cat.key)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                active ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {t(cat.label)}
+              <span className={`rounded-full px-1.5 ${active ? 'bg-white/20' : meta.pill}`}>{cat.count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Card per categoria */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {categories.map((cat) => <CategoryCard key={cat.key} cat={cat} t={t} />)}
+        {visible.map((cat) => <CategoryCard key={cat.key} cat={cat} t={t} />)}
       </div>
     </div>
   );

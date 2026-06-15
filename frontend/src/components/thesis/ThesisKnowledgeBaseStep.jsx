@@ -463,18 +463,35 @@ const ThesisKnowledgeBaseStep = ({
           )}
 
           {/* Report tecnico di lint — nascosto in un expander per chi vuole i dettagli */}
-          {(ws === 'linted' || report) && (
-            <details className="glass rounded-2xl p-6 group">
-              <summary className="flex items-center gap-2 cursor-pointer list-none font-semibold text-slate-700">
-                <Wrench className="w-4 h-4 text-slate-400" />
-                {t('Dettagli tecnici (qualità del wiki)')}
-                <ChevronDown className="w-4 h-4 text-slate-400 ml-auto transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="mt-4">
-                <WikiLintReport report={report} summary={report?._raw_summary} />
-              </div>
-            </details>
-          )}
+          {(ws === 'linted' || report) && (() => {
+            const r = report || {};
+            const issueCount = [
+              'orphan_pages', 'broken_wikilinks', 'missing_concepts', 'contradictions',
+              'stale_pages', 'frontmatter_issues', 'exploration_suggestions', 'gaps',
+            ].reduce((n, k) => n + (Array.isArray(r[k]) ? r[k].length : 0), 0);
+            return (
+              <details className="glass rounded-2xl group overflow-hidden">
+                <summary className="flex items-center gap-3 cursor-pointer list-none px-6 py-4 hover:bg-slate-50/50 transition-colors">
+                  <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0">
+                    <Wrench className="w-[18px] h-[18px]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-slate-700">{t('Dettagli tecnici (qualità del wiki)')}</div>
+                    <div className="text-xs text-slate-400">{t('Report di lint: coerenza, link, frontmatter, gap')}</div>
+                  </div>
+                  <span className={`text-[11px] font-bold rounded-full px-2.5 py-1 flex-shrink-0 ${
+                    issueCount > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {issueCount > 0 ? t('{{count}} da rivedere', { count: issueCount }) : t('Tutto ok')}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180 flex-shrink-0" />
+                </summary>
+                <div className="px-6 pb-6 pt-2">
+                  <WikiLintReport report={report} summary={report?._raw_summary} />
+                </div>
+              </details>
+            );
+          })()}
         </>
       )}
     </div>

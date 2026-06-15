@@ -1,34 +1,37 @@
 import { AlertTriangle, BookOpen, GitBranch, Info, Lightbulb, Link2Off, Search, FileQuestion } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-const Section = ({ icon: Icon, title, items, color = 'slate', renderItem }) => {
+const PALETTE = {
+  red:     { card: 'border-red-200',     iconBg: 'bg-red-100 text-red-600',         pill: 'bg-red-100 text-red-700' },
+  amber:   { card: 'border-amber-200',   iconBg: 'bg-amber-100 text-amber-600',     pill: 'bg-amber-100 text-amber-700' },
+  blue:    { card: 'border-blue-200',    iconBg: 'bg-blue-100 text-blue-600',       pill: 'bg-blue-100 text-blue-700' },
+  slate:   { card: 'border-slate-200',   iconBg: 'bg-slate-100 text-slate-600',     pill: 'bg-slate-100 text-slate-700' },
+  emerald: { card: 'border-emerald-200', iconBg: 'bg-emerald-100 text-emerald-600', pill: 'bg-emerald-100 text-emerald-700' },
+};
+
+const Section = ({ icon, title, items, color = 'slate', renderItem }) => {
   const { t } = useTranslation();
   if (!items || items.length === 0) return null;
-  const palette = {
-    red: 'bg-red-50 border-red-200 text-red-800',
-    amber: 'bg-amber-50 border-amber-200 text-amber-800',
-    blue: 'bg-blue-50 border-blue-200 text-blue-800',
-    slate: 'bg-slate-50 border-slate-200 text-slate-800',
-    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-  }[color] || 'bg-slate-50 border-slate-200 text-slate-800';
+  const Icon = icon;
+  const p = PALETTE[color] || PALETTE.slate;
 
   return (
-    <div className={`rounded-xl border p-4 ${palette}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className="w-4 h-4" />
-        <h4 className="font-semibold text-sm">{title}</h4>
-        <span className="ml-auto text-[11px] bg-white/60 rounded-full px-2 py-0.5">
-          {items.length}
-        </span>
+    <div className={`rounded-2xl border ${p.card} bg-white/70 overflow-hidden`}>
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-slate-100">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${p.iconBg}`}>
+          <Icon className="w-4 h-4" />
+        </div>
+        <h4 className="font-semibold text-sm text-slate-800 flex-1">{title}</h4>
+        <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${p.pill}`}>{items.length}</span>
       </div>
-      <ul className="space-y-1 text-xs">
+      <ul className="divide-y divide-slate-100">
         {items.slice(0, 8).map((it, i) => (
-          <li key={i} className="font-mono break-words">
+          <li key={i} className="px-4 py-2.5 text-xs text-slate-600 leading-relaxed break-words">
             {renderItem ? renderItem(it) : String(it)}
           </li>
         ))}
         {items.length > 8 && (
-          <li className="text-slate-500 italic">{t('… e altri {{n}}', { n: items.length - 8 })}</li>
+          <li className="px-4 py-2 text-[11px] text-slate-400 italic">{t('… e altri {{n}}', { n: items.length - 8 })}</li>
         )}
       </ul>
     </div>
@@ -72,7 +75,7 @@ const WikiLintReport = ({ report, summary }) => {
   return (
     <div className="space-y-4">
       {summary && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+        <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-700">
           <div className="flex items-center gap-2 mb-1 text-slate-600">
             <Info className="w-4 h-4" />
             <span className="font-semibold">{t('Sintesi del lint')}</span>
@@ -82,7 +85,7 @@ const WikiLintReport = ({ report, summary }) => {
       )}
 
       {allClean && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4" />
             <span className="font-semibold">{t('Wiki coerente.')}</span>
@@ -91,7 +94,7 @@ const WikiLintReport = ({ report, summary }) => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Section
           icon={GitBranch}
           title={t('Contraddizioni')}
