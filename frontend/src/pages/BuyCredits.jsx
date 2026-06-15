@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Coins, CreditCard, Loader, Package, Sparkles, Shield, AlertTriangle, Check, Info, ArrowRight,
+  Coins, CreditCard, Loader, Package, Sparkles, Shield, AlertTriangle, Check, Info, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -118,6 +118,11 @@ const BuyCredits = () => {
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
+      <button onClick={() => navigate('/')} className="btn btn-secondary gap-2">
+        <ArrowLeft className="w-4 h-4" />
+        {t('Torna alla Dashboard')}
+      </button>
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
