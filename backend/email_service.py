@@ -15,7 +15,7 @@ import hashlib
 import logging
 import secrets
 import smtplib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr
 from typing import Optional
@@ -46,6 +46,20 @@ PURPOSE_PATH = {
 # Token monouso
 # ============================================================================
 
+def _utcnow() -> datetime:
+    """Adesso in UTC, timezone-AWARE (la colonna expires_at è TIMESTAMPTZ)."""
+    return datetime.now(timezone.utc)
+
+
+def _as_aware_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """Normalizza a UTC aware: i TIMESTAMPTZ tornano aware, ma se per qualche
+    motivo arrivasse un naive lo trattiamo come UTC. Evita il
+    'can't compare offset-naive and offset-aware datetimes'."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
 def _hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -58,7 +72,7 @@ def create_email_token(db: Session, user_id, purpose: str) -> str:
         user_id=user_id,
         token_hash=_hash_token(raw),
         purpose=purpose,
-        expires_at=datetime.utcnow() + ttl,
+        expires_at=_utcnow() + ttl,
     ))
     db.commit()
     return raw
@@ -73,9 +87,9 @@ def consume_email_token(db: Session, raw: str, purpose: str) -> Optional[User]:
         .filter(EmailToken.token_hash == _hash_token(raw), EmailToken.purpose == purpose)
         .first()
     )
-    if not tok or tok.used_at is not None or tok.expires_at < datetime.utcnow():
+    if not tok or tok.used_at is not None or _as_aware_utc(tok.expires_at) < _utcnow():
         return None
-    tok.used_at = datetime.utcnow()
+    tok.used_at = _utcnow()
     user = db.query(User).filter(User.id == tok.user_id).first()
     db.commit()
     return user
