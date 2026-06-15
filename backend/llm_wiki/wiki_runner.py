@@ -239,7 +239,7 @@ def _chunked(seq: List, size: int) -> List[List]:
 
 def run_ingest(
     thesis_id: str,
-    on_progress: Optional[Callable[[int, str], None]] = None,
+    on_progress: Optional[Callable[..., None]] = None,
 ) -> IngestSummary:
     """
     Esegue il workflow INGEST sul wiki di una tesi.
@@ -286,6 +286,17 @@ def run_ingest(
         # cosi' che relative_to funzioni in entrambi i casi.
         rel_paths = [str(p.resolve().relative_to(wiki_root)) for p in batch]
         files_block = "\n".join(f"- `{p}`" for p in rel_paths)
+
+        # Nome dei documenti del batch (per la UI di avanzamento).
+        _names = [Path(p).name for p in rel_paths]
+        _doc_word = "documento" if len(batch) == 1 else "documenti"
+        # Progresso a INIZIO batch: cosa sta per essere elaborato.
+        if on_progress:
+            on_progress(
+                int((idx - 1) / total_batches * 100),
+                f"Analizzo {len(batch)} {_doc_word} (batch {idx}/{total_batches})",
+                _names,
+            )
 
         if idx == 1:
             user_msg = (
@@ -407,7 +418,11 @@ def run_ingest(
             # Procedi: errori parziali non bloccano l'intero ingest
 
         if on_progress:
-            on_progress(int(idx / total_batches * 100), f"batch {idx}/{total_batches}")
+            on_progress(
+                int(idx / total_batches * 100),
+                f"Completato batch {idx}/{total_batches}",
+                _names,
+            )
 
     # ----- AUTO-FIX FASE: scan wikilink rotti e chiedi al modello di fixare -----
     pages_pre_autofix = wiki_workspace.count_wiki_pages(thesis_id)

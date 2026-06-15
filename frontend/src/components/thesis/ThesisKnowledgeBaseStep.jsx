@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Brain, BookMarked, Paperclip, Loader, AlertTriangle, CheckCircle2, Play,
-  RefreshCw, FileText, ScrollText, ArrowRight,
+  RefreshCw, FileText, ScrollText, ArrowRight, Clock,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { startWikiIngest, getWikiStatus, getWikiReport, cancelWikiIngest } from '../../services/api';
@@ -16,8 +16,34 @@ const STATUS_LABELS = {
   failed:    { label: 'Errore', cls: 'bg-red-100 text-red-700' },
 };
 
+// Etichette delle fasi dell'ingest (chiave = `phase` emessa dal backend).
+const PHASE_LABELS = {
+  starting: 'Avvio…',
+  download: 'Scarico i paper selezionati',
+  prepare:  'Preparo i documenti caricati',
+  ingest:   'Indicizzazione dei documenti',
+  lint:     'Controllo qualità del wiki',
+};
+
 const POLL_MS = 3000;
 const MAX_POLL_MS = 30 * 60 * 1000; // 30 min
+
+// Durata leggibile (es. "2m 13s"). ms -> stringa.
+const fmtDuration = (ms) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}m ${r}s` : `${r}s`;
+};
+
+// Il backend emette timestamp in UTC senza suffisso (datetime.utcnow().isoformat()).
+// Forziamo l'interpretazione UTC per non sfasare il cronometro a seconda del fuso.
+const parseUtc = (iso) => {
+  if (!iso) return null;
+  const norm = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`;
+  const ms = Date.parse(norm);
+  return Number.isNaN(ms) ? null : ms;
+};
 
 const ThesisKnowledgeBaseStep = ({
   thesisId,
@@ -32,6 +58,7 @@ const ThesisKnowledgeBaseStep = ({
   const [report, setReport] = useState(null);
   const [loadingAction, setLoadingAction] = useState(false);
   const [error, setError] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
   const pollingRef = useRef(null);
   const startedAtRef = useRef(null);
 
@@ -50,7 +77,7 @@ const ThesisKnowledgeBaseStep = ({
         try {
           const r = await getWikiReport(thesisId);
           setReport(r.report || null);
-        } catch (_) { /* ignore */ }
+        } catch { /* ignore */ }
       }
       return s;
     } catch (e) {
@@ -88,6 +115,15 @@ const ThesisKnowledgeBaseStep = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thesisId]);
 
+  // Cronometro: aggiorna "now" ogni secondo solo mentre l'operazione e' in corso,
+  // cosi' il tempo trascorso/stima scorre fluido tra un polling e l'altro.
+  useEffect(() => {
+    const tr = status && (status.wiki_status === 'ingesting' || status.wiki_status === 'linting');
+    if (!tr) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [status]);
+
   const handleStart = async (force = false) => {
     setError(null);
     setLoadingAction(true);
@@ -119,6 +155,22 @@ const ThesisKnowledgeBaseStep = ({
   const hasSourcesMismatch = isReady && sourcesDelta !== 0;
 
   const stLabel = STATUS_LABELS[ws] || STATUS_LABELS.none;
+
+  // --- Avanzamento granulare (barra %, fase, cronometro, documenti) ---
+  const progress = status?.progress || null;
+  const pct = Math.max(0, Math.min(100, Math.round(
+    progress?.percent ?? (ws === 'linting' ? 92 : 0),
+  )));
+  const phaseKey = progress?.phase || (ws === 'linting' ? 'lint' : 'ingest');
+  const progressMsg = progress?.message || '';
+  const progressFiles = Array.isArray(progress?.files) ? progress.files : [];
+  const startedMs = parseUtc(progress?.started_at) || startedAtRef.current || now;
+  const elapsedMs = Math.max(0, now - startedMs);
+  // Stima del tempo rimanente: lineare sull'avanzamento, mostrata solo quando
+  // c'e' abbastanza segnale (>~8% e qualche secondo trascorso) per non sparare numeri assurdi.
+  const etaMs = (pct >= 8 && pct < 100 && elapsedMs > 4000)
+    ? (elapsedMs / pct) * (100 - pct)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -215,31 +267,98 @@ const ThesisKnowledgeBaseStep = ({
       )}
 
       {isTransitional && (
-        <div className="glass rounded-2xl p-8 flex flex-col items-center text-center space-y-3">
-          <Loader className="w-10 h-10 text-orange-500 animate-spin" />
-          <h3 className="font-semibold text-slate-900">
-            {ws === 'ingesting' ? t('Indicizzazione in corso…') : t('Lint del wiki in corso…')}
-          </h3>
-          <p className="text-sm text-slate-500 max-w-md">
+        <div className="glass rounded-2xl p-6 space-y-5">
+          {/* Intestazione: fase corrente + percentuale */}
+          <div className="flex items-start gap-4">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center flex-shrink-0">
+              <Loader className="w-5 h-5 text-white animate-spin" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-slate-900">
+                {ws === 'ingesting' ? t('Indicizzazione in corso…') : t('Lint del wiki in corso…')}
+              </h3>
+              <p className="text-sm text-slate-500 mt-0.5">
+                {t(PHASE_LABELS[phaseKey] || 'Elaborazione…')}
+              </p>
+            </div>
+            <div className="text-2xl font-bold text-orange-600 tabular-nums flex-shrink-0">
+              {pct}%
+            </div>
+          </div>
+
+          {/* Barra di avanzamento */}
+          <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-orange-400 to-orange-600 rounded-full transition-all duration-500"
+              style={{ width: `${Math.max(3, pct)}%` }}
+            />
+          </div>
+
+          {/* Tempistiche */}
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span className="inline-flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" />
+              {t('Trascorso: {{time}}', { time: fmtDuration(elapsedMs) })}
+            </span>
+            {etaMs != null && (
+              <span className="tabular-nums">{t('~{{time}} rimanenti', { time: fmtDuration(etaMs) })}</span>
+            )}
+          </div>
+
+          {/* Cosa sta facendo ora */}
+          {progressMsg && (
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-sm text-slate-700">{progressMsg}</p>
+            </div>
+          )}
+
+          {/* Documenti in lavorazione nel batch corrente */}
+          {progressFiles.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-slate-500 mb-2">{t('Documenti in elaborazione')}</p>
+              <div className="flex flex-wrap gap-2">
+                {progressFiles.slice(0, 8).map((f, i) => (
+                  <span
+                    key={`${f}-${i}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600 max-w-[16rem]"
+                  >
+                    <FileText className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                    <span className="truncate">{f}</span>
+                  </span>
+                ))}
+                {progressFiles.length > 8 && (
+                  <span className="self-center text-xs text-slate-400">
+                    {t('+{{count}} altri', { count: progressFiles.length - 8 })}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs text-slate-400">
             {ws === 'ingesting'
               ? t('Sto leggendo le fonti e popolando il wiki (entità, concetti, temi). Per molte fonti possono volerci alcuni minuti.')
               : t('Sto controllando coerenza, link rotti, contraddizioni e gap.')}
           </p>
-          <button
-            onClick={async () => {
-              if (!confirm(t("Sicuro di voler annullare l'ingest in corso? Lo stato verrà marcato come fallito e potrai ripartire da zero."))) return;
-              try {
-                await cancelWikiIngest(thesisId);
-                await fetchStatus();
-                stopPolling();
-              } catch (e) {
-                setError(e?.response?.data?.detail || t('Errore annullamento'));
-              }
-            }}
-            className="text-xs text-slate-500 hover:text-red-600 underline mt-2"
-          >
-            {t('Annulla operazione')}
-          </button>
+
+          {/* Annulla */}
+          <div className="pt-1 border-t border-slate-100 text-center">
+            <button
+              onClick={async () => {
+                if (!confirm(t("Sicuro di voler annullare l'ingest in corso? Lo stato verrà marcato come fallito e potrai ripartire da zero."))) return;
+                try {
+                  await cancelWikiIngest(thesisId);
+                  await fetchStatus();
+                  stopPolling();
+                } catch (e) {
+                  setError(e?.response?.data?.detail || t('Errore annullamento'));
+                }
+              }}
+              className="text-xs text-slate-500 hover:text-red-600 underline mt-3"
+            >
+              {t('Annulla operazione')}
+            </button>
+          </div>
         </div>
       )}
 

@@ -1032,7 +1032,37 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
         _ww.bootstrap(thesis_id)
         backup = _ww.snapshot_wiki(thesis_id)
 
+        # Progresso granulare (per la UI): scrive theses.wiki_progress su DB.
+        _started_iso = datetime.utcnow().isoformat()
+
+        def _set_progress(phase, percent, message, files=None):
+            try:
+                db.query(Thesis).filter(Thesis.id == thesis_id).update(
+                    {Thesis.wiki_progress: {
+                        "phase": phase,
+                        "percent": (int(percent) if percent is not None else None),
+                        "message": message,
+                        "files": files or [],
+                        "started_at": _started_iso,
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }},
+                    synchronize_session=False,
+                )
+                db.commit()
+            except Exception:  # noqa: BLE001
+                logger.exception("Wiki progress update fallito tesi %s", thesis_id)
+                db.rollback()
+
+        def _clear_progress():
+            try:
+                db.query(Thesis).filter(Thesis.id == thesis_id).update(
+                    {Thesis.wiki_progress: None}, synchronize_session=False)
+                db.commit()
+            except Exception:  # noqa: BLE001
+                db.rollback()
+
         # 1. Scarica paper / fallback abstract
+        _set_progress("download", 2, "Scarico i paper selezionati…")
         attachments = db.query(ThesisAttachment).filter(
             ThesisAttachment.thesis_id == thesis.id
         ).all()
@@ -1042,6 +1072,7 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
             logger.exception("Wiki ingest: errore materialize_papers tesi %s", thesis_id)
 
         # 2. Materializza upload utente
+        _set_progress("prepare", 8, "Preparo i documenti caricati…")
         try:
             _ww.materialize_user_uploads(thesis_id, attachments)
         except Exception:  # noqa: BLE001
@@ -1052,11 +1083,19 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
         thesis.wiki_path = str(_ww.get_wiki_root(thesis_id))
         db.commit()
 
-        # 4. INGEST con SDK Anthropic
+        # 4. INGEST con SDK Anthropic. run_ingest emette progresso 0..100 sui batch;
+        # lo rimappiamo sulla fascia 10..90 dell'avanzamento complessivo.
+        _set_progress("ingest", 10, "Indicizzo i documenti…")
         try:
-            ingest_summary = _wr.run_ingest(thesis_id)
+            ingest_summary = _wr.run_ingest(
+                thesis_id,
+                on_progress=lambda pct, msg, files=None: _set_progress(
+                    "ingest", 10 + int(pct * 0.8), msg, files,
+                ),
+            )
         except Exception as e:  # noqa: BLE001
             logger.exception("Wiki ingest fallito tesi %s", thesis_id)
+            _clear_progress()
             thesis = db.query(Thesis).get(thesis_id)
             if thesis:
                 thesis.wiki_status = "failed"
@@ -1078,6 +1117,7 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
                 thesis_id, ingest_summary.sources_count,
                 ingest_summary.total_tool_calls, ingest_summary.errors,
             )
+            _clear_progress()
             thesis = db.query(Thesis).get(thesis_id)
             if thesis:
                 thesis.wiki_status = "failed"
@@ -1113,6 +1153,7 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
         if thesis:
             thesis.wiki_status = "linting"
             db.commit()
+        _set_progress("lint", 92, "Controllo qualità del wiki…")
         try:
             report = _wr.run_lint(thesis_id)
             thesis = db.query(Thesis).get(thesis_id)
@@ -1121,8 +1162,10 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
                 thesis.wiki_lint_report = report
                 thesis.wiki_linted_at = datetime.utcnow()
                 db.commit()
+            _clear_progress()
         except Exception as e:  # noqa: BLE001
             logger.exception("Wiki lint fallito tesi %s", thesis_id)
+            _clear_progress()
             thesis = db.query(Thesis).get(thesis_id)
             if thesis:
                 # Resta 'ingested' (utilizzabile, il lint e' opzionale)
@@ -1177,8 +1220,17 @@ async def start_wiki_ingest(
         )
 
     # Reset stato e schedula task
+    _now_iso = datetime.utcnow().isoformat()
     thesis.wiki_status = "ingesting"
     thesis.wiki_lint_report = None
+    thesis.wiki_progress = {
+        "phase": "starting",
+        "percent": 0,
+        "message": "Avvio dell'indicizzazione…",
+        "files": [],
+        "started_at": _now_iso,
+        "updated_at": _now_iso,
+    }
     db.commit()
 
     background_tasks.add_task(_wiki_ingest_task, str(thesis.id), str(current_user.id))
@@ -1189,6 +1241,7 @@ async def start_wiki_ingest(
         wiki_path=thesis.wiki_path,
         sources_count=0,
         pages_count=0,
+        progress=thesis.wiki_progress,
     )
 
 
@@ -1226,6 +1279,7 @@ async def start_wiki_lint(
                     t.wiki_status = "linted"
                     t.wiki_lint_report = report
                     t.wiki_linted_at = datetime.utcnow()
+                    t.wiki_progress = None
                     d.commit()
             except Exception as e:  # noqa: BLE001
                 logger.exception("Lint fallito")
@@ -1233,9 +1287,21 @@ async def start_wiki_lint(
                 if t:
                     t.wiki_status = "ingested"
                     t.wiki_lint_report = {"error": str(e)[:500]}
+                    t.wiki_progress = None
                     d.commit()
         finally:
             d.close()
+
+    _now_iso = datetime.utcnow().isoformat()
+    thesis.wiki_progress = {
+        "phase": "lint",
+        "percent": 92,
+        "message": "Controllo qualità del wiki…",
+        "files": [],
+        "started_at": _now_iso,
+        "updated_at": _now_iso,
+    }
+    db.commit()
 
     background_tasks.add_task(_lint_only, str(thesis.id))
 
@@ -1245,6 +1311,7 @@ async def start_wiki_lint(
         wiki_path=thesis.wiki_path,
         sources_count=len(_ww.list_raw_files(thesis_id)),
         pages_count=_ww.count_wiki_pages(thesis_id),
+        progress=thesis.wiki_progress,
     )
 
 
@@ -1304,6 +1371,7 @@ async def get_wiki_status(
         wiki_path=thesis.wiki_path,
         sources_count=len(_ww.list_raw_files(thesis_id)) if thesis.wiki_path else 0,
         pages_count=_ww.count_wiki_pages(thesis_id) if thesis.wiki_path else 0,
+        progress=thesis.wiki_progress,
         wiki_ingested_at=thesis.wiki_ingested_at,
         wiki_linted_at=thesis.wiki_linted_at,
     )

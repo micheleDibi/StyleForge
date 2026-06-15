@@ -583,6 +583,10 @@ class WikiStatusResponse(BaseModel):
     job_id: Optional[str] = Field(None, description="ID del job in corso (se ingesting/linting)")
     job_progress: Optional[int] = Field(None, ge=0, le=100)
     job_error: Optional[str] = None
+    progress: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Progresso granulare ingest: { phase, percent, message, files, started_at, updated_at }",
+    )
     wiki_ingested_at: Optional[datetime] = None
     wiki_linted_at: Optional[datetime] = None
 

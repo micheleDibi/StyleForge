@@ -527,6 +527,8 @@ class Thesis(Base):
     wiki_status = Column(pg_thesis_wiki_status, default='none', nullable=False)
     wiki_path = Column(Text, nullable=True)
     wiki_lint_report = Column(JSONB, nullable=True)
+    # Progresso granulare dell'ingest in corso (fase, %, messaggio, documenti).
+    wiki_progress = Column(JSONB, nullable=True)
     wiki_ingested_at = Column(DateTime, nullable=True)
     wiki_linted_at = Column(DateTime, nullable=True)
 
