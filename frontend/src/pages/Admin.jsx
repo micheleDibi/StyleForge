@@ -135,16 +135,24 @@ const Admin = () => {
     }
   }, []);
 
+  // Elenco distributori per il selettore "Distributore di riferimento".
+  // Va ricaricato ogni volta che un utente viene promosso/declassato a distributore.
+  const loadDistributori = async () => {
+    try {
+      const d = await getAdminUsers(null, null, null, 'distributore');
+      setDistributori(d.users || []);
+    } catch {
+      /* ignora: il selettore mostrerà solo "— nessuno —" */
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
       if (activeTab === 'users') {
         const data = await getAdminUsers(searchTerm || null);
         setUsers(data.users);
-        // Distributori per il selettore "Distributore di riferimento" dei rivenditori
-        getAdminUsers(null, null, null, 'distributore')
-          .then((d) => setDistributori(d.users || []))
-          .catch(() => {});
+        loadDistributori();
       } else if (activeTab === 'roles') {
         const data = await getAdminRoles();
         setRoles(data.roles);
@@ -208,11 +216,22 @@ const Admin = () => {
   };
 
   const handleEntityTypeChange = async (userId, entityType) => {
+    // Aggiornamento ottimistico: il campo "Distributore di riferimento" compare
+    // subito quando si sceglie "rivenditore", senza attendere il round-trip.
+    setUsers(prev => prev.map(u => u.id === userId
+      ? { ...u, entity_type: entityType, distributor_id: entityType === 'rivenditore' ? u.distributor_id : null }
+      : u));
     try {
       const updated = await updateAdminUser(userId, { entity_type: entityType });
-      setUsers(users.map(u => u.id === userId ? updated : u));
+      setUsers(prev => prev.map(u => u.id === userId ? updated : u));
+      // Promuovere/declassare un distributore cambia l'elenco selezionabile.
+      loadDistributori();
     } catch (error) {
       console.error('Errore cambio tipo ente:', error);
+      // Rollback dallo stato server in caso di errore.
+      const data = await getAdminUsers(searchTerm || null).catch(() => null);
+      if (data) setUsers(data.users);
+      loadDistributori();
     }
   };
 
@@ -220,7 +239,7 @@ const Admin = () => {
     try {
       // '' = azzera il distributore di riferimento
       const updated = await updateAdminUser(userId, { distributor_id: distributorId });
-      setUsers(users.map(u => u.id === userId ? updated : u));
+      setUsers(prev => prev.map(u => u.id === userId ? updated : u));
     } catch (error) {
       console.error('Errore assegnazione distributore:', error);
     }
@@ -861,9 +880,12 @@ const Admin = () => {
                       <div
                         className="p-4 cursor-pointer hover:bg-white/50 transition-colors"
                         onClick={() => {
-                          setExpandedUser(expandedUser === u.id ? null : u.id);
-                          if (expandedUser !== u.id && !transactions[u.id]) {
-                            handleLoadTransactions(u.id);
+                          const willExpand = expandedUser !== u.id;
+                          setExpandedUser(willExpand ? u.id : null);
+                          if (willExpand) {
+                            if (!transactions[u.id]) handleLoadTransactions(u.id);
+                            // Lista distributori sempre fresca quando si apre una card
+                            loadDistributori();
                           }
                         }}
                       >
@@ -1077,25 +1099,25 @@ const Admin = () => {
                                 Saldo attuale: <span className="font-bold text-orange-600">{u.credits === -1 ? '∞' : u.credits}</span>
                               </span>
                             </div>
-                            <div className="flex flex-col sm:flex-row gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-[11rem_1fr_auto] gap-2">
                               <input
                                 type="number"
                                 placeholder="Quantità (es. 100 o -50)"
-                                className="input sm:w-44"
+                                className="input"
                                 value={creditAmount}
                                 onChange={(e) => setCreditAmount(e.target.value)}
                               />
                               <input
                                 type="text"
                                 placeholder="Motivazione..."
-                                className="input flex-1"
+                                className="input"
                                 value={creditDescription}
                                 onChange={(e) => setCreditDescription(e.target.value)}
                               />
                               <button
                                 onClick={() => handleAdjustCredits(u.id)}
                                 disabled={!creditAmount || !creditDescription || creditLoading}
-                                className="btn btn-primary whitespace-nowrap"
+                                className="btn btn-primary whitespace-nowrap justify-center"
                               >
                                 {creditLoading ? (
                                   <RefreshCw className="w-4 h-4 animate-spin" />
