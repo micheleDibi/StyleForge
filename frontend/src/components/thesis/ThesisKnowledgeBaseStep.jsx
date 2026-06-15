@@ -3,6 +3,7 @@ import {
   Brain, BookMarked, Paperclip, Loader, AlertTriangle, CheckCircle2, Play,
   RefreshCw, FileText, ScrollText, ArrowRight,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { startWikiIngest, getWikiStatus, getWikiReport, cancelWikiIngest } from '../../services/api';
 import WikiLintReport from './WikiLintReport';
 
@@ -26,6 +27,7 @@ const ThesisKnowledgeBaseStep = ({
   onComplete,
   onBack,
 }) => {
+  const { t } = useTranslation();
   const [status, setStatus] = useState(null);
   const [report, setReport] = useState(null);
   const [loadingAction, setLoadingAction] = useState(false);
@@ -52,7 +54,7 @@ const ThesisKnowledgeBaseStep = ({
       }
       return s;
     } catch (e) {
-      setError(e?.response?.data?.detail || 'Errore lettura stato wiki');
+      setError(e?.response?.data?.detail || t('Errore lettura stato wiki'));
       return null;
     }
   };
@@ -97,7 +99,7 @@ const ThesisKnowledgeBaseStep = ({
       stopPolling();
       pollingRef.current = setTimeout(pollLoop, POLL_MS);
     } catch (e) {
-      setError(e?.response?.data?.detail || 'Errore avvio ingest');
+      setError(e?.response?.data?.detail || t('Errore avvio ingest'));
     } finally {
       setLoadingAction(false);
     }
@@ -127,13 +129,9 @@ const ThesisKnowledgeBaseStep = ({
             <Brain className="w-6 h-6 text-white" />
           </div>
           <div className="flex-1">
-            <h2 className="text-xl font-bold text-slate-900 mb-1">Knowledge Base</h2>
+            <h2 className="text-xl font-bold text-slate-900 mb-1">{t('Knowledge Base')}</h2>
             <p className="text-sm text-slate-600">
-              Costruisci la base di conoscenza che l'AI userà per i capitoli, le sezioni e
-              i contenuti della tesi. I paper selezionati verranno scaricati (quando
-              possibile) e i tuoi documenti saranno indicizzati. Una sessione Claude legge
-              tutto, riconcilia entità e concetti, segnala contraddizioni e produce un wiki
-              navigabile.
+              {t("Costruisci la base di conoscenza che l'AI userà per i capitoli, le sezioni e i contenuti della tesi. I paper selezionati verranno scaricati (quando possibile) e i tuoi documenti saranno indicizzati. Una sessione Claude legge tutto, riconcilia entità e concetti, segnala contraddizioni e produce un wiki navigabile.")}
             </p>
           </div>
         </div>
@@ -143,14 +141,14 @@ const ThesisKnowledgeBaseStep = ({
           <div className="rounded-xl border border-slate-200 bg-white p-4 flex items-center gap-3">
             <BookMarked className="w-5 h-5 text-orange-500" />
             <div>
-              <div className="text-xs text-slate-500">Paper selezionati</div>
+              <div className="text-xs text-slate-500">{t('Paper selezionati')}</div>
               <div className="text-lg font-bold text-slate-900">{paperCount}</div>
             </div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 flex items-center gap-3">
             <Paperclip className="w-5 h-5 text-orange-500" />
             <div>
-              <div className="text-xs text-slate-500">Documenti caricati</div>
+              <div className="text-xs text-slate-500">{t('Documenti caricati')}</div>
               <div className="text-lg font-bold text-slate-900">{attachmentCount}</div>
             </div>
           </div>
@@ -162,23 +160,23 @@ const ThesisKnowledgeBaseStep = ({
             {isTransitional && <Loader className="w-3 h-3 animate-spin" />}
             {isReady && <CheckCircle2 className="w-3 h-3" />}
             {isFailed && <AlertTriangle className="w-3 h-3" />}
-            {stLabel.label}
+            {t(stLabel.label)}
           </span>
           {status?.sources_count > 0 && (
             <span className="text-xs text-slate-500">
               <FileText className="inline w-3 h-3 mr-1" />
-              {status.sources_count} fonti in raw/
+              {t('{{count}} fonti in raw/', { count: status.sources_count })}
             </span>
           )}
           {status?.pages_count > 0 && (
             <span className="text-xs text-slate-500">
               <ScrollText className="inline w-3 h-3 mr-1" />
-              {status.pages_count} pagine in wiki/
+              {t('{{count}} pagine in wiki/', { count: status.pages_count })}
             </span>
           )}
           {restrictToSources && (
             <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-0.5">
-              Solo fonti selezionate (restrict=ON)
+              {t('Solo fonti selezionate (restrict=ON)')}
             </span>
           )}
         </div>
@@ -195,8 +193,8 @@ const ThesisKnowledgeBaseStep = ({
         <div className="glass rounded-2xl p-6 text-center">
           <p className="text-sm text-slate-600 mb-4">
             {totalSources === 0
-              ? 'Non hai caricato fonti. Puoi procedere comunque (la tesi sarà generata sulla conoscenza generale del modello), oppure tornare agli step precedenti per caricare allegati o paper.'
-              : `Pronto a indicizzare ${totalSources} font${totalSources === 1 ? 'e' : 'i'}.`}
+              ? t('Non hai caricato fonti. Puoi procedere comunque (la tesi sarà generata sulla conoscenza generale del modello), oppure tornare agli step precedenti per caricare allegati o paper.')
+              : t('Pronto a indicizzare {{count}} font{{suffix}}.', { count: totalSources, suffix: totalSources === 1 ? 'e' : 'i' })}
           </p>
           <div className="flex gap-3 justify-center flex-wrap">
             <button
@@ -205,11 +203,11 @@ const ThesisKnowledgeBaseStep = ({
               className="btn btn-primary inline-flex items-center gap-2 disabled:opacity-50"
             >
               {loadingAction ? <Loader className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-              Avvia ingestione
+              {t('Avvia ingestione')}
             </button>
             {totalSources === 0 && (
               <button onClick={onComplete} className="btn btn-secondary">
-                Salta e procedi
+                {t('Salta e procedi')}
               </button>
             )}
           </div>
@@ -220,27 +218,27 @@ const ThesisKnowledgeBaseStep = ({
         <div className="glass rounded-2xl p-8 flex flex-col items-center text-center space-y-3">
           <Loader className="w-10 h-10 text-orange-500 animate-spin" />
           <h3 className="font-semibold text-slate-900">
-            {ws === 'ingesting' ? 'Indicizzazione in corso…' : 'Lint del wiki in corso…'}
+            {ws === 'ingesting' ? t('Indicizzazione in corso…') : t('Lint del wiki in corso…')}
           </h3>
           <p className="text-sm text-slate-500 max-w-md">
             {ws === 'ingesting'
-              ? 'Sto leggendo le fonti e popolando il wiki (entità, concetti, temi). Per molte fonti possono volerci alcuni minuti.'
-              : 'Sto controllando coerenza, link rotti, contraddizioni e gap.'}
+              ? t('Sto leggendo le fonti e popolando il wiki (entità, concetti, temi). Per molte fonti possono volerci alcuni minuti.')
+              : t('Sto controllando coerenza, link rotti, contraddizioni e gap.')}
           </p>
           <button
             onClick={async () => {
-              if (!confirm('Sicuro di voler annullare l\'ingest in corso? Lo stato verrà marcato come fallito e potrai ripartire da zero.')) return;
+              if (!confirm(t("Sicuro di voler annullare l'ingest in corso? Lo stato verrà marcato come fallito e potrai ripartire da zero."))) return;
               try {
                 await cancelWikiIngest(thesisId);
                 await fetchStatus();
                 stopPolling();
               } catch (e) {
-                setError(e?.response?.data?.detail || 'Errore annullamento');
+                setError(e?.response?.data?.detail || t('Errore annullamento'));
               }
             }}
             className="text-xs text-slate-500 hover:text-red-600 underline mt-2"
           >
-            Annulla operazione
+            {t('Annulla operazione')}
           </button>
         </div>
       )}
@@ -249,19 +247,18 @@ const ThesisKnowledgeBaseStep = ({
         <div className="glass rounded-2xl p-6">
           <div className="flex items-center gap-2 mb-2 text-red-700">
             <AlertTriangle className="w-5 h-5" />
-            <h3 className="font-semibold">Ingest fallito</h3>
+            <h3 className="font-semibold">{t('Ingest fallito')}</h3>
           </div>
           <p className="text-sm text-slate-600 mb-4">
-            Qualcosa è andato storto durante l'ingestione. Puoi riprovare oppure tornare
-            agli step precedenti (Allegati o Paper) per ridurre il numero di fonti.
+            {t("Qualcosa è andato storto durante l'ingestione. Puoi riprovare oppure tornare agli step precedenti (Allegati o Paper) per ridurre il numero di fonti.")}
           </p>
           <div className="flex gap-3">
             <button onClick={() => handleStart(true)} className="btn btn-primary inline-flex items-center gap-2">
-              <RefreshCw className="w-4 h-4" /> Riprova
+              <RefreshCw className="w-4 h-4" /> {t('Riprova')}
             </button>
             {onBack && (
               <button onClick={onBack} className="btn btn-secondary">
-                Torna agli allegati
+                {t('Torna agli allegati')}
               </button>
             )}
           </div>
@@ -276,13 +273,11 @@ const ThesisKnowledgeBaseStep = ({
           <div className="flex-1">
             <p className="font-semibold text-amber-900">
               {sourcesDelta > 0
-                ? `Hai aggiunto ${sourcesDelta} ${sourcesDelta === 1 ? 'fonte' : 'fonti'} dopo l'ultima indicizzazione`
-                : `Hai rimosso ${Math.abs(sourcesDelta)} ${Math.abs(sourcesDelta) === 1 ? 'fonte' : 'fonti'} dopo l'ultima indicizzazione`}
+                ? t("Hai aggiunto {{count}} {{noun}} dopo l'ultima indicizzazione", { count: sourcesDelta, noun: sourcesDelta === 1 ? t('fonte') : t('fonti') })
+                : t("Hai rimosso {{count}} {{noun}} dopo l'ultima indicizzazione", { count: Math.abs(sourcesDelta), noun: Math.abs(sourcesDelta) === 1 ? t('fonte') : t('fonti') })}
             </p>
             <p className="text-sm text-amber-800 mt-0.5">
-              La Knowledge Base attuale non rispecchia le {totalSources} fonti che hai ora
-              (indicizzate: {indexedSources}). Rilancia per allinearla, oppure procedi pure
-              con i capitoli usando il wiki precedente.
+              {t('La Knowledge Base attuale non rispecchia le {{total}} fonti che hai ora (indicizzate: {{indexed}}). Rilancia per allinearla, oppure procedi pure con i capitoli usando il wiki precedente.', { total: totalSources, indexed: indexedSources })}
             </p>
             <div className="mt-3 flex gap-2 flex-wrap">
               <button
@@ -291,7 +286,7 @@ const ThesisKnowledgeBaseStep = ({
                 className="btn btn-primary inline-flex items-center gap-2 disabled:opacity-50"
               >
                 {loadingAction ? <Loader className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                Rilancia indicizzazione
+                {t('Rilancia indicizzazione')}
               </button>
             </div>
           </div>
@@ -305,11 +300,10 @@ const ThesisKnowledgeBaseStep = ({
               <div>
                 <div className="flex items-center gap-2 mb-1 text-emerald-700">
                   <CheckCircle2 className="w-5 h-5" />
-                  <h3 className="font-semibold">Knowledge base pronta</h3>
+                  <h3 className="font-semibold">{t('Knowledge base pronta')}</h3>
                 </div>
                 <p className="text-sm text-slate-600">
-                  Il wiki contiene {status?.pages_count || 0} pagine derivate da {status?.sources_count || 0} fonti.
-                  Procedi alla generazione capitoli o consulta il report sotto.
+                  {t('Il wiki contiene {{pages}} pagine derivate da {{sources}} fonti. Procedi alla generazione capitoli o consulta il report sotto.', { pages: status?.pages_count || 0, sources: status?.sources_count || 0 })}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -317,12 +311,12 @@ const ThesisKnowledgeBaseStep = ({
                   onClick={() => handleStart(true)}
                   disabled={loadingAction}
                   className="btn btn-secondary inline-flex items-center gap-2 disabled:opacity-50"
-                  title="Ricostruisce il wiki (utile dopo aver aggiunto fonti)"
+                  title={t('Ricostruisce il wiki (utile dopo aver aggiunto fonti)')}
                 >
-                  <RefreshCw className="w-4 h-4" /> Ricostruisci
+                  <RefreshCw className="w-4 h-4" /> {t('Ricostruisci')}
                 </button>
                 <button onClick={onComplete} className="btn btn-primary inline-flex items-center gap-2">
-                  Procedi ai capitoli <ArrowRight className="w-4 h-4" />
+                  {t('Procedi ai capitoli')} <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -330,7 +324,7 @@ const ThesisKnowledgeBaseStep = ({
 
           {(ws === 'linted' || report) && (
             <div className="glass rounded-2xl p-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Report di lint</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t('Report di lint')}</h3>
               <WikiLintReport
                 report={report}
                 summary={report?._raw_summary}

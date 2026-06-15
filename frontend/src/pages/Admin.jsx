@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Users, Shield, BarChart3, Search, RefreshCw,
@@ -55,6 +56,7 @@ const COST_OPERATION_LABELS = {
 };
 
 const Admin = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('users');
@@ -310,7 +312,7 @@ const Admin = () => {
   const handleCreateUser = async () => {
     setCreateError('');
     if (!newUser.email || !newUser.username) {
-      setCreateError('Email e username sono obbligatori.');
+      setCreateError(t('Email e username sono obbligatori.'));
       return;
     }
 
@@ -329,7 +331,7 @@ const Admin = () => {
       const data = await getAdminUsers(searchTerm || null);
       setUsers(data.users);
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Errore durante la creazione dell\'utente.';
+      const detail = error.response?.data?.detail || t('Errore durante la creazione dell\'utente.');
       setCreateError(detail);
     } finally {
       setCreateLoading(false);
@@ -358,10 +360,10 @@ const Admin = () => {
       setCreditCosts(data.costs);
       setEditedCosts(JSON.parse(JSON.stringify(data.costs)));
       setIsDefaultCosts(data.is_default);
-      setCostsSuccess('Costi aggiornati con successo!');
+      setCostsSuccess(t('Costi aggiornati con successo!'));
       setTimeout(() => setCostsSuccess(''), 3000);
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Errore nel salvataggio dei costi.';
+      const detail = error.response?.data?.detail || t('Errore nel salvataggio dei costi.');
       setCostsError(detail);
     } finally {
       setCostsSaving(false);
@@ -378,10 +380,10 @@ const Admin = () => {
       setEditedCosts(JSON.parse(JSON.stringify(data.costs)));
       setIsDefaultCosts(data.is_default);
       setShowResetConfirm(false);
-      setCostsSuccess('Costi ripristinati ai valori default!');
+      setCostsSuccess(t('Costi ripristinati ai valori default!'));
       setTimeout(() => setCostsSuccess(''), 3000);
     } catch (error) {
-      setCostsError('Errore nel ripristino dei costi.');
+      setCostsError(t('Errore nel ripristino dei costi.'));
     } finally {
       setCostsSaving(false);
     }
@@ -430,10 +432,10 @@ const Admin = () => {
       setTemplates(data.templates || []);
       setEditingTemplate(null);
       setEditedTemplate(null);
-      setTemplateSuccess('Template salvato con successo!');
+      setTemplateSuccess(t('Template salvato con successo!'));
       setTimeout(() => setTemplateSuccess(''), 3000);
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Errore nel salvataggio del template.';
+      const detail = error.response?.data?.detail || t('Errore nel salvataggio del template.');
       setTemplateError(detail);
     } finally {
       setTemplateSaving(false);
@@ -449,17 +451,17 @@ const Admin = () => {
       const newTemplate = {
         ...JSON.parse(JSON.stringify(defaultTpl)),
         id: `tpl-${Date.now().toString(36)}`,
-        name: `Nuovo Template ${templates.length + 1}`,
+        name: t('Nuovo Template {{n}}', { n: templates.length + 1 }),
         is_default: false
       };
       const updatedTemplates = [...templates, newTemplate];
       const data = await updateAdminTemplates(updatedTemplates);
       setTemplates(data.templates || []);
       handleEditTemplate(newTemplate);
-      setTemplateSuccess('Nuovo template creato!');
+      setTemplateSuccess(t('Nuovo template creato!'));
       setTimeout(() => setTemplateSuccess(''), 3000);
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Errore nella creazione del template.';
+      const detail = error.response?.data?.detail || t('Errore nella creazione del template.');
       setTemplateError(detail);
     } finally {
       setTemplateSaving(false);
@@ -477,10 +479,10 @@ const Admin = () => {
         setEditingTemplate(null);
         setEditedTemplate(null);
       }
-      setTemplateSuccess('Template eliminato!');
+      setTemplateSuccess(t('Template eliminato!'));
       setTimeout(() => setTemplateSuccess(''), 3000);
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Errore nell\'eliminazione del template.';
+      const detail = error.response?.data?.detail || t('Errore nell\'eliminazione del template.');
       setTemplateError(detail);
     } finally {
       setTemplateSaving(false);
@@ -497,10 +499,10 @@ const Admin = () => {
       }));
       const data = await updateAdminTemplates(updatedTemplates);
       setTemplates(data.templates || []);
-      setTemplateSuccess('Template impostato come default!');
+      setTemplateSuccess(t('Template impostato come default!'));
       setTimeout(() => setTemplateSuccess(''), 3000);
     } catch (error) {
-      setTemplateError('Errore nell\'impostazione del template default.');
+      setTemplateError(t('Errore nell\'impostazione del template default.'));
     } finally {
       setTemplateSaving(false);
     }
@@ -521,7 +523,7 @@ const Admin = () => {
               type="button"
               onClick={() => setActiveTooltip(activeTooltip === tooltipId ? null : tooltipId)}
               className="text-gray-400 hover:text-orange-500 transition-colors"
-              title="Mostra info"
+              title={t('Mostra info')}
             >
               <HelpCircle className="w-4 h-4" />
             </button>
@@ -554,7 +556,7 @@ const Admin = () => {
                   : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
-              {value ? 'Attivo' : 'Disattivo'}
+              {value ? t('Attivo') : t('Disattivo')}
             </button>
           ) : help.type === 'text' ? (
             <input
@@ -570,7 +572,7 @@ const Admin = () => {
                 <div className="flex items-center gap-2">
                   <img
                     src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/admin/templates/backgrounds/${value}`}
-                    alt="Sfondo"
+                    alt={t('Sfondo')}
                     className="w-16 h-16 object-cover rounded-lg border border-gray-200"
                   />
                   <button
@@ -584,7 +586,7 @@ const Admin = () => {
                       }
                     }}
                     className="text-red-500 hover:text-red-700 p-1"
-                    title="Rimuovi immagine"
+                    title={t('Rimuovi immagine')}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -592,7 +594,7 @@ const Admin = () => {
               ) : (
                 <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors border border-dashed border-gray-300">
                   <Upload className="w-4 h-4 text-gray-500" />
-                  <span className="text-xs text-gray-600">Carica immagine</span>
+                  <span className="text-xs text-gray-600">{t('Carica immagine')}</span>
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
@@ -604,7 +606,7 @@ const Admin = () => {
                         const data = await uploadTemplateBackground(file);
                         handleTemplateFieldChange(section, fieldKey, data.filename);
                       } catch (err) {
-                        const detail = err.response?.data?.detail || 'Errore upload immagine';
+                        const detail = err.response?.data?.detail || t('Errore upload immagine');
                         setTemplateError(detail);
                       }
                       e.target.value = '';
@@ -638,7 +640,7 @@ const Admin = () => {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'Mai';
+    if (!dateString) return t('Mai');
     return new Date(dateString).toLocaleDateString('it-IT', {
       day: '2-digit', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit'
@@ -646,14 +648,14 @@ const Admin = () => {
   };
 
   const tabs = [
-    { id: 'users', label: 'Utenti', icon: Users },
-    { id: 'roles', label: 'Ruoli', icon: Shield },
-    { id: 'stats', label: 'Statistiche', icon: BarChart3 },
-    { id: 'settings', label: 'Impostazioni', icon: Settings },
-    { id: 'templates', label: 'Template Export', icon: FileText },
-    { id: 'api-keys', label: 'API Keys', icon: Key },
-    { id: 'payments', label: 'Pagamenti PagoPA', icon: CreditCard },
-    { id: 'languages', label: 'Lingue', icon: Globe }
+    { id: 'users', label: t('Utenti'), icon: Users },
+    { id: 'roles', label: t('Ruoli'), icon: Shield },
+    { id: 'stats', label: t('Statistiche'), icon: BarChart3 },
+    { id: 'settings', label: t('Impostazioni'), icon: Settings },
+    { id: 'templates', label: t('Template Export'), icon: FileText },
+    { id: 'api-keys', label: t('API Keys'), icon: Key },
+    { id: 'payments', label: t('Pagamenti PagoPA'), icon: CreditCard },
+    { id: 'languages', label: t('Lingue'), icon: Globe }
   ];
 
   return (
@@ -671,7 +673,7 @@ const Admin = () => {
             <div className="flex items-center gap-4">
               <button onClick={() => navigate('/')} className="btn btn-ghost">
                 <ArrowLeft className="w-4 h-4" />
-                Dashboard
+                {t('Dashboard')}
               </button>
               <div className="flex items-center gap-3">
                 <div className="relative">
@@ -680,9 +682,9 @@ const Admin = () => {
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">
-                    Pannello <span className="gradient-text">Admin</span>
+                    {t('Pannello')} <span className="gradient-text">{t('Admin')}</span>
                   </h1>
-                  <p className="text-gray-500 text-sm">Gestione utenti, ruoli, crediti e impostazioni</p>
+                  <p className="text-gray-500 text-sm">{t('Gestione utenti, ruoli, crediti e impostazioni')}</p>
                 </div>
               </div>
             </div>
@@ -693,7 +695,7 @@ const Admin = () => {
               disabled={refreshing}
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Aggiorna
+              {t('Aggiorna')}
             </button>
           </div>
         </div>
@@ -737,7 +739,7 @@ const Admin = () => {
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <input
                         type="text"
-                        placeholder="Cerca per username, email o nome..."
+                        placeholder={t('Cerca per username, email o nome...')}
                         className="input pl-10 w-full"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -746,16 +748,16 @@ const Admin = () => {
                     </div>
                     <button onClick={handleSearch} className="btn btn-secondary">
                       <Search className="w-4 h-4" />
-                      Cerca
+                      {t('Cerca')}
                     </button>
                     <button
                       onClick={() => { setShowCreateForm(!showCreateForm); setCreateError(''); }}
                       className={`btn ${showCreateForm ? 'btn-ghost' : 'btn-primary'}`}
                     >
                       {showCreateForm ? (
-                        <><X className="w-4 h-4" /> Chiudi</>
+                        <><X className="w-4 h-4" /> {t('Chiudi')}</>
                       ) : (
-                        <><UserPlus className="w-4 h-4" /> Crea Utente</>
+                        <><UserPlus className="w-4 h-4" /> {t('Crea Utente')}</>
                       )}
                     </button>
                   </div>
@@ -766,7 +768,7 @@ const Admin = () => {
                   <div className="glass rounded-2xl p-6 border-2 border-orange-200 bg-orange-50/30">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <UserPlus className="w-5 h-5 text-orange-500" />
-                      Crea Nuovo Utente
+                      {t('Crea Nuovo Utente')}
                     </h3>
 
                     {createError && (
@@ -778,7 +780,7 @@ const Admin = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Email *')}</label>
                         <input
                           type="email"
                           className="input w-full"
@@ -788,7 +790,7 @@ const Admin = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Username *')}</label>
                         <input
                           type="text"
                           className="input w-full"
@@ -800,34 +802,34 @@ const Admin = () => {
                       <div className="md:col-span-2">
                         <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-700">
                           <Mail className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span>L'utente riceverà un'email per impostare la propria password e verificare l'indirizzo.</span>
+                          <span>{t("L'utente riceverà un'email per impostare la propria password e verificare l'indirizzo.")}</span>
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Nome Completo')}</label>
                         <input
                           type="text"
                           className="input w-full"
-                          placeholder="Nome e cognome"
+                          placeholder={t('Nome e cognome')}
                           value={newUser.full_name}
                           onChange={(e) => setNewUser(prev => ({ ...prev, full_name: e.target.value }))}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Ruolo</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Ruolo')}</label>
                         <select
                           className="input w-full"
                           value={newUser.role_id}
                           onChange={(e) => setNewUser(prev => ({ ...prev, role_id: e.target.value }))}
                         >
-                          <option value="">Ruolo Default (user)</option>
+                          <option value="">{t('Ruolo Default (user)')}</option>
                           {roles.map(r => (
-                            <option key={r.id} value={r.id}>{r.name} {r.is_default ? '(default)' : ''}</option>
+                            <option key={r.id} value={r.id}>{r.name} {r.is_default ? t('(default)') : ''}</option>
                           ))}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Crediti Iniziali</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Crediti Iniziali')}</label>
                         <input
                           type="number"
                           className="input w-full"
@@ -846,7 +848,7 @@ const Admin = () => {
                           onChange={(e) => setNewUser(prev => ({ ...prev, is_active: e.target.checked }))}
                           className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
                         />
-                        <span className="text-sm font-medium text-gray-700">Utente attivo</span>
+                        <span className="text-sm font-medium text-gray-700">{t('Utente attivo')}</span>
                       </label>
                     </div>
 
@@ -855,7 +857,7 @@ const Admin = () => {
                         onClick={() => { setShowCreateForm(false); setCreateError(''); }}
                         className="btn btn-ghost"
                       >
-                        Annulla
+                        {t('Annulla')}
                       </button>
                       <button
                         onClick={handleCreateUser}
@@ -863,9 +865,9 @@ const Admin = () => {
                         className="btn btn-primary"
                       >
                         {createLoading ? (
-                          <><RefreshCw className="w-4 h-4 animate-spin" /> Creazione...</>
+                          <><RefreshCw className="w-4 h-4 animate-spin" /> {t('Creazione...')}</>
                         ) : (
-                          <><UserPlus className="w-4 h-4" /> Crea Utente</>
+                          <><UserPlus className="w-4 h-4" /> {t('Crea Utente')}</>
                         )}
                       </button>
                     </div>
@@ -906,26 +908,26 @@ const Admin = () => {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-gray-900 truncate">{u.full_name || u.username}</span>
                               <span className={`badge ${u.role_name === 'admin' ? 'badge-warning' : 'badge-info'}`}>
-                                {u.role_name || 'Nessun ruolo'}
+                                {u.role_name || t('Nessun ruolo')}
                               </span>
                               {u.role_name !== 'admin' && u.entity_type && (
                                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
-                                  {ENTITY_TYPE_LABELS[u.entity_type] || u.entity_type}
+                                  {ENTITY_TYPE_LABELS[u.entity_type] ? t(ENTITY_TYPE_LABELS[u.entity_type]) : u.entity_type}
                                 </span>
                               )}
                               {!u.is_active && (
-                                <span className="badge badge-error">Disabilitato</span>
+                                <span className="badge badge-error">{t('Disabilitato')}</span>
                               )}
                               {!u.email_verified && (
                                 <>
-                                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Email non verificata</span>
+                                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{t('Email non verificata')}</span>
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); handleResendInvite(u.id); }}
                                     disabled={resendingUser === u.id}
                                     className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-60"
                                   >
-                                    {resendingUser === u.id ? 'Invio…' : 'Reinvia'}
+                                    {resendingUser === u.id ? t('Invio…') : t('Reinvia')}
                                   </button>
                                 </>
                               )}
@@ -940,11 +942,11 @@ const Admin = () => {
                               <p className="font-bold text-gray-900">
                                 {u.credits === -1 ? '∞' : u.credits}
                               </p>
-                              <p className="text-gray-500 text-xs">Crediti</p>
+                              <p className="text-gray-500 text-xs">{t('Crediti')}</p>
                             </div>
                             <div className="text-center">
                               <p className="text-gray-600 text-xs">{formatDate(u.last_login)}</p>
-                              <p className="text-gray-500 text-xs">Ultimo login</p>
+                              <p className="text-gray-500 text-xs">{t('Ultimo login')}</p>
                             </div>
                           </div>
 
@@ -964,11 +966,11 @@ const Admin = () => {
                             {/* Impostazioni account */}
                             <div className="bg-white rounded-xl border border-gray-100 p-4">
                               <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-3 flex items-center gap-2">
-                                <Settings className="w-3.5 h-3.5" /> Impostazioni account
+                                <Settings className="w-3.5 h-3.5" /> {t('Impostazioni account')}
                               </h4>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
                                 <div>
-                                  <label className="block text-xs font-medium text-gray-500 mb-1">Ruolo</label>
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('Ruolo')}</label>
                                   <select
                                     className="input w-full py-1.5 text-sm"
                                     value={u.role_id || ''}
@@ -985,7 +987,7 @@ const Admin = () => {
                                   </select>
                                 </div>
                                 <div>
-                                  <label className="block text-xs font-medium text-gray-500 mb-1">Stato</label>
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('Stato')}</label>
                                   <button
                                     onClick={() => handleToggleActive(u.id, u.is_active)}
                                     className={`w-full inline-flex items-center justify-center gap-2 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
@@ -995,34 +997,34 @@ const Admin = () => {
                                     }`}
                                   >
                                     <Power className="w-4 h-4" />
-                                    {u.is_active ? 'Attivo' : 'Disattivato'}
+                                    {u.is_active ? t('Attivo') : t('Disattivato')}
                                   </button>
                                 </div>
                                 {u.role_name !== 'admin' && (
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Tipo utente</label>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('Tipo utente')}</label>
                                     <select
                                       className="input w-full py-1.5 text-sm"
                                       value={u.entity_type || 'privato'}
                                       onChange={(e) => handleEntityTypeChange(u.id, e.target.value)}
-                                      title="Determina i pacchetti crediti acquistabili"
+                                      title={t('Determina i pacchetti crediti acquistabili')}
                                     >
-                                      <option value="distributore">Distributore</option>
-                                      <option value="rivenditore">Rivenditore</option>
-                                      <option value="privato">Privato</option>
+                                      <option value="distributore">{t('Distributore')}</option>
+                                      <option value="rivenditore">{t('Rivenditore')}</option>
+                                      <option value="privato">{t('Privato')}</option>
                                     </select>
                                   </div>
                                 )}
                                 {u.role_name !== 'admin' && u.entity_type === 'rivenditore' && (
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Distributore di riferimento</label>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('Distributore di riferimento')}</label>
                                     <select
                                       className="input w-full py-1.5 text-sm"
                                       value={u.distributor_id || ''}
                                       onChange={(e) => handleDistributorChange(u.id, e.target.value)}
-                                      title="Distributore di riferimento del rivenditore"
+                                      title={t('Distributore di riferimento del rivenditore')}
                                     >
-                                      <option value="">— nessuno —</option>
+                                      <option value="">{t('— nessuno —')}</option>
                                       {distributori.map((d) => (
                                         <option key={d.id} value={d.id}>{d.full_name || d.username}</option>
                                       ))}
@@ -1035,27 +1037,27 @@ const Admin = () => {
                             {/* Dettagli */}
                             <div className="bg-white rounded-xl border border-gray-100 p-4">
                               <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-3 flex items-center gap-2">
-                                <UserIcon className="w-3.5 h-3.5" /> Dettagli
+                                <UserIcon className="w-3.5 h-3.5" /> {t('Dettagli')}
                               </h4>
                               <dl className="text-sm divide-y divide-gray-100">
                                 <div className="flex items-center justify-between gap-3 py-1.5">
-                                  <dt className="text-gray-500">Nome completo</dt>
+                                  <dt className="text-gray-500">{t('Nome completo')}</dt>
                                   <dd className="font-medium text-gray-900 text-right truncate">{u.full_name || '—'}</dd>
                                 </div>
                                 <div className="flex items-center justify-between gap-3 py-1.5">
-                                  <dt className="text-gray-500 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email</dt>
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> {t('Email')}</dt>
                                   <dd className="font-medium text-gray-900 text-right truncate">{u.email}</dd>
                                 </div>
                                 <div className="flex items-center justify-between gap-3 py-1.5">
-                                  <dt className="text-gray-500 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Creato il</dt>
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {t('Creato il')}</dt>
                                   <dd className="font-medium text-gray-900 text-right">{formatDate(u.created_at)}</dd>
                                 </div>
                                 <div className="flex items-center justify-between gap-3 py-1.5">
-                                  <dt className="text-gray-500 flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5" /> Aggiornato</dt>
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5" /> {t('Aggiornato')}</dt>
                                   <dd className="font-medium text-gray-900 text-right">{formatDate(u.updated_at)}</dd>
                                 </div>
                                 <div className="flex items-center justify-between gap-3 py-1.5">
-                                  <dt className="text-gray-500 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Ultimo login</dt>
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {t('Ultimo login')}</dt>
                                   <dd className="font-medium text-gray-900 text-right">{formatDate(u.last_login)}</dd>
                                 </div>
                               </dl>
@@ -1066,9 +1068,9 @@ const Admin = () => {
                           <div className="bg-white rounded-xl border border-gray-100 p-4">
                             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                               <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 flex items-center gap-2">
-                                <Shield className="w-3.5 h-3.5" /> Permessi
+                                <Shield className="w-3.5 h-3.5" /> {t('Permessi')}
                               </h4>
-                              <p className="text-xs text-gray-400">Click per ciclare: Eredita &rarr; Forza Sì &rarr; Forza No</p>
+                              <p className="text-xs text-gray-400">{t('Click per ciclare: Eredita')} &rarr; {t('Forza Sì')} &rarr; {t('Forza No')}</p>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                               {ALL_PERMISSIONS.map(perm => {
@@ -1077,13 +1079,13 @@ const Admin = () => {
                                 const allowed = override === true || (override == null && hasFromRole);
                                 let stateText, stateCls, chipCls, Icon;
                                 if (override === true) {
-                                  stateText = 'Forza Sì'; stateCls = 'bg-green-200 text-green-900'; chipCls = 'bg-green-50 border-green-300'; Icon = Check;
+                                  stateText = t('Forza Sì'); stateCls = 'bg-green-200 text-green-900'; chipCls = 'bg-green-50 border-green-300'; Icon = Check;
                                 } else if (override === false) {
-                                  stateText = 'Forza No'; stateCls = 'bg-red-200 text-red-900'; chipCls = 'bg-red-50 border-red-300'; Icon = X;
+                                  stateText = t('Forza No'); stateCls = 'bg-red-200 text-red-900'; chipCls = 'bg-red-50 border-red-300'; Icon = X;
                                 } else if (hasFromRole) {
-                                  stateText = 'Eredita'; stateCls = 'bg-blue-100 text-blue-700'; chipCls = 'bg-white border-blue-200'; Icon = Check;
+                                  stateText = t('Eredita'); stateCls = 'bg-blue-100 text-blue-700'; chipCls = 'bg-white border-blue-200'; Icon = Check;
                                 } else {
-                                  stateText = 'Eredita'; stateCls = 'bg-gray-100 text-gray-500'; chipCls = 'bg-white border-gray-200'; Icon = Minus;
+                                  stateText = t('Eredita'); stateCls = 'bg-gray-100 text-gray-500'; chipCls = 'bg-white border-gray-200'; Icon = Minus;
                                 }
                                 return (
                                   <button
@@ -1093,7 +1095,7 @@ const Admin = () => {
                                   >
                                     <span className="flex items-center gap-2 min-w-0">
                                       <Icon className={`w-4 h-4 flex-shrink-0 ${allowed ? 'text-green-600' : 'text-gray-400'}`} />
-                                      <span className="text-gray-700 truncate">{PERMISSION_LABELS[perm]}</span>
+                                      <span className="text-gray-700 truncate">{t(PERMISSION_LABELS[perm])}</span>
                                     </span>
                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${stateCls}`}>{stateText}</span>
                                   </button>
@@ -1106,23 +1108,23 @@ const Admin = () => {
                           <div className="bg-white rounded-xl border border-gray-100 p-4">
                             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                               <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 flex items-center gap-2">
-                                <Coins className="w-3.5 h-3.5" /> Gestione crediti
+                                <Coins className="w-3.5 h-3.5" /> {t('Gestione crediti')}
                               </h4>
                               <span className="text-sm text-gray-500">
-                                Saldo attuale: <span className="font-bold text-orange-600">{u.credits === -1 ? '∞' : u.credits}</span>
+                                {t('Saldo attuale:')} <span className="font-bold text-orange-600">{u.credits === -1 ? '∞' : u.credits}</span>
                               </span>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-[11rem_1fr_auto] gap-2">
                               <input
                                 type="number"
-                                placeholder="Quantità (es. 100 o -50)"
+                                placeholder={t('Quantità (es. 100 o -50)')}
                                 className="input"
                                 value={creditAmount}
                                 onChange={(e) => setCreditAmount(e.target.value)}
                               />
                               <input
                                 type="text"
-                                placeholder="Motivazione..."
+                                placeholder={t('Motivazione...')}
                                 className="input"
                                 value={creditDescription}
                                 onChange={(e) => setCreditDescription(e.target.value)}
@@ -1137,7 +1139,7 @@ const Admin = () => {
                                 ) : (
                                   <Coins className="w-4 h-4" />
                                 )}
-                                Applica
+                                {t('Applica')}
                               </button>
                             </div>
                           </div>
@@ -1146,7 +1148,7 @@ const Admin = () => {
                           {transactions[u.id] && transactions[u.id].length > 0 && (
                             <div className="bg-white rounded-xl border border-gray-100 p-4">
                               <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-3 flex items-center gap-2">
-                                <Clock className="w-3.5 h-3.5" /> Ultime transazioni
+                                <Clock className="w-3.5 h-3.5" /> {t('Ultime transazioni')}
                               </h4>
                               <div className="space-y-2 max-h-60 overflow-y-auto">
                                 {transactions[u.id].slice(0, 10).map((tx, i) => (
@@ -1174,7 +1176,7 @@ const Admin = () => {
                   {users.length === 0 && (
                     <div className="glass rounded-2xl p-8 text-center">
                       <UserIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">Nessun utente trovato</p>
+                      <p className="text-gray-500">{t('Nessun utente trovato')}</p>
                     </div>
                   )}
                 </div>
@@ -1199,13 +1201,13 @@ const Admin = () => {
                           <h3 className="text-lg font-bold text-gray-900 capitalize">{role.name}</h3>
                           <p className="text-sm text-gray-500">{role.description}</p>
                           {role.is_default && (
-                            <span className="badge badge-success mt-1">Ruolo Default</span>
+                            <span className="badge badge-success mt-1">{t('Ruolo Default')}</span>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    <h4 className="text-sm font-medium text-gray-600 mb-3">Permessi assegnati:</h4>
+                    <h4 className="text-sm font-medium text-gray-600 mb-3">{t('Permessi assegnati:')}</h4>
                     <div className="flex flex-wrap gap-2">
                       {ALL_PERMISSIONS.map(perm => {
                         const hasIt = role.permissions.includes(perm);
@@ -1225,7 +1227,7 @@ const Admin = () => {
                             }`}
                           >
                             {hasIt ? <CheckCircle2 className="w-4 h-4 inline mr-1" /> : null}
-                            {PERMISSION_LABELS[perm]}
+                            {t(PERMISSION_LABELS[perm])}
                           </button>
                         );
                       })}
@@ -1244,7 +1246,7 @@ const Admin = () => {
                       <Users className="w-7 h-7 text-white" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Utenti Totali</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Utenti Totali')}</p>
                       <p className="text-3xl font-bold text-gray-900">{stats.total_users}</p>
                     </div>
                   </div>
@@ -1256,7 +1258,7 @@ const Admin = () => {
                       <CheckCircle2 className="w-7 h-7 text-white" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Utenti Attivi</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Utenti Attivi')}</p>
                       <p className="text-3xl font-bold text-gray-900">{stats.active_users}</p>
                     </div>
                   </div>
@@ -1268,7 +1270,7 @@ const Admin = () => {
                       <Coins className="w-7 h-7 text-white" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Crediti Distribuiti</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Crediti Distribuiti')}</p>
                       <p className="text-3xl font-bold text-gray-900">{stats.total_credits_distributed?.toLocaleString()}</p>
                     </div>
                   </div>
@@ -1280,7 +1282,7 @@ const Admin = () => {
                       <Minus className="w-7 h-7 text-white" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Crediti Consumati</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Crediti Consumati')}</p>
                       <p className="text-3xl font-bold text-gray-900">{stats.total_credits_consumed?.toLocaleString()}</p>
                     </div>
                   </div>
@@ -1292,7 +1294,7 @@ const Admin = () => {
                       <Sparkles className="w-7 h-7 text-white" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Operazioni Oggi</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Operazioni Oggi')}</p>
                       <p className="text-3xl font-bold text-gray-900">{stats.operations_today}</p>
                     </div>
                   </div>
@@ -1304,7 +1306,7 @@ const Admin = () => {
                       <BarChart3 className="w-7 h-7 text-white" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Operazioni Settimana</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Operazioni Settimana')}</p>
                       <p className="text-3xl font-bold text-gray-900">{stats.operations_this_week}</p>
                     </div>
                   </div>
@@ -1321,20 +1323,20 @@ const Admin = () => {
                     <div>
                       <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                         <Coins className="w-6 h-6 text-orange-500" />
-                        Configurazione Costi Crediti
+                        {t('Configurazione Costi Crediti')}
                       </h2>
                       <p className="text-sm text-gray-500 mt-1">
-                        Personalizza i costi in crediti per ogni operazione della piattaforma.
+                        {t('Personalizza i costi in crediti per ogni operazione della piattaforma.')}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       {isDefaultCosts ? (
                         <span className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium">
-                          Valori Default
+                          {t('Valori Default')}
                         </span>
                       ) : (
                         <span className="px-3 py-1.5 bg-orange-50 text-orange-700 rounded-lg text-sm font-medium">
-                          Personalizzati
+                          {t('Personalizzati')}
                         </span>
                       )}
                     </div>
@@ -1359,11 +1361,11 @@ const Admin = () => {
                 <div className="glass rounded-2xl p-5">
                   <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
                     <span className="text-xl">💶</span>
-                    Conversione EUR / Credito
+                    {t('Conversione EUR / Credito')}
                   </h3>
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2 flex-1">
-                      <span className="text-sm text-gray-600">1 credito =</span>
+                      <span className="text-sm text-gray-600">{t('1 credito =')}</span>
                       <input
                         type="number"
                         min="0"
@@ -1379,21 +1381,21 @@ const Admin = () => {
                         try {
                           await updateAdminEurPerCredit(eurPerCredit);
                           setEurPerCreditSaved(eurPerCredit);
-                          setCostsSuccess('Tasso EUR/credito aggiornato!');
+                          setCostsSuccess(t('Tasso EUR/credito aggiornato!'));
                           setTimeout(() => setCostsSuccess(''), 3000);
                         } catch (e) {
-                          setCostsError('Errore nel salvataggio del tasso EUR/credito');
+                          setCostsError(t('Errore nel salvataggio del tasso EUR/credito'));
                           setTimeout(() => setCostsError(''), 3000);
                         }
                       }}
                       disabled={eurPerCredit === eurPerCreditSaved}
                       className="btn btn-primary text-sm disabled:opacity-50"
                     >
-                      Salva
+                      {t('Salva')}
                     </button>
                   </div>
                   <p className="text-xs text-gray-400 mt-2">
-                    Tasso di conversione per implementazioni future (pricing utenti, acquisto crediti).
+                    {t('Tasso di conversione per implementazioni future (pricing utenti, acquisto crediti).')}
                   </p>
                 </div>
 
@@ -1403,15 +1405,15 @@ const Admin = () => {
                     <div key={opType} className="glass rounded-2xl p-5">
                       <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
                         <span className="text-xl">{opConfig.icon}</span>
-                        {opConfig.label}
+                        {t(opConfig.label)}
                       </h3>
                       {opConfig.description && (
-                        <p className="text-xs text-gray-500 mb-3">{opConfig.description}</p>
+                        <p className="text-xs text-gray-500 mb-3">{t(opConfig.description)}</p>
                       )}
                       <div className="space-y-3">
                         {Object.entries(opConfig.fields).map(([field, fieldLabel]) => (
                           <div key={field} className="flex items-center justify-between gap-4">
-                            <label className="text-sm text-gray-600 flex-1">{fieldLabel}</label>
+                            <label className="text-sm text-gray-600 flex-1">{t(fieldLabel)}</label>
                             <div className="flex items-center gap-2">
                               <input
                                 type="number"
@@ -1421,7 +1423,7 @@ const Admin = () => {
                                 value={editedCosts[opType]?.[field] ?? 0}
                                 onChange={(e) => handleCostChange(opType, field, e.target.value)}
                               />
-                              <span className="text-xs text-gray-400 w-12">crediti</span>
+                              <span className="text-xs text-gray-400 w-12">{t('crediti')}</span>
                             </div>
                           </div>
                         ))}
@@ -1441,13 +1443,13 @@ const Admin = () => {
                           className="btn btn-ghost text-orange-600 hover:bg-orange-50"
                         >
                           <RotateCcw className="w-4 h-4" />
-                          Ripristina Default
+                          {t('Ripristina Default')}
                         </button>
                       )}
                       {hasUnsavedCostChanges() && (
                         <span className="text-sm text-amber-600 flex items-center gap-1">
                           <AlertTriangle className="w-4 h-4" />
-                          Modifiche non salvate
+                          {t('Modifiche non salvate')}
                         </span>
                       )}
                     </div>
@@ -1457,9 +1459,9 @@ const Admin = () => {
                       className="btn btn-primary"
                     >
                       {costsSaving ? (
-                        <><RefreshCw className="w-4 h-4 animate-spin" /> Salvataggio...</>
+                        <><RefreshCw className="w-4 h-4 animate-spin" /> {t('Salvataggio...')}</>
                       ) : (
-                        <><Save className="w-4 h-4" /> Salva Modifiche</>
+                        <><Save className="w-4 h-4" /> {t('Salva Modifiche')}</>
                       )}
                     </button>
                   </div>
@@ -1474,19 +1476,19 @@ const Admin = () => {
                           <AlertTriangle className="w-6 h-6 text-amber-600" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-gray-900">Ripristina Valori Default</h3>
-                          <p className="text-sm text-gray-500">Questa azione non e' reversibile</p>
+                          <h3 className="font-bold text-gray-900">{t('Ripristina Valori Default')}</h3>
+                          <p className="text-sm text-gray-500">{t("Questa azione non e' reversibile")}</p>
                         </div>
                       </div>
                       <p className="text-sm text-gray-600 mb-6">
-                        Tutti i costi personalizzati verranno cancellati e ripristinati ai valori predefiniti del sistema. Sei sicuro?
+                        {t('Tutti i costi personalizzati verranno cancellati e ripristinati ai valori predefiniti del sistema. Sei sicuro?')}
                       </p>
                       <div className="flex justify-end gap-3">
                         <button
                           onClick={() => setShowResetConfirm(false)}
                           className="btn btn-ghost"
                         >
-                          Annulla
+                          {t('Annulla')}
                         </button>
                         <button
                           onClick={handleResetCosts}
@@ -1494,9 +1496,9 @@ const Admin = () => {
                           className="btn bg-amber-500 hover:bg-amber-600 text-white"
                         >
                           {costsSaving ? (
-                            <><RefreshCw className="w-4 h-4 animate-spin" /> Ripristino...</>
+                            <><RefreshCw className="w-4 h-4 animate-spin" /> {t('Ripristino...')}</>
                           ) : (
-                            <><RotateCcw className="w-4 h-4" /> Ripristina</>
+                            <><RotateCcw className="w-4 h-4" /> {t('Ripristina')}</>
                           )}
                         </button>
                       </div>
@@ -1515,10 +1517,10 @@ const Admin = () => {
                     <div>
                       <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                         <FileText className="w-6 h-6 text-orange-500" />
-                        Template di Esportazione
+                        {t('Template di Esportazione')}
                       </h2>
                       <p className="text-sm text-gray-500 mt-1">
-                        Crea e personalizza template per l'esportazione delle tesi in PDF e DOCX.
+                        {t("Crea e personalizza template per l'esportazione delle tesi in PDF e DOCX.")}
                       </p>
                     </div>
                     <button
@@ -1527,7 +1529,7 @@ const Admin = () => {
                       className="btn btn-primary"
                     >
                       <Plus className="w-4 h-4" />
-                      Nuovo Template
+                      {t('Nuovo Template')}
                     </button>
                   </div>
                 </div>
@@ -1553,7 +1555,7 @@ const Admin = () => {
                       <div key={tpl.id} className="glass rounded-2xl p-5 relative">
                         {tpl.is_default && (
                           <span className="absolute top-3 right-3 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
-                            Default
+                            {t('Default')}
                           </span>
                         )}
                         <div className="flex items-center gap-3 mb-4">
@@ -1585,21 +1587,21 @@ const Admin = () => {
                             className="btn btn-secondary flex-1 text-sm py-2"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
-                            Modifica
+                            {t('Modifica')}
                           </button>
                           {!tpl.is_default && (
                             <>
                               <button
                                 onClick={() => handleSetDefaultTemplate(tpl.id)}
                                 className="btn btn-ghost text-sm py-2"
-                                title="Imposta come default"
+                                title={t('Imposta come default')}
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => setShowDeleteTemplate(tpl.id)}
                                 className="btn btn-ghost text-red-500 hover:bg-red-50 text-sm py-2"
-                                title="Elimina"
+                                title={t('Elimina')}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1612,7 +1614,7 @@ const Admin = () => {
                     {templates.length === 0 && (
                       <div className="col-span-full glass rounded-2xl p-8 text-center">
                         <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-gray-500">Nessun template trovato. Crea il primo!</p>
+                        <p className="text-gray-500">{t('Nessun template trovato. Crea il primo!')}</p>
                       </div>
                     )}
                   </div>
@@ -1633,7 +1635,7 @@ const Admin = () => {
                             className="input text-lg font-bold py-1"
                             value={editedTemplate.name}
                             onChange={(e) => setEditedTemplate(prev => ({ ...prev, name: e.target.value }))}
-                            placeholder="Nome template"
+                            placeholder={t('Nome template')}
                           />
                         </div>
                       </div>
@@ -1643,7 +1645,7 @@ const Admin = () => {
                           className="btn btn-ghost"
                         >
                           <X className="w-4 h-4" />
-                          Annulla
+                          {t('Annulla')}
                         </button>
                         <button
                           onClick={handleSaveTemplate}
@@ -1651,9 +1653,9 @@ const Admin = () => {
                           className="btn btn-primary"
                         >
                           {templateSaving ? (
-                            <><RefreshCw className="w-4 h-4 animate-spin" /> Salvataggio...</>
+                            <><RefreshCw className="w-4 h-4 animate-spin" /> {t('Salvataggio...')}</>
                           ) : (
-                            <><Save className="w-4 h-4" /> Salva Template</>
+                            <><Save className="w-4 h-4" /> {t('Salva Template')}</>
                           )}
                         </button>
                       </div>
@@ -1670,7 +1672,7 @@ const Admin = () => {
                         }`}
                       >
                         <FileText className="w-4 h-4 inline-block mr-1.5" />
-                        Impostazioni PDF
+                        {t('Impostazioni PDF')}
                       </button>
                       <button
                         onClick={() => setTemplateSection('docx')}
@@ -1681,7 +1683,7 @@ const Admin = () => {
                         }`}
                       >
                         <FileText className="w-4 h-4 inline-block mr-1.5" />
-                        Impostazioni DOCX
+                        {t('Impostazioni DOCX')}
                       </button>
                     </div>
 
@@ -1694,7 +1696,7 @@ const Admin = () => {
                       ) : (
                         <div className="text-center py-8 text-gray-400">
                           <HelpCircle className="w-8 h-8 mx-auto mb-2" />
-                          <p>Caricamento parametri...</p>
+                          <p>{t('Caricamento parametri...')}</p>
                         </div>
                       )}
                     </div>
@@ -1710,19 +1712,19 @@ const Admin = () => {
                           <Trash2 className="w-6 h-6 text-red-600" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-gray-900">Elimina Template</h3>
-                          <p className="text-sm text-gray-500">Questa azione non e' reversibile</p>
+                          <h3 className="font-bold text-gray-900">{t('Elimina Template')}</h3>
+                          <p className="text-sm text-gray-500">{t("Questa azione non e' reversibile")}</p>
                         </div>
                       </div>
                       <p className="text-sm text-gray-600 mb-6">
-                        Il template verra' eliminato definitivamente. Gli utenti che lo utilizzavano passeranno al template default. Sei sicuro?
+                        {t("Il template verra' eliminato definitivamente. Gli utenti che lo utilizzavano passeranno al template default. Sei sicuro?")}
                       </p>
                       <div className="flex justify-end gap-3">
                         <button
                           onClick={() => setShowDeleteTemplate(null)}
                           className="btn btn-ghost"
                         >
-                          Annulla
+                          {t('Annulla')}
                         </button>
                         <button
                           onClick={() => handleDeleteTemplate(showDeleteTemplate)}
@@ -1730,9 +1732,9 @@ const Admin = () => {
                           className="btn bg-red-500 hover:bg-red-600 text-white"
                         >
                           {templateSaving ? (
-                            <><RefreshCw className="w-4 h-4 animate-spin" /> Eliminazione...</>
+                            <><RefreshCw className="w-4 h-4 animate-spin" /> {t('Eliminazione...')}</>
                           ) : (
-                            <><Trash2 className="w-4 h-4" /> Elimina</>
+                            <><Trash2 className="w-4 h-4" /> {t('Elimina')}</>
                           )}
                         </button>
                       </div>
@@ -1747,12 +1749,12 @@ const Admin = () => {
               <div className="space-y-4">
                 {/* Header + Create button */}
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-gray-800">API Keys</h2>
+                  <h2 className="text-lg font-semibold text-gray-800">{t('API Keys')}</h2>
                   <button
                     onClick={() => { setShowCreateKey(true); setNewKeyResult(null); setNewKeyForm({ user_id: '', name: '', expires_in_days: '', rate_limit_per_minute: 30 }); }}
                     className="btn-primary flex items-center gap-2"
                   >
-                    <Plus className="w-4 h-4" /> Crea API Key
+                    <Plus className="w-4 h-4" /> {t('Crea API Key')}
                   </button>
                 </div>
 
@@ -1763,7 +1765,7 @@ const Admin = () => {
                       <div className="space-y-3">
                         <div className="flex items-center gap-2 text-green-700">
                           <CheckCircle2 className="w-5 h-5" />
-                          <span className="font-semibold">API Key creata!</span>
+                          <span className="font-semibold">{t('API Key creata!')}</span>
                         </div>
                         <div className="bg-gray-900 text-green-400 rounded-xl p-4 font-mono text-sm break-all">
                           {newKeyResult.key}
@@ -1774,48 +1776,48 @@ const Admin = () => {
                             className="btn-secondary flex items-center gap-1.5"
                           >
                             {keyCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                            {keyCopied ? 'Copiata!' : 'Copia chiave'}
+                            {keyCopied ? t('Copiata!') : t('Copia chiave')}
                           </button>
                         </div>
                         <p className="text-xs text-red-600 font-medium">
-                          Salva questa chiave ora. Non verra' mai piu' mostrata.
+                          {t("Salva questa chiave ora. Non verra' mai piu' mostrata.")}
                         </p>
                         <button
                           onClick={() => { setShowCreateKey(false); setNewKeyResult(null); loadData(); }}
                           className="btn-ghost text-sm"
                         >
-                          Chiudi
+                          {t('Chiudi')}
                         </button>
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        <h3 className="font-semibold text-gray-800">Nuova API Key</h3>
+                        <h3 className="font-semibold text-gray-800">{t('Nuova API Key')}</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Utente</label>
+                            <label className="block text-xs text-gray-500 mb-1">{t('Utente')}</label>
                             <select
                               value={newKeyForm.user_id}
                               onChange={e => setNewKeyForm(f => ({ ...f, user_id: e.target.value }))}
                               className="input w-full"
                             >
-                              <option value="">Seleziona utente...</option>
+                              <option value="">{t('Seleziona utente...')}</option>
                               {users.map(u => (
                                 <option key={u.id} value={u.id}>{u.email} ({u.username})</option>
                               ))}
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Nome</label>
+                            <label className="block text-xs text-gray-500 mb-1">{t('Nome')}</label>
                             <input
                               type="text"
                               value={newKeyForm.name}
                               onChange={e => setNewKeyForm(f => ({ ...f, name: e.target.value }))}
                               className="input w-full"
-                              placeholder="Es. Produzione, Test..."
+                              placeholder={t('Es. Produzione, Test...')}
                             />
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Scadenza (giorni, vuoto = mai)</label>
+                            <label className="block text-xs text-gray-500 mb-1">{t('Scadenza (giorni, vuoto = mai)')}</label>
                             <input
                               type="number"
                               value={newKeyForm.expires_in_days}
@@ -1827,7 +1829,7 @@ const Admin = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Rate limit (req/min)</label>
+                            <label className="block text-xs text-gray-500 mb-1">{t('Rate limit (req/min)')}</label>
                             <input
                               type="number"
                               value={newKeyForm.rate_limit_per_minute}
@@ -1859,10 +1861,10 @@ const Admin = () => {
                             className="btn-primary flex items-center gap-1.5"
                           >
                             {keyCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
-                            Crea
+                            {t('Crea')}
                           </button>
                           <button onClick={() => setShowCreateKey(false)} className="btn-ghost">
-                            <X className="w-4 h-4" /> Annulla
+                            <X className="w-4 h-4" /> {t('Annulla')}
                           </button>
                         </div>
                       </div>
@@ -1874,7 +1876,7 @@ const Admin = () => {
                 {apiKeys.length === 0 ? (
                   <div className="card p-8 text-center text-gray-400">
                     <Key className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                    <p>Nessuna API key creata</p>
+                    <p>{t('Nessuna API key creata')}</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1888,21 +1890,21 @@ const Admin = () => {
                                 ? (k.expires_at && new Date(k.expires_at) < new Date() ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700')
                                 : 'bg-red-100 text-red-700'
                             }`}>
-                              {!k.is_active ? 'Revocata' : (k.expires_at && new Date(k.expires_at) < new Date() ? 'Scaduta' : 'Attiva')}
+                              {!k.is_active ? t('Revocata') : (k.expires_at && new Date(k.expires_at) < new Date() ? t('Scaduta') : t('Attiva'))}
                             </span>
                           </div>
                           <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                             <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{k.key_prefix}...</span>
                             <span>{k.user_email}</span>
-                            <span>{k.rate_limit_per_minute} req/min</span>
-                            {k.last_used_at && <span>Ultimo uso: {new Date(k.last_used_at).toLocaleDateString('it-IT')}</span>}
-                            {k.expires_at && <span>Scade: {new Date(k.expires_at).toLocaleDateString('it-IT')}</span>}
+                            <span>{t('{{n}} req/min', { n: k.rate_limit_per_minute })}</span>
+                            {k.last_used_at && <span>{t('Ultimo uso:')} {new Date(k.last_used_at).toLocaleDateString('it-IT')}</span>}
+                            {k.expires_at && <span>{t('Scade:')} {new Date(k.expires_at).toLocaleDateString('it-IT')}</span>}
                           </div>
                         </div>
                         {k.is_active && (
                           <button
                             onClick={async () => {
-                              if (!confirm(`Revocare la key "${k.name}"?`)) return;
+                              if (!confirm(t('Revocare la key "{{name}}"?', { name: k.name }))) return;
                               try {
                                 await revokeApiKey(k.id);
                                 loadData();
@@ -1912,7 +1914,7 @@ const Admin = () => {
                             }}
                             className="btn-ghost text-red-500 hover:text-red-700 flex items-center gap-1 text-sm ml-3"
                           >
-                            <Trash2 className="w-4 h-4" /> Revoca
+                            <Trash2 className="w-4 h-4" /> {t('Revoca')}
                           </button>
                         )}
                       </div>

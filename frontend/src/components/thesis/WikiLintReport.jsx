@@ -1,6 +1,8 @@
 import { AlertTriangle, BookOpen, GitBranch, Info, Lightbulb, Link2Off, Search, FileQuestion } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const Section = ({ icon: Icon, title, items, color = 'slate', renderItem }) => {
+  const { t } = useTranslation();
   if (!items || items.length === 0) return null;
   const palette = {
     red: 'bg-red-50 border-red-200 text-red-800',
@@ -26,7 +28,7 @@ const Section = ({ icon: Icon, title, items, color = 'slate', renderItem }) => {
           </li>
         ))}
         {items.length > 8 && (
-          <li className="text-slate-500 italic">… e altri {items.length - 8}</li>
+          <li className="text-slate-500 italic">{t('… e altri {{n}}', { n: items.length - 8 })}</li>
         )}
       </ul>
     </div>
@@ -34,10 +36,11 @@ const Section = ({ icon: Icon, title, items, color = 'slate', renderItem }) => {
 };
 
 const WikiLintReport = ({ report, summary }) => {
+  const { t } = useTranslation();
   if (!report) {
     return (
       <div className="text-center py-8 text-slate-500 text-sm">
-        Nessun report di lint disponibile.
+        {t('Nessun report di lint disponibile.')}
       </div>
     );
   }
@@ -47,7 +50,7 @@ const WikiLintReport = ({ report, summary }) => {
       <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
         <div className="flex items-center gap-2 mb-1">
           <AlertTriangle className="w-4 h-4" />
-          <span className="font-semibold">Errore durante il lint</span>
+          <span className="font-semibold">{t('Errore durante il lint')}</span>
         </div>
         <p className="text-xs font-mono">{report.error}</p>
       </div>
@@ -72,7 +75,7 @@ const WikiLintReport = ({ report, summary }) => {
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
           <div className="flex items-center gap-2 mb-1 text-slate-600">
             <Info className="w-4 h-4" />
-            <span className="font-semibold">Sintesi del lint</span>
+            <span className="font-semibold">{t('Sintesi del lint')}</span>
           </div>
           <p className="text-xs leading-relaxed whitespace-pre-wrap">{summary}</p>
         </div>
@@ -82,30 +85,30 @@ const WikiLintReport = ({ report, summary }) => {
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4" />
-            <span className="font-semibold">Wiki coerente.</span>
+            <span className="font-semibold">{t('Wiki coerente.')}</span>
           </div>
-          <p className="text-xs mt-1">Nessun problema rilevato dal lint. Puoi procedere alla generazione capitoli.</p>
+          <p className="text-xs mt-1">{t('Nessun problema rilevato dal lint. Puoi procedere alla generazione capitoli.')}</p>
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Section
           icon={GitBranch}
-          title="Contraddizioni"
+          title={t('Contraddizioni')}
           color="red"
           items={contradictions}
           renderItem={(c) => (
             <span>
               <strong>{c.claim}</strong>
               {Array.isArray(c.sources) && c.sources.length > 0 && (
-                <em> — fonti: {c.sources.join(', ')}</em>
+                <em> {t('— fonti: {{sources}}', { sources: c.sources.join(', ') })}</em>
               )}
             </span>
           )}
         />
         <Section
           icon={Link2Off}
-          title="Wikilink rotti"
+          title={t('Wikilink rotti')}
           color="amber"
           items={brokenLinks}
           renderItem={(b) => (
@@ -116,38 +119,38 @@ const WikiLintReport = ({ report, summary }) => {
         />
         <Section
           icon={FileQuestion}
-          title="Pagine orfane"
+          title={t('Pagine orfane')}
           color="amber"
           items={orphanPages}
         />
         <Section
           icon={Search}
-          title="Concetti mancanti"
+          title={t('Concetti mancanti')}
           color="blue"
           items={missingConcepts}
         />
         <Section
           icon={AlertTriangle}
-          title="Frontmatter da correggere"
+          title={t('Frontmatter da correggere')}
           color="amber"
           items={fmIssues}
           renderItem={(f) => <span><strong>{f.page}</strong>: {f.issue}</span>}
         />
         <Section
           icon={AlertTriangle}
-          title="Gap tematici"
+          title={t('Gap tematici')}
           color="red"
           items={gaps}
         />
         <Section
           icon={Lightbulb}
-          title="Suggerimenti di esplorazione"
+          title={t('Suggerimenti di esplorazione')}
           color="blue"
           items={suggestions}
         />
         <Section
           icon={Info}
-          title="Pagine stantie"
+          title={t('Pagine stantie')}
           color="slate"
           items={stalePages}
         />

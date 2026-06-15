@@ -2,8 +2,10 @@ import { useState, useMemo, useEffect } from 'react';
 import { Download, FileText, Eye, Copy, Check, Loader, FileType, FileCode, BookOpen, List, Calendar, User, Settings, ChevronDown, Shield, AlertTriangle } from 'lucide-react';
 import { exportThesis, getExportTemplates, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 const ThesisPreview = ({ thesis, content }) => {
+  const { t } = useTranslation();
   const { hasPermission } = useAuth();
   // Detector AI sulla tesi: ammesso a chi ha 'compilatio_scan' (full)
   // OPPURE 'compilatio_scan_thesis' (granulare). hasPermission e' true di default per gli admin.
@@ -34,7 +36,7 @@ const ThesisPreview = ({ thesis, content }) => {
         const tpls = data.templates || [];
         setTemplates(tpls);
         // Imposta il default
-        const defaultTpl = tpls.find(t => t.is_default);
+        const defaultTpl = tpls.find(tpl => tpl.is_default);
         if (defaultTpl) setSelectedTemplate(defaultTpl.id);
         else if (tpls.length > 0) setSelectedTemplate(tpls[0].id);
       } catch (err) {
@@ -102,11 +104,11 @@ const ThesisPreview = ({ thesis, content }) => {
           setCompilatioResult(finalStatus.result);
         }
       } else if (finalStatus.status === 'failed') {
-        setCompilatioError(finalStatus.error || 'Scansione fallita');
+        setCompilatioError(finalStatus.error || t('Scansione fallita'));
       }
     } catch (error) {
       console.error('Errore scansione Compilatio:', error);
-      setCompilatioError(error.response?.data?.detail || 'Errore durante la scansione');
+      setCompilatioError(error.response?.data?.detail || t('Errore durante la scansione'));
     } finally {
       setCompilatioScanning(false);
     }
@@ -123,8 +125,8 @@ const ThesisPreview = ({ thesis, content }) => {
     } catch (error) {
       console.error('Errore download report:', error);
       const msg = error?.code === 'ECONNABORTED'
-        ? 'Il download e\' scaduto. Riprova fra qualche istante.'
-        : (error?.response?.data?.detail || 'Errore nel download del report');
+        ? t('Il download e\' scaduto. Riprova fra qualche istante.')
+        : (error?.response?.data?.detail || t('Errore nel download del report'));
       alert(msg);
     } finally {
       setDownloadingReport(false);
@@ -139,10 +141,10 @@ const ThesisPreview = ({ thesis, content }) => {
   };
 
   const formatExportOptions = [
-    { value: 'pdf', label: 'PDF', icon: FileText, description: 'Documento formattato' },
-    { value: 'docx', label: 'DOCX', icon: FileType, description: 'Documento Word' },
-    { value: 'txt', label: 'TXT', icon: FileType, description: 'Testo semplice' },
-    { value: 'md', label: 'Markdown', icon: FileCode, description: 'Con formattazione' }
+    { value: 'pdf', label: 'PDF', icon: FileText, description: t('Documento formattato') },
+    { value: 'docx', label: 'DOCX', icon: FileType, description: t('Documento Word') },
+    { value: 'txt', label: 'TXT', icon: FileType, description: t('Testo semplice') },
+    { value: 'md', label: 'Markdown', icon: FileCode, description: t('Con formattazione') }
   ];
 
   // Estrai la struttura dei capitoli dalla tesi
@@ -204,9 +206,9 @@ const ThesisPreview = ({ thesis, content }) => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Anteprima e Download</h2>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Anteprima e Download')}</h2>
         <p className="text-slate-600">
-          La tua tesi è pronta! Rivedi l'anteprima e scarica nel formato preferito.
+          {t('La tua tesi è pronta! Rivedi l\'anteprima e scarica nel formato preferito.')}
         </p>
       </div>
 
@@ -217,7 +219,7 @@ const ThesisPreview = ({ thesis, content }) => {
             <BookOpen className="w-7 h-7 text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-xl font-bold text-slate-900 break-words">{thesis?.title || 'Titolo non disponibile'}</h3>
+            <h3 className="text-xl font-bold text-slate-900 break-words">{thesis?.title || t('Titolo non disponibile')}</h3>
             {thesis?.description && (
               <p className="text-slate-600 mt-1 break-words">{thesis.description}</p>
             )}
@@ -228,7 +230,7 @@ const ThesisPreview = ({ thesis, content }) => {
               </span>
               <span className="flex items-center gap-1">
                 <List className="w-4 h-4" />
-                {thesis?.num_chapters || chaptersStructure.length} capitoli
+                {t('{{count}} capitoli', { count: thesis?.num_chapters || chaptersStructure.length })}
               </span>
             </div>
           </div>
@@ -238,15 +240,15 @@ const ThesisPreview = ({ thesis, content }) => {
         <div className="mt-4 grid grid-cols-3 gap-4">
           <div className="bg-white/50 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-orange-600">{wordCount.toLocaleString()}</p>
-            <p className="text-xs text-slate-600">Parole</p>
+            <p className="text-xs text-slate-600">{t('Parole')}</p>
           </div>
           <div className="bg-white/50 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-orange-600">{charCount.toLocaleString()}</p>
-            <p className="text-xs text-slate-600">Caratteri</p>
+            <p className="text-xs text-slate-600">{t('Caratteri')}</p>
           </div>
           <div className="bg-white/50 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-orange-600">{paragraphCount}</p>
-            <p className="text-xs text-slate-600">Paragrafi</p>
+            <p className="text-xs text-slate-600">{t('Paragrafi')}</p>
           </div>
         </div>
       </div>
@@ -256,20 +258,20 @@ const ThesisPreview = ({ thesis, content }) => {
         <div className="card">
           <div className="flex items-center gap-2 mb-4">
             <Shield className="w-5 h-5 text-purple-500" />
-            <h3 className="font-semibold text-slate-900">Scansione Detector AI</h3>
+            <h3 className="font-semibold text-slate-900">{t('Scansione Detector AI')}</h3>
           </div>
 
           {!compilatioResult && !compilatioScanning && !compilatioError && (
             <div>
               <p className="text-sm text-slate-600 mb-3">
-                Analizza la tesi per rilevamento AI e plagio.
+                {t('Analizza la tesi per rilevamento AI e plagio.')}
               </p>
               <button
                 onClick={handleCompilatioScan}
                 className="btn gap-2 text-sm bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 h-10"
               >
                 <Shield className="w-4 h-4" />
-                Avvia Scansione Detector AI
+                {t('Avvia Scansione Detector AI')}
               </button>
             </div>
           )}
@@ -278,7 +280,7 @@ const ThesisPreview = ({ thesis, content }) => {
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
               <div className="flex items-center gap-3 mb-2">
                 <Loader className="w-5 h-5 text-purple-600 animate-spin" />
-                <span className="text-purple-700 font-medium text-sm">Scansione Detector AI in corso...</span>
+                <span className="text-purple-700 font-medium text-sm">{t('Scansione Detector AI in corso...')}</span>
               </div>
               <div className="w-full bg-purple-200 rounded-full h-2">
                 <div
@@ -286,7 +288,7 @@ const ThesisPreview = ({ thesis, content }) => {
                   style={{ width: `${compilatioProgress}%` }}
                 ></div>
               </div>
-              <p className="text-xs text-purple-500 mt-1">L'analisi della tesi puo' richiedere alcuni minuti</p>
+              <p className="text-xs text-purple-500 mt-1">{t('L\'analisi della tesi puo\' richiedere alcuni minuti')}</p>
             </div>
           )}
 
@@ -295,7 +297,7 @@ const ThesisPreview = ({ thesis, content }) => {
               <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
               <span className="text-red-700 text-sm">{compilatioError}</span>
               <button onClick={handleCompilatioScan} className="ml-auto text-red-600 hover:text-red-800 text-sm underline">
-                Riprova
+                {t('Riprova')}
               </button>
             </div>
           )}
@@ -303,7 +305,7 @@ const ThesisPreview = ({ thesis, content }) => {
           {compilatioResult && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Risultati analisi</span>
+                <span className="text-sm text-slate-600">{t('Risultati analisi')}</span>
                 {compilatioResult.has_report && (
                   <button
                     onClick={handleDownloadCompilatioReport}
@@ -318,7 +320,7 @@ const ThesisPreview = ({ thesis, content }) => {
                     ) : (
                       <>
                         <FileText className="w-3 h-3" />
-                        Report PDF
+                        {t('Report PDF')}
                       </>
                     )}
                   </button>
@@ -328,19 +330,19 @@ const ThesisPreview = ({ thesis, content }) => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className={`rounded-lg p-3 border ${getAIScoreColor(compilatioResult.ai_generated_percent)}`}>
                   <div className="text-2xl font-bold">{compilatioResult.ai_generated_percent?.toFixed(1)}%</div>
-                  <div className="text-xs font-medium opacity-80">AI Generato</div>
+                  <div className="text-xs font-medium opacity-80">{t('AI Generato')}</div>
                 </div>
                 <div className="rounded-lg p-3 border bg-blue-50 border-blue-200 text-blue-600">
                   <div className="text-2xl font-bold">{compilatioResult.similarity_percent?.toFixed(1)}%</div>
-                  <div className="text-xs font-medium opacity-80">Similarita</div>
+                  <div className="text-xs font-medium opacity-80">{t('Similarita')}</div>
                 </div>
                 <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
                   <div className="text-lg font-bold">{compilatioResult.global_score_percent?.toFixed(1)}%</div>
-                  <div className="text-xs font-medium opacity-80">Score Globale</div>
+                  <div className="text-xs font-medium opacity-80">{t('Score Globale')}</div>
                 </div>
                 <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
                   <div className="text-lg font-bold">{compilatioResult.exact_percent?.toFixed(1)}%</div>
-                  <div className="text-xs font-medium opacity-80">Match Esatti</div>
+                  <div className="text-xs font-medium opacity-80">{t('Match Esatti')}</div>
                 </div>
               </div>
             </div>
@@ -353,7 +355,7 @@ const ThesisPreview = ({ thesis, content }) => {
         <div className="card">
           <div className="flex items-center gap-2 mb-4">
             <List className="w-5 h-5 text-orange-500" />
-            <h3 className="font-semibold text-slate-900">Indice del Documento</h3>
+            <h3 className="font-semibold text-slate-900">{t('Indice del Documento')}</h3>
           </div>
           <div className="space-y-3 max-h-60 overflow-y-auto">
             {chaptersStructure.map((chapter, chIndex) => (
@@ -361,7 +363,7 @@ const ThesisPreview = ({ thesis, content }) => {
                 <p className="font-medium text-slate-800">
                   {chapter.is_special
                     ? (chapter.chapter_title || chapter.title)
-                    : `Capitolo ${chapter.chapter_index || chIndex + 1}: ${chapter.chapter_title || chapter.title}`
+                    : t('Capitolo {{index}}: {{title}}', { index: chapter.chapter_index || chIndex + 1, title: chapter.chapter_title || chapter.title })
                   }
                 </p>
                 {!chapter.is_special && chapter.sections && chapter.sections.length > 0 && (
@@ -391,7 +393,7 @@ const ThesisPreview = ({ thesis, content }) => {
             }`}
           >
             <Eye className="w-4 h-4 inline-block mr-2" />
-            Anteprima
+            {t('Anteprima')}
           </button>
           <button
             onClick={() => setActiveTab('export')}
@@ -402,7 +404,7 @@ const ThesisPreview = ({ thesis, content }) => {
             }`}
           >
             <Download className="w-4 h-4 inline-block mr-2" />
-            Esporta
+            {t('Esporta')}
           </button>
         </div>
 
@@ -419,12 +421,12 @@ const ThesisPreview = ({ thesis, content }) => {
                   {copied ? (
                     <>
                       <Check className="w-4 h-4 mr-1 text-green-500" />
-                      Copiato!
+                      {t('Copiato!')}
                     </>
                   ) : (
                     <>
                       <Copy className="w-4 h-4 mr-1" />
-                      Copia tutto
+                      {t('Copia tutto')}
                     </>
                   )}
                 </button>
@@ -440,7 +442,7 @@ const ThesisPreview = ({ thesis, content }) => {
                   ) : (
                     <div className="text-center py-8">
                       <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-                      <p className="text-slate-500">Nessun contenuto disponibile</p>
+                      <p className="text-slate-500">{t('Nessun contenuto disponibile')}</p>
                     </div>
                   )}
                 </div>
@@ -451,7 +453,7 @@ const ThesisPreview = ({ thesis, content }) => {
               {/* Export Format Selection */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-3">
-                  Seleziona il formato di esportazione
+                  {t('Seleziona il formato di esportazione')}
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {formatExportOptions.map((format) => {
@@ -485,7 +487,7 @@ const ThesisPreview = ({ thesis, content }) => {
               {(exportFormat === 'pdf' || exportFormat === 'docx') && templates.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Template di esportazione
+                    {t('Template di esportazione')}
                   </label>
                   <div className="relative">
                     <select
@@ -495,14 +497,14 @@ const ThesisPreview = ({ thesis, content }) => {
                     >
                       {templates.map(tpl => (
                         <option key={tpl.id} value={tpl.id}>
-                          {tpl.name} {tpl.is_default ? '(Default)' : ''}
+                          {tpl.name} {tpl.is_default ? t('(Default)') : ''}
                         </option>
                       ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    Seleziona il template con le impostazioni di formattazione desiderate.
+                    {t('Seleziona il template con le impostazioni di formattazione desiderate.')}
                   </p>
                 </div>
               )}
@@ -516,19 +518,19 @@ const ThesisPreview = ({ thesis, content }) => {
                 {isExporting ? (
                   <>
                     <Loader className="w-5 h-5 animate-spin" />
-                    Preparazione download...
+                    {t('Preparazione download...')}
                   </>
                 ) : (
                   <>
                     <Download className="w-5 h-5" />
-                    Scarica come {exportFormat.toUpperCase()}
+                    {t('Scarica come {{format}}', { format: exportFormat.toUpperCase() })}
                   </>
                 )}
               </button>
 
               {/* Info */}
               <p className="text-sm text-slate-500 text-center">
-                Il file verrà scaricato automaticamente una volta pronto.
+                {t('Il file verrà scaricato automaticamente una volta pronto.')}
               </p>
             </div>
           )}
@@ -537,7 +539,7 @@ const ThesisPreview = ({ thesis, content }) => {
 
       {/* Footer */}
       <p className="text-sm text-slate-500 text-center">
-        Tesi generata con StyleForge AI
+        {t('Tesi generata con StyleForge AI')}
       </p>
     </div>
   );

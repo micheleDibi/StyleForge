@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ArrowRight, Loader, Sparkles, Home } from 'lucide-react';
 
 // Components
@@ -52,9 +53,14 @@ const STEPS = [
 const PAPER_MIME = 'application/x-research-paper';
 
 const ThesisGenerator = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { isAdmin, credits, refreshUser } = useAuth();
+
+  // Step localizzati: i label di STEPS sono UI copy ma l'array e' a livello
+  // di modulo (senza t in scope), quindi traduciamo qui dentro al componente.
+  const localizedSteps = STEPS.map((step) => ({ ...step, label: t(step.label) }));
   // Una volta creata la tesi, l'addebito flat e' gia' avvenuto (oppure utente admin):
   // gli step successivi (paper, capitoli, sezioni, contenuto) non vanno mostrati come a pagamento.
   // `thesis.credits_charged` viene impostato a true dal backend al momento della create_thesis.
@@ -130,7 +136,7 @@ const ThesisGenerator = () => {
   // Helper: extract error message with credit error detection
   const handleApiError = (err, fallbackMessage) => {
     if (err.isInsufficientCredits || err.response?.status === 402) {
-      const msg = err.creditErrorMessage || err.response?.data?.detail || 'Crediti AI insufficienti.';
+      const msg = err.creditErrorMessage || err.response?.data?.detail || t('Crediti AI insufficienti.');
       setError(typeof msg === 'string' ? msg : fallbackMessage);
       setIsCreditError(true);
     } else if (err.isClientValidation && err.message) {
@@ -165,7 +171,7 @@ const ThesisGenerator = () => {
         setSessions(Array.isArray(sessionsArray) ? sessionsArray.filter(s => s.is_trained) : []);
       } catch (err) {
         console.error('Errore caricamento dati:', err);
-        setError('Errore nel caricamento dei dati. Riprova.');
+        setError(t('Errore nel caricamento dei dati. Riprova.'));
       } finally {
         setIsLoading(false);
       }
@@ -265,7 +271,7 @@ const ThesisGenerator = () => {
           );
         } else if (status === 'failed') {
           setCurrentStep(8);
-          setGenerationStatus({ status: 'failed', error: thesisData.error || 'Generazione fallita' });
+          setGenerationStatus({ status: 'failed', error: thesisData.error || t('Generazione fallita') });
         } else if (status === 'sections_pending' || status === 'sections_confirmed') {
           if (thesisData.chapters) {
             setSectionsData(thesisData.chapters);
@@ -282,7 +288,7 @@ const ThesisGenerator = () => {
         }
       } catch (err) {
         console.error('Errore nel resume della tesi:', err);
-        setError('Errore nel caricamento della tesi. Potrebbe essere stata eliminata.');
+        setError(t('Errore nel caricamento della tesi. Potrebbe essere stata eliminata.'));
       } finally {
         setIsLoading(false);
       }
@@ -324,7 +330,7 @@ const ThesisGenerator = () => {
       };
       thesisData.custom_outline = cleaned;
       if (cleaned.chapters.length === 0) {
-        const err = new Error('L\'indice personalizzato deve avere almeno 1 capitolo con titolo e almeno 1 paragrafo con titolo.');
+        const err = new Error(t('L\'indice personalizzato deve avere almeno 1 capitolo con titolo e almeno 1 paragrafo con titolo.'));
         err.isClientValidation = true;
         throw err;
       }
@@ -381,7 +387,7 @@ const ThesisGenerator = () => {
     await showCreditConfirmation(
       'thesis_chapters',
       { attachment_chars: attChars },
-      'Genera Struttura Capitoli',
+      t('Genera Struttura Capitoli'),
       async () => {
         setIsLoading(true);
         setError(null);
@@ -403,7 +409,7 @@ const ThesisGenerator = () => {
           setThesis(updatedThesis);
         } catch (err) {
           console.error('Errore creazione tesi:', err);
-          handleApiError(err, 'Errore nella creazione della tesi');
+          handleApiError(err, t('Errore nella creazione della tesi'));
           setIsGeneratingChapters(false);
         } finally {
           setIsLoading(false);
@@ -418,7 +424,7 @@ const ThesisGenerator = () => {
     await showCreditConfirmation(
       'thesis_sections',
       {},
-      'Genera Struttura Sezioni',
+      t('Genera Struttura Sezioni'),
       async () => {
         setIsLoading(true);
         setError(null);
@@ -440,7 +446,7 @@ const ThesisGenerator = () => {
           setThesis(updatedThesis);
         } catch (err) {
           console.error('Errore conferma capitoli/generazione sezioni:', err);
-          handleApiError(err, 'Errore nella conferma dei capitoli');
+          handleApiError(err, t('Errore nella conferma dei capitoli'));
           setIsGeneratingSections(false);
         } finally {
           setIsLoading(false);
@@ -461,7 +467,7 @@ const ThesisGenerator = () => {
     await showCreditConfirmation(
       'thesis_content',
       thesisParams,
-      'Genera Contenuto Tesi',
+      t('Genera Contenuto Tesi'),
       async () => {
         setIsLoading(true);
         setError(null);
@@ -490,7 +496,7 @@ const ThesisGenerator = () => {
           );
         } catch (err) {
           console.error('Errore avvio generazione:', err);
-          handleApiError(err, 'Errore nell\'avvio della generazione');
+          handleApiError(err, t('Errore nell\'avvio della generazione'));
         } finally {
           setIsLoading(false);
         }
@@ -534,7 +540,7 @@ const ThesisGenerator = () => {
         setCurrentStep(3);
       } catch (err) {
         console.error('Errore creazione tesi:', err);
-        handleApiError(err, 'Errore nella creazione della tesi');
+        handleApiError(err, t('Errore nella creazione della tesi'));
       } finally {
         setIsLoading(false);
       }
@@ -611,7 +617,7 @@ const ThesisGenerator = () => {
             <div className="absolute inset-0 rounded-full border-[3px] border-slate-200"></div>
             <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
           </div>
-          <p className="text-sm text-slate-500 font-medium">Caricamento...</p>
+          <p className="text-sm text-slate-500 font-medium">{t('Caricamento...')}</p>
         </div>
       </div>
     );
@@ -628,10 +634,10 @@ const ThesisGenerator = () => {
               className="flex items-center gap-2 text-slate-600 hover:text-orange-600 transition-colors"
             >
               <Home className="w-5 h-5" />
-              <span className="hidden sm:inline font-medium">Dashboard</span>
+              <span className="hidden sm:inline font-medium">{t('Dashboard')}</span>
             </button>
             <div className="text-center">
-              <h1 className="text-xl font-bold text-slate-900">Tesi</h1>
+              <h1 className="text-xl font-bold text-slate-900">{t('Tesi')}</h1>
             </div>
             <div className="w-20"></div>
           </div>
@@ -641,7 +647,7 @@ const ThesisGenerator = () => {
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Step Indicator (cliccabile per step gia' raggiunti) */}
         <StepIndicator
-          steps={STEPS}
+          steps={localizedSteps}
           currentStep={currentStep}
           onStepClick={handleStepClick}
           isStepAccessible={isStepAccessible}
@@ -659,12 +665,12 @@ const ThesisGenerator = () => {
             </span>
             <div>
               <p className="font-medium">
-                {isCreditError ? 'Crediti AI Insufficienti' : 'Errore'}
+                {isCreditError ? t('Crediti AI Insufficienti') : t('Errore')}
               </p>
               <p className="text-sm">{error}</p>
               {isCreditError && (
                 <p className="text-xs mt-2 opacity-75">
-                  Verifica il saldo del tuo account AI e ricarica i crediti per continuare.
+                  {t('Verifica il saldo del tuo account AI e ricarica i crediti per continuare.')}
                 </p>
               )}
             </div>
@@ -677,10 +683,10 @@ const ThesisGenerator = () => {
           <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-medium">I capitoli e le sezioni generate restano salvati</p>
+              <p className="font-medium">{t('I capitoli e le sezioni generate restano salvati')}</p>
               <p className="text-sm">
-                Puoi modificare liberamente parametri, allegati o paper. Per rigenerare la struttura,
-                torna allo step <strong>Knowledge Base</strong> e premi <strong>Continua</strong>.
+                {t('Puoi modificare liberamente parametri, allegati o paper. Per rigenerare la struttura, torna allo step')}{' '}
+                <strong>{t('Knowledge Base')}</strong> {t('e premi')} <strong>{t('Continua')}</strong>.
               </p>
             </div>
           </div>
@@ -697,11 +703,11 @@ const ThesisGenerator = () => {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900 font-semibold transition-all active:scale-95"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Indietro</span>
+              <span>{t('Indietro')}</span>
             </button>
             <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
-              <span className="font-medium text-orange-600">Step {currentStep}</span>
-              <span>di</span>
+              <span className="font-medium text-orange-600">{t('Step {{currentStep}}', { currentStep })}</span>
+              <span>{t('di')}</span>
               <span>{STEPS.length}</span>
             </div>
           </div>
@@ -756,12 +762,12 @@ const ThesisGenerator = () => {
                     `}
                   >
                     <ArrowLeft className="w-5 h-5" />
-                    <span>Indietro</span>
+                    <span>{t('Indietro')}</span>
                   </button>
 
                   <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
-                    <span className="font-medium text-orange-600">Step {currentStep}</span>
-                    <span>di</span>
+                    <span className="font-medium text-orange-600">{t('Step {{currentStep}}', { currentStep })}</span>
+                    <span>{t('di')}</span>
                     <span>{STEPS.length}</span>
                   </div>
 
@@ -779,11 +785,11 @@ const ThesisGenerator = () => {
                     {isLoading ? (
                       <>
                         <Loader className="w-5 h-5 animate-spin" />
-                        <span>Elaborazione...</span>
+                        <span>{t('Elaborazione...')}</span>
                       </>
                     ) : (
                       <>
-                        <span>Continua</span>
+                        <span>{t('Continua')}</span>
                         <ArrowRight className="w-5 h-5" />
                       </>
                     )}
@@ -860,12 +866,12 @@ const ThesisGenerator = () => {
               operations={
                 isAdmin
                   ? [
-                      { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5) }, label: 'Capitoli + allegati' },
-                      { type: 'thesis_sections', params: {}, label: 'Sezioni' },
-                      { type: 'thesis_content', params: { num_chapters: parametersData.num_chapters, sections_per_chapter: parametersData.sections_per_chapter, words_per_section: parametersData.words_per_section }, label: 'Contenuto' },
+                      { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5) }, label: t('Capitoli + allegati') },
+                      { type: 'thesis_sections', params: {}, label: t('Sezioni') },
+                      { type: 'thesis_content', params: { num_chapters: parametersData.num_chapters, sections_per_chapter: parametersData.sections_per_chapter, words_per_section: parametersData.words_per_section }, label: t('Contenuto') },
                     ]
                   : [
-                      { type: 'thesis_total', params: {}, label: 'Tesi (tariffa flat)' },
+                      { type: 'thesis_total', params: {}, label: t('Tesi (tariffa flat)') },
                     ]
               }
             />
@@ -878,7 +884,7 @@ const ThesisGenerator = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
             <span>
-              Tesi gia' pagata. Tutti gli step (paper, allegati, capitoli, sezioni, contenuto) sono inclusi: nessun ulteriore credito verra' addebitato.
+              {t('Tesi gia\' pagata. Tutti gli step (paper, allegati, capitoli, sezioni, contenuto) sono inclusi: nessun ulteriore credito verra\' addebitato.')}
             </span>
           </div>
         )}
@@ -909,12 +915,12 @@ const ThesisGenerator = () => {
               </div>
               <div className="flex-1 text-sm">
                 <p className="font-semibold text-amber-900 mb-1">
-                  Addebito alla creazione: {thesisFlatCost != null ? thesisFlatCost : '—'} crediti
+                  {t('Addebito alla creazione: {{cost}} crediti', { cost: thesisFlatCost != null ? thesisFlatCost : '—' })}
                 </p>
                 <p className="text-amber-800">
-                  Cliccando su <strong>Continua</strong> verrà creata la tesi e verrà addebitata in un'unica
-                  soluzione la tariffa flat. Tutti gli step successivi (paper, allegati, capitoli, sezioni, contenuto) sono inclusi.
-                  <strong> L'importo non è rimborsabile in caso di abbandono del wizard.</strong>
+                  {t('Cliccando su')} <strong>{t('Continua')}</strong>{' '}
+                  {t('verrà creata la tesi e verrà addebitata in un\'unica soluzione la tariffa flat. Tutti gli step successivi (paper, allegati, capitoli, sezioni, contenuto) sono inclusi.')}
+                  <strong> {t('L\'importo non è rimborsabile in caso di abbandono del wizard.')}</strong>
                 </p>
               </div>
             </div>
@@ -940,13 +946,13 @@ const ThesisGenerator = () => {
                 `}
               >
                 <ArrowLeft className="w-5 h-5" />
-                <span>Indietro</span>
+                <span>{t('Indietro')}</span>
               </button>
 
               {/* Indicatore Step */}
               <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
-                <span className="font-medium text-orange-600">Step {currentStep}</span>
-                <span>di</span>
+                <span className="font-medium text-orange-600">{t('Step {{currentStep}}', { currentStep })}</span>
+                <span>{t('di')}</span>
                 <span>{STEPS.length}</span>
               </div>
 
@@ -965,11 +971,11 @@ const ThesisGenerator = () => {
                 {isLoading ? (
                   <>
                     <Loader className="w-5 h-5 animate-spin" />
-                    <span>Elaborazione...</span>
+                    <span>{t('Elaborazione...')}</span>
                   </>
                 ) : (
                   <>
-                    <span>Continua</span>
+                    <span>{t('Continua')}</span>
                     <ArrowRight className="w-5 h-5" />
                   </>
                 )}

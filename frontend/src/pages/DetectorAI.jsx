@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Shield, AlertTriangle, FileText, Loader, Search } from 'lucide-react';
 import { startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import FileTextUpload from '../components/FileTextUpload';
 
 const DetectorAI = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
 
@@ -15,7 +17,7 @@ const DetectorAI = () => {
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
 
-  const countWords = (t) => t.trim().split(/\s+/).filter(w => w.length > 0).length;
+  const countWords = (str) => str.trim().split(/\s+/).filter(w => w.length > 0).length;
 
   const getAIScoreColor = (percent) => {
     if (percent <= 5) return 'text-green-600 bg-green-50 border-green-200';
@@ -26,9 +28,9 @@ const DetectorAI = () => {
   const handleScan = async (textOverride = null) => {
     // textOverride è una stringa quando chiamato da codice (es. dopo upload);
     // quando è un onClick handler riceve l'evento, che ignoriamo.
-    const t = typeof textOverride === 'string' ? textOverride : text;
+    const inputText = typeof textOverride === 'string' ? textOverride : text;
 
-    if (!t.trim() || t.trim().length < 50 || scanning) return;
+    if (!inputText.trim() || inputText.trim().length < 50 || scanning) return;
 
     setScanning(true);
     setError(null);
@@ -36,7 +38,7 @@ const DetectorAI = () => {
     setProgress(0);
 
     try {
-      const response = await startCompilatioScan(t, 'manual', null);
+      const response = await startCompilatioScan(inputText, 'manual', null);
 
       // Se risultato cached, mostra subito
       if (response.cached && response.cached_scan) {
@@ -62,11 +64,11 @@ const DetectorAI = () => {
           setResult(finalStatus.result);
         }
       } else if (finalStatus.status === 'failed') {
-        setError(finalStatus.error || 'Scansione fallita');
+        setError(finalStatus.error || t('Scansione fallita'));
       }
     } catch (err) {
       console.error('Errore scansione:', err);
-      setError(err.response?.data?.detail || 'Errore durante la scansione');
+      setError(err.response?.data?.detail || t('Errore durante la scansione'));
     } finally {
       setScanning(false);
     }
@@ -86,7 +88,7 @@ const DetectorAI = () => {
         await downloadCompilatioReport(result.scan_id);
       } catch (err) {
         console.error('Errore download report:', err);
-        alert('Errore nel download del report');
+        alert(t('Errore nel download del report'));
       }
     }
   };
@@ -99,7 +101,7 @@ const DetectorAI = () => {
           className="btn btn-secondary gap-2 mb-6"
         >
           <ArrowLeft className="w-4 h-4" />
-          Torna alla Dashboard
+          {t('Torna alla Dashboard')}
         </button>
 
         <div className="flex items-center gap-3 mb-6">
@@ -107,11 +109,11 @@ const DetectorAI = () => {
             <Search className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Detector AI</h1>
-            <p className="text-slate-600">Scansione AI Detection e Plagio</p>
+            <h1 className="text-3xl font-bold text-slate-900">{t('Detector AI')}</h1>
+            <p className="text-slate-600">{t('Scansione AI Detection e Plagio')}</p>
           </div>
           <span className="ml-auto text-xs bg-purple-100 text-purple-600 px-3 py-1 rounded-full font-medium">
-            Admin Only
+            {t('Admin Only')}
           </span>
         </div>
 
@@ -124,19 +126,19 @@ const DetectorAI = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Testo da analizzare
+                  {t('Testo da analizzare')}
                 </label>
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   className="input w-full h-80 resize-y min-h-64"
-                  placeholder="Incolla qui il testo da analizzare per rilevamento AI e plagio...&#10;&#10;Il testo verra convertito in PDF e inviato per l'analisi completa."
+                  placeholder={t("Incolla qui il testo da analizzare per rilevamento AI e plagio...\n\nIl testo verra convertito in PDF e inviato per l'analisi completa.")}
                   disabled={scanning}
                 />
                 <p className="text-xs text-slate-500 mt-2">
-                  {countWords(text)} parole - {text.length} caratteri
+                  {t('{{count}} parole - {{chars}} caratteri', { count: countWords(text), chars: text.length })}
                   {text.trim().length > 0 && text.trim().length < 50 && (
-                    <span className="text-red-500 ml-2">Minimo 50 caratteri</span>
+                    <span className="text-red-500 ml-2">{t('Minimo 50 caratteri')}</span>
                   )}
                 </p>
               </div>
@@ -149,12 +151,12 @@ const DetectorAI = () => {
                 {scanning ? (
                   <>
                     <Loader className="w-5 h-5 animate-spin" />
-                    Scansione in corso...
+                    {t('Scansione in corso...')}
                   </>
                 ) : (
                   <>
                     <Shield className="w-5 h-5" />
-                    Avvia Scansione
+                    {t('Avvia Scansione')}
                   </>
                 )}
               </button>
@@ -163,14 +165,14 @@ const DetectorAI = () => {
 
           {/* Results */}
           <div>
-            <h2 className="text-xl font-semibold text-slate-900 mb-4">Risultati</h2>
+            <h2 className="text-xl font-semibold text-slate-900 mb-4">{t('Risultati')}</h2>
 
             {scanning && (
               <div className="card">
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-3">
                     <Loader className="w-5 h-5 text-purple-600 animate-spin" />
-                    <span className="text-purple-700 font-medium">Scansione Detector AI in corso...</span>
+                    <span className="text-purple-700 font-medium">{t('Scansione Detector AI in corso...')}</span>
                   </div>
                   <div className="w-full bg-purple-200 rounded-full h-2.5">
                     <div
@@ -178,7 +180,7 @@ const DetectorAI = () => {
                       style={{ width: `${progress}%` }}
                     ></div>
                   </div>
-                  <p className="text-xs text-purple-500 mt-2">L'analisi puo' richiedere alcuni minuti</p>
+                  <p className="text-xs text-purple-500 mt-2">{t("L'analisi puo' richiedere alcuni minuti")}</p>
                 </div>
               </div>
             )}
@@ -188,10 +190,10 @@ const DetectorAI = () => {
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
                   <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                   <div>
-                    <span className="text-red-700 font-medium">Errore nella scansione</span>
+                    <span className="text-red-700 font-medium">{t('Errore nella scansione')}</span>
                     <p className="text-red-600 text-sm mt-1">{error}</p>
                     <button onClick={handleScan} className="mt-2 text-red-600 hover:text-red-800 text-sm underline">
-                      Riprova
+                      {t('Riprova')}
                     </button>
                   </div>
                 </div>
@@ -203,7 +205,7 @@ const DetectorAI = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-slate-800 flex items-center gap-2">
                     <Shield className="w-5 h-5 text-purple-600" />
-                    Risultati Detector AI
+                    {t('Risultati Detector AI')}
                   </h3>
                   {result.has_report && (
                     <button
@@ -211,7 +213,7 @@ const DetectorAI = () => {
                       className="btn btn-secondary gap-2 text-sm"
                     >
                       <FileText className="w-4 h-4" />
-                      Scarica Report PDF
+                      {t('Scarica Report PDF')}
                     </button>
                   )}
                 </div>
@@ -220,11 +222,11 @@ const DetectorAI = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div className={`rounded-xl p-4 border-2 ${getAIScoreColor(result.ai_generated_percent)}`}>
                     <div className="text-3xl font-bold">{result.ai_generated_percent?.toFixed(1)}%</div>
-                    <div className="text-sm font-medium opacity-80">AI Generato</div>
+                    <div className="text-sm font-medium opacity-80">{t('AI Generato')}</div>
                   </div>
                   <div className="rounded-xl p-4 border-2 bg-blue-50 border-blue-200 text-blue-600">
                     <div className="text-3xl font-bold">{result.similarity_percent?.toFixed(1)}%</div>
-                    <div className="text-sm font-medium opacity-80">Similarita</div>
+                    <div className="text-sm font-medium opacity-80">{t('Similarita')}</div>
                   </div>
                 </div>
 
@@ -232,37 +234,37 @@ const DetectorAI = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
                     <div className="text-lg font-bold">{result.global_score_percent?.toFixed(1)}%</div>
-                    <div className="text-xs font-medium opacity-80">Score Globale</div>
+                    <div className="text-xs font-medium opacity-80">{t('Score Globale')}</div>
                   </div>
                   <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
                     <div className="text-lg font-bold">{result.exact_percent?.toFixed(1)}%</div>
-                    <div className="text-xs font-medium opacity-80">Match Esatti</div>
+                    <div className="text-xs font-medium opacity-80">{t('Match Esatti')}</div>
                   </div>
                   <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
                     <div className="text-lg font-bold">{result.same_meaning_percent?.toFixed(1) || '0.0'}%</div>
-                    <div className="text-xs font-medium opacity-80">Stesso Significato</div>
+                    <div className="text-xs font-medium opacity-80">{t('Stesso Significato')}</div>
                   </div>
                   <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
                     <div className="text-lg font-bold">{result.translation_percent?.toFixed(1) || '0.0'}%</div>
-                    <div className="text-xs font-medium opacity-80">Traduzione</div>
+                    <div className="text-xs font-medium opacity-80">{t('Traduzione')}</div>
                   </div>
                 </div>
 
                 {/* Additional Info */}
                 <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">
                   <div className="flex justify-between">
-                    <span>Parole analizzate:</span>
+                    <span>{t('Parole analizzate:')}</span>
                     <span className="font-medium">{result.word_count?.toLocaleString() || 'N/A'}</span>
                   </div>
                   {result.quotation_percent > 0 && (
                     <div className="flex justify-between mt-1">
-                      <span>Citazioni:</span>
+                      <span>{t('Citazioni:')}</span>
                       <span className="font-medium">{result.quotation_percent?.toFixed(1)}%</span>
                     </div>
                   )}
                   {result.suspicious_fingerprint_percent > 0 && (
                     <div className="flex justify-between mt-1">
-                      <span>Fingerprint sospetti:</span>
+                      <span>{t('Fingerprint sospetti:')}</span>
                       <span className="font-medium">{result.suspicious_fingerprint_percent?.toFixed(1)}%</span>
                     </div>
                   )}
@@ -274,7 +276,7 @@ const DetectorAI = () => {
               <div className="card text-center py-12">
                 <Search className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                 <p className="text-slate-600">
-                  Inserisci un testo e avvia la scansione per vedere i risultati
+                  {t('Inserisci un testo e avvia la scansione per vedere i risultati')}
                 </p>
               </div>
             )}

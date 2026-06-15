@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Coins, CreditCard, Loader, Package, Sparkles, Shield, AlertTriangle, Check, Info, ArrowRight,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { listCreditPackages, initiatePayment } from '../services/api';
 
@@ -15,6 +16,7 @@ const formatEur = (cents) => {
 };
 
 const BuyCredits = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, isAdmin, credits } = useAuth();
 
@@ -45,7 +47,7 @@ const BuyCredits = () => {
         const mid = (res.packages || []).find((p) => p.sort_order === 2) || (res.packages || [])[0];
         if (mid) setSelectedPkgId(mid.id);
       } catch (err) {
-        if (!cancelled) setErrorPackages('Errore caricamento pacchetti.');
+        if (!cancelled) setErrorPackages(t('Errore caricamento pacchetti.'));
       } finally {
         if (!cancelled) setLoadingPackages(false);
       }
@@ -57,8 +59,8 @@ const BuyCredits = () => {
   useEffect(() => {
     if (isAdmin) {
       // Reindirizza alla dashboard con messaggio
-      const t = setTimeout(() => navigate('/'), 100);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => navigate('/'), 100);
+      return () => clearTimeout(timer);
     }
   }, [isAdmin, navigate]);
 
@@ -94,10 +96,10 @@ const BuyCredits = () => {
         window.location.href = result.checkout_url;
         return;
       }
-      setSubmitError('Risposta non valida dal server.');
+      setSubmitError(t('Risposta non valida dal server.'));
     } catch (err) {
-      const detail = err?.response?.data?.detail || err?.message || 'Errore avvio pagamento';
-      setSubmitError(typeof detail === 'string' ? detail : 'Errore avvio pagamento');
+      const detail = err?.response?.data?.detail || err?.message || t('Errore avvio pagamento');
+      setSubmitError(typeof detail === 'string' ? detail : t('Errore avvio pagamento'));
     } finally {
       setSubmitting(false);
     }
@@ -108,7 +110,7 @@ const BuyCredits = () => {
       <div className="max-w-2xl mx-auto p-6">
         <div className="glass rounded-2xl p-6 flex items-center gap-3">
           <Sparkles className="w-5 h-5 text-emerald-500" />
-          <p className="text-slate-700">Gli admin StyleForge hanno crediti illimitati. Reindirizzamento alla dashboard…</p>
+          <p className="text-slate-700">{t('Gli admin StyleForge hanno crediti illimitati. Reindirizzamento alla dashboard…')}</p>
         </div>
       </div>
     );
@@ -119,15 +121,15 @@ const BuyCredits = () => {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Acquista Crediti</h1>
+          <h1 className="text-3xl font-bold text-slate-900">{t('Acquista Crediti')}</h1>
           <p className="text-slate-600 mt-1">
-            Paga con PagoPA (carta di credito, conto corrente, MyBank). I crediti vengono accreditati immediatamente.
+            {t('Paga con PagoPA (carta di credito, conto corrente, MyBank). I crediti vengono accreditati immediatamente.')}
           </p>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 rounded-xl border border-orange-200">
           <Coins className="w-4 h-4 text-orange-500" />
           <span className="text-sm font-bold text-orange-700">{credits}</span>
-          <span className="text-xs text-orange-500">crediti attuali</span>
+          <span className="text-xs text-orange-500">{t('crediti attuali')}</span>
         </div>
       </div>
 
@@ -135,18 +137,18 @@ const BuyCredits = () => {
       <div className="space-y-3">
         <h2 className="font-semibold text-slate-900 flex items-center gap-2">
           <Package className="w-5 h-5 text-orange-500" />
-          Scegli un pacchetto
+          {t('Scegli un pacchetto')}
         </h2>
 
         {loadingPackages ? (
           <div className="glass rounded-2xl p-8 flex items-center justify-center gap-2 text-slate-500">
-            <Loader className="w-4 h-4 animate-spin" /> Caricamento pacchetti…
+            <Loader className="w-4 h-4 animate-spin" /> {t('Caricamento pacchetti…')}
           </div>
         ) : errorPackages ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errorPackages}</div>
         ) : packages.length === 0 ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            Nessun pacchetto al momento disponibile. Contatta l'amministratore.
+            {t("Nessun pacchetto al momento disponibile. Contatta l'amministratore.")}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -166,7 +168,7 @@ const BuyCredits = () => {
                 >
                   {isFeatured && (
                     <span className="absolute -top-2 right-4 px-2 py-0.5 rounded-full bg-orange-500 text-white text-[10px] font-bold uppercase">
-                      Più scelto
+                      {t('Più scelto')}
                     </span>
                   )}
                   {selected && (
@@ -178,7 +180,7 @@ const BuyCredits = () => {
                   <div className="mt-2 text-3xl font-bold text-slate-900">
                     {pkg.credits.toLocaleString('it-IT')}
                   </div>
-                  <div className="text-xs text-slate-500 mb-3">crediti</div>
+                  <div className="text-xs text-slate-500 mb-3">{t('crediti')}</div>
                   <div className="text-xl font-bold text-orange-600">{formatEur(pkg.price_cents)}</div>
                   {pkg.description && (
                     <p className="mt-2 text-xs text-slate-500">{pkg.description}</p>
@@ -195,16 +197,16 @@ const BuyCredits = () => {
         <form onSubmit={handleSubmit} className="glass rounded-2xl p-6 space-y-5">
           <div className="flex items-center gap-2 mb-1">
             <CreditCard className="w-5 h-5 text-orange-500" />
-            <h2 className="font-semibold text-slate-900">Dati pagatore</h2>
+            <h2 className="font-semibold text-slate-900">{t('Dati pagatore')}</h2>
           </div>
           <p className="text-sm text-slate-500">
-            Per emettere la posizione PagoPA serve un identificativo del pagatore (CF persona fisica o P.IVA per soggetti giuridici).
+            {t('Per emettere la posizione PagoPA serve un identificativo del pagatore (CF persona fisica o P.IVA per soggetti giuridici).')}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                Codice Fiscale o P.IVA <span className="text-red-500">*</span>
+                {t('Codice Fiscale o P.IVA')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -218,32 +220,32 @@ const BuyCredits = () => {
               {!cfValid && cfNormalized.length > 0 && (
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" />
-                  Formato non valido (16 alfanumerici, oppure 11 cifre per P.IVA)
+                  {t('Formato non valido (16 alfanumerici, oppure 11 cifre per P.IVA)')}
                 </p>
               )}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                Partita IVA (se soggetto giuridico)
+                {t('Partita IVA (se soggetto giuridico)')}
               </label>
               <input
                 type="text"
                 className="input w-full"
                 value={partitaIva}
                 onChange={(e) => setPartitaIva(e.target.value)}
-                placeholder="11 cifre"
+                placeholder={t('11 cifre')}
                 maxLength={11}
               />
               {!piValid && (
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> P.IVA deve essere 11 cifre
+                  <AlertTriangle className="w-3 h-3" /> {t('P.IVA deve essere 11 cifre')}
                 </p>
               )}
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Ragione sociale (se ente/azienda)</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">{t('Ragione sociale (se ente/azienda)')}</label>
               <input
                 type="text"
                 className="input w-full"
@@ -255,7 +257,7 @@ const BuyCredits = () => {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email pagatore</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">{t('Email pagatore')}</label>
               <input
                 type="email"
                 className="input w-full"
@@ -273,7 +275,7 @@ const BuyCredits = () => {
                   checked={saveToProfile}
                   onChange={(e) => setSaveToProfile(e.target.checked)}
                 />
-                Salva questi dati sul profilo per i prossimi acquisti
+                {t('Salva questi dati sul profilo per i prossimi acquisti')}
               </label>
             </div>
           </div>
@@ -281,8 +283,7 @@ const BuyCredits = () => {
           <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-xs">
             <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>
-              Verrai reindirizzato al portale ufficiale PagoPA per completare il pagamento.
-              StyleForge non vede né salva i dati della tua carta.
+              {t('Verrai reindirizzato al portale ufficiale PagoPA per completare il pagamento. StyleForge non vede né salva i dati della tua carta.')}
             </span>
           </div>
 
@@ -295,11 +296,11 @@ const BuyCredits = () => {
 
           <div className="flex items-center justify-between gap-4 flex-wrap pt-2">
             <div>
-              <p className="text-xs text-slate-500 uppercase font-medium">Totale</p>
+              <p className="text-xs text-slate-500 uppercase font-medium">{t('Totale')}</p>
               <p className="text-2xl font-bold text-orange-600">
                 {formatEur(selectedPkg.price_cents)}
                 <span className="text-sm text-slate-500 font-normal ml-2">
-                  · {selectedPkg.credits.toLocaleString('it-IT')} crediti
+                  · {selectedPkg.credits.toLocaleString('it-IT')} {t('crediti')}
                 </span>
               </p>
             </div>
@@ -310,11 +311,11 @@ const BuyCredits = () => {
             >
               {submitting ? (
                 <>
-                  <Loader className="w-4 h-4 animate-spin" /> Avvio pagamento…
+                  <Loader className="w-4 h-4 animate-spin" /> {t('Avvio pagamento…')}
                 </>
               ) : (
                 <>
-                  Procedi al pagamento <ArrowRight className="w-4 h-4" />
+                  {t('Procedi al pagamento')} <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
@@ -325,7 +326,7 @@ const BuyCredits = () => {
       {/* Footer info */}
       <div className="text-center text-xs text-slate-400 flex items-center justify-center gap-1">
         <Info className="w-3 h-3" />
-        Pagamenti elaborati tramite ERSAF · Partner Tecnologico SolutionPA / Intesa Sanpaolo
+        {t('Pagamenti elaborati tramite ERSAF · Partner Tecnologico SolutionPA / Intesa Sanpaolo')}
       </div>
     </div>
   );

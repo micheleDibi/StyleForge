@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Upload, ArrowLeft, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { trainSession, pollJobStatus, estimateCredits } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -8,6 +9,7 @@ import ApiCostEstimate from '../components/ApiCostEstimate';
 import CreditEstimatePreview from '../components/CreditEstimatePreview';
 
 const Train = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, isAdmin, credits, refreshUser } = useAuth();
   const [file, setFile] = useState(null);
@@ -25,11 +27,11 @@ const Train = () => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
       if (!selectedFile.name.endsWith('.pdf')) {
-        setError('Solo file PDF sono supportati');
+        setError(t('Solo file PDF sono supportati'));
         return;
       }
       if (selectedFile.size > 100 * 1024 * 1024) {
-        setError('Il file non può superare i 100MB');
+        setError(t('Il file non può superare i 100MB'));
         return;
       }
       setFile(selectedFile);
@@ -79,9 +81,9 @@ const Train = () => {
       refreshUser();
     } catch (err) {
       if (err.response?.status === 402) {
-        setError('Crediti insufficienti per questa operazione.');
+        setError(t('Crediti insufficienti per questa operazione.'));
       } else {
-        setError(err.message || 'Errore durante il training');
+        setError(err.message || t('Errore durante il training'));
       }
       setUploading(false);
     }
@@ -103,13 +105,13 @@ const Train = () => {
             className="btn btn-secondary gap-2 mb-4"
           >
             <ArrowLeft className="w-4 h-4" />
-            Torna alla Dashboard
+            {t('Torna alla Dashboard')}
           </button>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            Nuovo Training
+            {t('Nuovo Training')}
           </h1>
           <p className="text-slate-600">
-            Carica un PDF per addestrare il modello sul tuo stile di scrittura
+            {t('Carica un PDF per addestrare il modello sul tuo stile di scrittura')}
           </p>
         </div>
 
@@ -118,7 +120,7 @@ const Train = () => {
           <form onSubmit={handleSubmit} className="card">
             <div className="mb-6">
               <label className="block text-sm font-medium text-slate-700 mb-3">
-                Carica File PDF
+                {t('Carica File PDF')}
               </label>
 
               <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:border-blue-400 transition-colors">
@@ -149,10 +151,10 @@ const Train = () => {
                     <>
                       <Upload className="w-12 h-12 text-slate-400 mx-auto mb-3" />
                       <p className="text-slate-600 mb-1">
-                        Clicca per selezionare un file PDF
+                        {t('Clicca per selezionare un file PDF')}
                       </p>
                       <p className="text-sm text-slate-500">
-                        Max 100MB
+                        {t('Max 100MB')}
                       </p>
                     </>
                   )}
@@ -179,7 +181,7 @@ const Train = () => {
               disabled={!file || uploading}
               className="w-full btn btn-primary h-12 text-base"
             >
-              {uploading ? 'Avvio training...' : 'Avvia Training'}
+              {uploading ? t('Avvio training...') : t('Avvia Training')}
             </button>
           </form>
         ) : (
@@ -201,19 +203,19 @@ const Train = () => {
               )}
 
               <h3 className="text-xl font-semibold text-slate-900 mb-2">
-                {jobStatus.status === 'completed' ? 'Training Completato!' :
-                 jobStatus.status === 'failed' ? 'Training Fallito' :
-                 'Training in corso...'}
+                {jobStatus.status === 'completed' ? t('Training Completato!') :
+                 jobStatus.status === 'failed' ? t('Training Fallito') :
+                 t('Training in corso...')}
               </h3>
               <p className="text-slate-600 font-mono text-sm">
-                Job ID: {jobStatus.job_id}
+                {t('Job ID:')} {jobStatus.job_id}
               </p>
             </div>
 
             {jobStatus.progress > 0 && jobStatus.status !== 'completed' && (
               <div className="mb-6">
                 <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
-                  <span>Progresso</span>
+                  <span>{t('Progresso')}</span>
                   <span>{jobStatus.progress}%</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
@@ -237,14 +239,14 @@ const Train = () => {
                   onClick={() => navigate(`/generate?session=${jobStatus.session_id}`)}
                   className="flex-1 btn btn-primary"
                 >
-                  Genera Contenuto
+                  {t('Genera Contenuto')}
                 </button>
               )}
               <button
                 onClick={() => navigate('/')}
                 className="flex-1 btn btn-secondary"
               >
-                Torna alla Dashboard
+                {t('Torna alla Dashboard')}
               </button>
             </div>
           </div>
@@ -256,7 +258,7 @@ const Train = () => {
         isOpen={showCreditDialog}
         onConfirm={handleConfirmedTraining}
         onCancel={() => setShowCreditDialog(false)}
-        operationName="Addestramento Modello"
+        operationName={t('Addestramento Modello')}
         estimatedCredits={creditEstimate?.credits_needed || 0}
         breakdown={creditEstimate?.breakdown || {}}
         currentBalance={isAdmin ? -1 : (creditEstimate?.current_balance ?? credits)}

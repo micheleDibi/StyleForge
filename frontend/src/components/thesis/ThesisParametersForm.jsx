@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Info, ChevronDown, BookOpen, FileText, ListTree, Sparkles } from 'lucide-react';
 import ApiCostEstimate from '../ApiCostEstimate';
 import CreditEstimatePreview from '../CreditEstimatePreview';
 import CustomOutlineEditor from './CustomOutlineEditor';
 
 const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, thesisId, attachmentsCount, attachmentsTotalSize }) => {
+  const { t } = useTranslation();
   const handleChange = (field, value) => {
     onChange({ ...data, [field]: value });
   };
@@ -16,7 +18,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
   };
 
   const handleKeyTopicRemove = (topic) => {
-    handleChange('key_topics', (data.key_topics || []).filter(t => t !== topic));
+    handleChange('key_topics', (data.key_topics || []).filter(x => x !== topic));
   };
 
   // Toggle "Definisci tu indice": passa da modalita' numerica (AI genera) a custom outline.
@@ -63,15 +65,15 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Definizione Parametri di Generazione</h2>
-        <p className="text-slate-600">Configura i parametri per la generazione della tua tesi o relazione.</p>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Definizione Parametri di Generazione')}</h2>
+        <p className="text-slate-600">{t('Configura i parametri per la generazione della tua tesi o relazione.')}</p>
       </div>
 
       <div className="card space-y-6">
         {/* Titolo */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
-            Titolo della Tesi <span className="text-red-500">*</span>
+            {t('Titolo della Tesi')} <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
@@ -86,14 +88,14 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
         {/* Sessione/Addestramento (opzionale) */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
-            Sessione Addestrata (opzionale)
+            {t('Sessione Addestrata (opzionale)')}
           </label>
           <select
             value={data.session_id || ''}
             onChange={(e) => handleChange('session_id', e.target.value || null)}
             className="input w-full"
           >
-            <option value="">Nessuna sessione - usa stile generico</option>
+            <option value="">{t('Nessuna sessione - usa stile generico')}</option>
             {sessions?.filter(s => s.is_trained).map((session) => (
               <option key={session.session_id} value={session.session_id}>
                 {session.name || session.session_id}
@@ -101,27 +103,27 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
             ))}
           </select>
           <p className="text-xs text-slate-500 mt-1">
-            Se selezioni una sessione addestrata, il contenuto userà lo stile dell'autore appreso.
+            {t("Se selezioni una sessione addestrata, il contenuto userà lo stile dell'autore appreso.")}
           </p>
         </div>
 
         {/* Descrizione */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
-            Descrizione (opzionale)
+            {t('Descrizione (opzionale)')}
           </label>
           <textarea
             value={data.description || ''}
             onChange={(e) => handleChange('description', e.target.value)}
             className="input textarea w-full min-h-40 resize-y"
-            placeholder="Descrivi brevemente di cosa tratterà la tesi..."
+            placeholder={t('Descrivi brevemente di cosa tratterà la tesi...')}
           />
         </div>
 
         {/* Argomenti Chiave */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
-            Argomenti Chiave (opzionale)
+            {t('Argomenti Chiave (opzionale)')}
           </label>
           <div className="flex flex-wrap gap-2 mb-2">
             {(data.key_topics || []).map((topic, idx) => (
@@ -141,7 +143,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
           </div>
           <input
             type="text"
-            placeholder="Aggiungi argomento e premi Invio"
+            placeholder={t('Aggiungi argomento e premi Invio')}
             className="input w-full"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -154,13 +156,13 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
         </div>
 
         <div className="border-t border-slate-200 pt-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Parametri di Generazione</h3>
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">{t('Parametri di Generazione')}</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Stile di Scrittura */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Stile di Scrittura <span className="text-red-500">*</span>
+                {t('Stile di Scrittura')} <span className="text-red-500">*</span>
               </label>
               <select
                 value={data.writing_style_id || ''}
@@ -168,7 +170,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                 className="input w-full"
                 required
               >
-                <option value="">Seleziona uno stile</option>
+                <option value="">{t('Seleziona uno stile')}</option>
                 {lookupData?.writing_styles?.map((style) => (
                   <option key={style.id} value={style.id}>
                     {style.name}
@@ -185,7 +187,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
             {/* Livello Profondità */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Livello di Profondità <span className="text-red-500">*</span>
+                {t('Livello di Profondità')} <span className="text-red-500">*</span>
               </label>
               <select
                 value={data.content_depth_id || ''}
@@ -193,7 +195,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                 className="input w-full"
                 required
               >
-                <option value="">Seleziona livello</option>
+                <option value="">{t('Seleziona livello')}</option>
                 {lookupData?.content_depths?.map((depth) => (
                   <option key={depth.id} value={depth.id}>
                     {depth.name}
@@ -205,7 +207,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
         </div>
 
         <div className="border-t border-slate-200 pt-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Struttura del Documento</h3>
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">{t('Struttura del Documento')}</h3>
 
           {/* Toggle modalita': AI auto-genera VS utente fornisce indice custom */}
           <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -220,10 +222,10 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
             >
               <div className="flex items-center gap-2 mb-1">
                 <Sparkles className={`w-4 h-4 ${!useCustomOutline ? 'text-orange-600' : 'text-slate-400'}`} />
-                <span className="font-semibold text-slate-900">L'AI genera l'indice</span>
+                <span className="font-semibold text-slate-900">{t("L'AI genera l'indice")}</span>
               </div>
               <p className="text-xs text-slate-600">
-                Indica il numero di capitoli e paragrafi; l'AI propone titoli che potrai modificare.
+                {t("Indica il numero di capitoli e paragrafi; l'AI propone titoli che potrai modificare.")}
               </p>
             </button>
             <button
@@ -237,10 +239,10 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
             >
               <div className="flex items-center gap-2 mb-1">
                 <ListTree className={`w-4 h-4 ${useCustomOutline ? 'text-orange-600' : 'text-slate-400'}`} />
-                <span className="font-semibold text-slate-900">Definisci tu l'indice</span>
+                <span className="font-semibold text-slate-900">{t("Definisci tu l'indice")}</span>
               </div>
               <p className="text-xs text-slate-600">
-                Inserisci capitoli e paragrafi a mano. L'AI rispetterà esattamente la struttura fornita.
+                {t("Inserisci capitoli e paragrafi a mano. L'AI rispetterà esattamente la struttura fornita.")}
               </p>
             </button>
           </div>
@@ -251,10 +253,10 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
               <div className="mb-6 p-5 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl">
                 <div>
                   <label className="block text-sm font-semibold text-slate-800 mb-1">
-                    Hai un obiettivo di parole?
+                    {t('Hai un obiettivo di parole?')}
                   </label>
                     <p className="text-xs text-slate-500 mb-3">
-                      Inserisci il totale desiderato e distribuiremo automaticamente le parole tra le sezioni.
+                      {t('Inserisci il totale desiderato e distribuiremo automaticamente le parole tra le sezioni.')}
                     </p>
                     <div className="flex items-center gap-2">
                       <input
@@ -272,7 +274,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                           handleChange('words_per_section', Math.max(500, Math.min(20000, wps)));
                         }}
                       />
-                      <span className="text-sm text-slate-500">parole totali</span>
+                      <span className="text-sm text-slate-500">{t('parole totali')}</span>
                     </div>
                 </div>
               </div>
@@ -281,7 +283,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                 {/* Numero Capitoli */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Numero di Capitoli
+                    {t('Numero di Capitoli')}
                   </label>
                   <input
                     type="number"
@@ -291,13 +293,13 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                     min="1"
                     max="100"
                   />
-                  <p className="text-xs text-slate-500 mt-1">Default: 5</p>
+                  <p className="text-xs text-slate-500 mt-1">{t('Default: 5')}</p>
                 </div>
 
                 {/* Sezioni per Capitolo */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Sezioni per Capitolo
+                    {t('Sezioni per Capitolo')}
                   </label>
                   <input
                     type="number"
@@ -307,13 +309,13 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                     min="1"
                     max="30"
                   />
-                  <p className="text-xs text-slate-500 mt-1">Default: 3</p>
+                  <p className="text-xs text-slate-500 mt-1">{t('Default: 3')}</p>
                 </div>
 
                 {/* Parole per Sezione */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Parole per Sezione
+                    {t('Parole per Sezione')}
                   </label>
                   <input
                     type="number"
@@ -324,7 +326,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                     max="20000"
                     step="500"
                   />
-                  <p className="text-xs text-slate-500 mt-1">Default: 1000</p>
+                  <p className="text-xs text-slate-500 mt-1">{t('Default: 1000')}</p>
                 </div>
               </div>
             </>
@@ -341,7 +343,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                   perche' controlla la lunghezza target del contenuto generato. */}
               <div className="p-4 rounded-2xl border border-slate-200 bg-white">
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Parole target per paragrafo
+                  {t('Parole target per paragrafo')}
                 </label>
                 <input
                   type="number"
@@ -353,7 +355,7 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
                   step="500"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  Lunghezza obiettivo del contenuto di ogni paragrafo (vale per tutti). Default: 1000.
+                  {t('Lunghezza obiettivo del contenuto di ogni paragrafo (vale per tutti). Default: 1000.')}
                 </p>
               </div>
             </div>
@@ -364,10 +366,16 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-blue-800">
-                <p className="font-medium">Stima del documento:</p>
+                <p className="font-medium">{t('Stima del documento:')}</p>
                 <p>
-                  {data.num_chapters} capitoli × {data.sections_per_chapter} sezioni × {(data.words_per_section || 0).toLocaleString()} parole
-                  = <strong>{(data.num_chapters * data.sections_per_chapter * data.words_per_section).toLocaleString()}</strong> parole totali
+                  {t('{{chapters}} capitoli × {{sections}} sezioni × {{words}} parole', {
+                    chapters: data.num_chapters,
+                    sections: data.sections_per_chapter,
+                    words: (data.words_per_section || 0).toLocaleString(),
+                  })}
+                  {' = '}
+                  <strong>{(data.num_chapters * data.sections_per_chapter * data.words_per_section).toLocaleString()}</strong>
+                  {' '}{t('parole totali')}
                 </p>
               </div>
             </div>
@@ -376,9 +384,9 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
           {/* Crediti stimati */}
           <CreditEstimatePreview
             operations={[
-              { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsTotalSize || 0) * 0.5) }, label: 'Capitoli + allegati' },
-              { type: 'thesis_sections', params: {}, label: 'Sezioni' },
-              { type: 'thesis_content', params: { num_chapters: data.num_chapters, sections_per_chapter: data.sections_per_chapter, words_per_section: data.words_per_section }, label: 'Contenuto' },
+              { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsTotalSize || 0) * 0.5) }, label: t('Capitoli + allegati') },
+              { type: 'thesis_sections', params: {}, label: t('Sezioni') },
+              { type: 'thesis_content', params: { num_chapters: data.num_chapters, sections_per_chapter: data.sections_per_chapter, words_per_section: data.words_per_section }, label: t('Contenuto') },
             ]}
           />
 
@@ -399,19 +407,19 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
 
         {/* Stile Citazioni */}
         <div className="border-t border-slate-200 pt-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Stile Citazioni</h3>
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">{t('Stile Citazioni')}</h3>
           <div className="flex items-center gap-3 p-4 rounded-xl border-2 border-orange-500 bg-orange-50 text-orange-700">
             <BookOpen className="w-5 h-5 flex-shrink-0" />
             <div>
-              <p className="font-semibold">Note a pie di pagina</p>
-              <p className="text-xs opacity-75">Stile accademico italiano con Ibidem, Ivi, Op.cit.</p>
+              <p className="font-semibold">{t('Note a pie di pagina')}</p>
+              <p className="text-xs opacity-75">{t('Stile accademico italiano con Ibidem, Ivi, Op.cit.')}</p>
             </div>
           </div>
         </div>
 
         {/* Knowledge Base (LLM Wiki) — restrict_to_sources */}
         <div className="border-t border-slate-200 pt-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Base di conoscenza</h3>
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">{t('Base di conoscenza')}</h3>
           <label className="flex items-start gap-3 p-4 rounded-xl border-2 border-slate-200 bg-white hover:border-orange-300 cursor-pointer transition-colors">
             <input
               type="checkbox"
@@ -421,13 +429,11 @@ const ThesisParametersForm = ({ data, onChange, lookupData, sessions, isAdmin, t
             />
             <div className="flex-1">
               <p className="font-semibold text-slate-900">
-                Limita la generazione alle sole fonti che caricherò
-                <span className="ml-2 text-[11px] font-medium text-orange-700 bg-orange-100 rounded px-1.5 py-0.5">consigliato</span>
+                {t('Limita la generazione alle sole fonti che caricherò')}
+                <span className="ml-2 text-[11px] font-medium text-orange-700 bg-orange-100 rounded px-1.5 py-0.5">{t('consigliato')}</span>
               </p>
               <p className="text-xs text-slate-600 mt-1">
-                Se attivo, l'AI userà esclusivamente i paper selezionati e i documenti caricati
-                (indicizzati nel wiki). Riduce le allucinazioni e le citazioni inventate. Disattiva
-                se vuoi che il modello integri liberamente con la sua conoscenza generale.
+                {t("Se attivo, l'AI userà esclusivamente i paper selezionati e i documenti caricati (indicizzati nel wiki). Riduce le allucinazioni e le citazioni inventate. Disattiva se vuoi che il modello integri liberamente con la sua conoscenza generale.")}
               </p>
             </div>
           </label>

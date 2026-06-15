@@ -1,4 +1,5 @@
 import axios from 'axios';
+import i18n from '../i18n';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -153,15 +154,15 @@ export const login = async (username, password) => {
     console.error('Error message:', error.message);
 
     if (error.code === 'ECONNABORTED') {
-      throw new Error('Timeout: il server non risponde. Riprova più tardi.');
+      throw new Error(i18n.t('Timeout: il server non risponde. Riprova più tardi.'));
     }
 
     if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
-      throw new Error('Backend non disponibile. Assicurati che il server sia in esecuzione su ' + API_URL);
+      throw new Error(i18n.t('Backend non disponibile. Assicurati che il server sia in esecuzione su {{url}}', { url: API_URL }));
     }
 
     if (error.code === 'ECONNREFUSED') {
-      throw new Error('Impossibile connettersi al server. Verifica che il backend sia attivo.');
+      throw new Error(i18n.t('Impossibile connettersi al server. Verifica che il backend sia attivo.'));
     }
 
     throw error;

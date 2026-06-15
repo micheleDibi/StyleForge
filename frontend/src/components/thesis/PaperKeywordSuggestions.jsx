@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Sparkles, Loader, AlertTriangle, Lightbulb } from 'lucide-react';
 import { suggestPaperKeywords } from '../../services/api';
 
@@ -21,6 +22,7 @@ const PAPER_MIME_TYPE = 'application/x-research-paper';
  *   isThesisPaid: se true la tesi ha gia' pagato il flat: nascondiamo il costo crediti
  */
 const PaperKeywordSuggestions = ({ thesisId, attachments, onSelect, isThesisPaid = false }) => {
+  const { t } = useTranslation();
   const [keywords, setKeywords] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -41,9 +43,9 @@ const PaperKeywordSuggestions = ({ thesisId, attachments, onSelect, isThesisPaid
       setCreditsUsed(res.credits_consumed || 0);
     } catch (err) {
       if (err.isInsufficientCredits) {
-        setError(err.creditErrorMessage || 'Crediti insufficienti per il suggerimento.');
+        setError(err.creditErrorMessage || t('Crediti insufficienti per il suggerimento.'));
       } else {
-        setError(err.response?.data?.detail || 'Errore nel suggerimento delle keyword.');
+        setError(err.response?.data?.detail || t('Errore nel suggerimento delle keyword.'));
       }
     } finally {
       setLoading(false);
@@ -58,11 +60,10 @@ const PaperKeywordSuggestions = ({ thesisId, attachments, onSelect, isThesisPaid
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-slate-900">
-            Suggerimenti dalla tua documentazione
+            {t('Suggerimenti dalla tua documentazione')}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">
-            Lascia che l'AI analizzi i {eligible.length} documenti che hai caricato e proponga
-            termini di ricerca utili per trovare paper accademici correlati.
+            {t("Lascia che l'AI analizzi i {{count}} documenti che hai caricato e proponga termini di ricerca utili per trovare paper accademici correlati.", { count: eligible.length })}
           </p>
         </div>
         {!keywords && (
@@ -75,12 +76,12 @@ const PaperKeywordSuggestions = ({ thesisId, attachments, onSelect, isThesisPaid
             {loading ? (
               <>
                 <Loader className="w-4 h-4 animate-spin" />
-                <span>Analisi...</span>
+                <span>{t('Analisi...')}</span>
               </>
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />
-                <span>Suggerisci</span>
+                <span>{t('Suggerisci')}</span>
               </>
             )}
           </button>
@@ -96,16 +97,16 @@ const PaperKeywordSuggestions = ({ thesisId, attachments, onSelect, isThesisPaid
 
       {keywords && keywords.length === 0 && !loading && !error && (
         <div className="text-xs text-slate-600">
-          Nessun termine specifico estraibile dai documenti. Prova a inserire una keyword a mano.
+          {t('Nessun termine specifico estraibile dai documenti. Prova a inserire una keyword a mano.')}
         </div>
       )}
 
       {keywords && keywords.length > 0 && (
         <div>
           <p className="text-xs text-slate-600 mb-2">
-            Clicca un termine per usarlo come ricerca:
+            {t('Clicca un termine per usarlo come ricerca:')}
             {!isThesisPaid && creditsUsed > 0 && (
-              <span className="ml-1 text-slate-500">({creditsUsed} crediti utilizzati)</span>
+              <span className="ml-1 text-slate-500">{t('({{count}} crediti utilizzati)', { count: creditsUsed })}</span>
             )}
           </p>
           <div className="flex flex-wrap gap-2">
@@ -126,7 +127,7 @@ const PaperKeywordSuggestions = ({ thesisId, attachments, onSelect, isThesisPaid
             disabled={loading}
             className="mt-3 text-xs text-orange-700 hover:text-orange-800 hover:underline disabled:opacity-50"
           >
-            {loading ? 'Rigenero...' : 'Rigenera suggerimenti'}
+            {loading ? t('Rigenero...') : t('Rigenera suggerimenti')}
           </button>
         </div>
       )}

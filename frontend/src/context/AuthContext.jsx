@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   login as apiLogin,
   logout as apiLogout,
@@ -12,6 +13,7 @@ import {
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
+  const { t } = useTranslation();
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,7 +60,7 @@ export const AuthProvider = ({ children }) => {
         setError(detail.message);
         return { success: false, error: detail.message, code: 'email_not_verified' };
       }
-      const errorMessage = (typeof detail === 'string' ? detail : null) || err.message || 'Errore durante il login';
+      const errorMessage = (typeof detail === 'string' ? detail : null) || err.message || t('Errore durante il login');
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -72,7 +74,7 @@ export const AuthProvider = ({ children }) => {
       return { success: true, pendingVerification: true };
     } catch (err) {
       const detail = err.response?.data?.detail;
-      const errorMessage = (typeof detail === 'string' ? detail : null) || 'Errore durante la registrazione';
+      const errorMessage = (typeof detail === 'string' ? detail : null) || t('Errore durante la registrazione');
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }

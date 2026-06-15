@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Coins, AlertTriangle, CheckCircle2, X, Sparkles, ArrowRight } from 'lucide-react';
 
 /**
@@ -25,6 +26,7 @@ const CreditConfirmDialog = ({
   currentBalance = 0,
   loading = false
 }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   const isAdmin = currentBalance === -1;
@@ -49,7 +51,7 @@ const CreditConfirmDialog = ({
                 <Coins className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">Conferma Crediti</h3>
+                <h3 className="text-lg font-bold text-white">{t('Conferma Crediti')}</h3>
                 <p className="text-sm text-white/80">{operationName}</p>
               </div>
             </div>
@@ -77,9 +79,9 @@ const CreditConfirmDialog = ({
               {/* Costo stimato */}
               <div className="bg-orange-50 rounded-2xl p-4 mb-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-600">Costo stimato</span>
+                  <span className="text-sm font-medium text-gray-600">{t('Costo stimato')}</span>
                   <span className="text-2xl font-bold text-orange-600">
-                    {estimatedCredits} crediti
+                    {t('{{n}} crediti', { n: estimatedCredits })}
                   </span>
                 </div>
 
@@ -89,7 +91,7 @@ const CreditConfirmDialog = ({
                   return (
                     <div key={key} className="flex items-center justify-between text-sm text-gray-500 mt-1">
                       <span className="capitalize">{key.replace(/_/g, ' ')}</span>
-                      <span>{typeof value === 'number' ? `${value} crediti` : value}</span>
+                      <span>{typeof value === 'number' ? t('{{n}} crediti', { n: value }) : value}</span>
                     </div>
                   );
                 })}
@@ -98,9 +100,9 @@ const CreditConfirmDialog = ({
               {/* Saldo */}
               <div className="space-y-3 mb-6">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Saldo attuale</span>
+                  <span className="text-sm text-gray-600">{t('Saldo attuale')}</span>
                   <span className={`font-bold ${isAdmin ? 'text-green-600' : 'text-gray-900'}`}>
-                    {isAdmin ? 'Infinito' : `${currentBalance} crediti`}
+                    {isAdmin ? t('Infinito') : t('{{n}} crediti', { n: currentBalance })}
                   </span>
                 </div>
 
@@ -110,9 +112,9 @@ const CreditConfirmDialog = ({
                       <ArrowRight className="w-4 h-4 text-gray-400" />
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Saldo dopo</span>
+                      <span className="text-sm text-gray-600">{t('Saldo dopo')}</span>
                       <span className={`font-bold ${balanceAfter >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {balanceAfter >= 0 ? `${balanceAfter} crediti` : 'Insufficiente'}
+                        {balanceAfter >= 0 ? t('{{n}} crediti', { n: balanceAfter }) : t('Insufficiente')}
                       </span>
                     </div>
                   </>
@@ -125,9 +127,9 @@ const CreditConfirmDialog = ({
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-red-800">Crediti insufficienti</p>
+                      <p className="text-sm font-medium text-red-800">{t('Crediti insufficienti')}</p>
                       <p className="text-xs text-red-600 mt-1">
-                        Ti mancano {estimatedCredits - currentBalance} crediti per questa operazione.
+                        {t('Ti mancano {{n}} crediti per questa operazione.', { n: estimatedCredits - currentBalance })}
                       </p>
                     </div>
                   </div>
@@ -140,7 +142,7 @@ const CreditConfirmDialog = ({
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-green-600" />
                     <p className="text-sm text-green-700">
-                      Come amministratore, i tuoi crediti sono infiniti.
+                      {t('Come amministratore, i tuoi crediti sono infiniti.')}
                     </p>
                   </div>
                 </div>
@@ -155,7 +157,7 @@ const CreditConfirmDialog = ({
             onClick={onCancel}
             className="flex-1 btn btn-secondary"
           >
-            Annulla
+            {t('Annulla')}
           </button>
           <button
             onClick={onConfirm}
@@ -163,7 +165,7 @@ const CreditConfirmDialog = ({
             className="flex-1 btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle2 className="w-4 h-4" />
-            Conferma e Procedi
+            {t('Conferma e Procedi')}
           </button>
         </div>
       </div>

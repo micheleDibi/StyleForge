@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Upload, Loader, AlertTriangle } from 'lucide-react';
 import { extractTextFromFile } from '../services/api';
 
@@ -15,6 +16,7 @@ const ACCEPT = '.pdf,.docx,.txt';
  *  - className: classi extra per il contenitore
  */
 const FileTextUpload = ({ onExtracted, disabled = false, className = '' }) => {
+  const { t } = useTranslation();
   const inputRef = useRef(null);
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState(null);
@@ -31,11 +33,11 @@ const FileTextUpload = ({ onExtracted, disabled = false, className = '' }) => {
       if (data?.text) {
         onExtracted(data.text, data.filename);
       } else {
-        setError('Nessun testo estratto dal file.');
+        setError(t('Nessun testo estratto dal file.'));
       }
     } catch (err) {
       console.error('Errore estrazione file:', err);
-      setError(err.response?.data?.detail || "Errore durante l'estrazione del testo dal file");
+      setError(err.response?.data?.detail || t("Errore durante l'estrazione del testo dal file"));
     } finally {
       setExtracting(false);
     }
@@ -82,12 +84,12 @@ const FileTextUpload = ({ onExtracted, disabled = false, className = '' }) => {
         {extracting ? (
           <>
             <Loader className="w-4 h-4 animate-spin" />
-            Estrazione testo in corso...
+            {t('Estrazione testo in corso...')}
           </>
         ) : (
           <>
             <Upload className="w-4 h-4" />
-            Carica file (PDF, DOCX, TXT) o trascinalo qui
+            {t('Carica file (PDF, DOCX, TXT) o trascinalo qui')}
           </>
         )}
       </div>

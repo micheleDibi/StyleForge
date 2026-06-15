@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Wand2, Download, Copy, Check, AlertTriangle, RefreshCw, Shield, Sparkles, FileText, Loader, GraduationCap } from 'lucide-react';
 import { getSessions, humanizeContent, antiAICorrection, pollJobStatus, estimateCredits, startCompilatioScan, downloadCompilatioReport } from '../services/api';
@@ -10,6 +11,7 @@ import FileTextUpload from '../components/FileTextUpload';
 import { jsPDF } from 'jspdf';
 
 const Humanize = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { isAdmin, credits, refreshUser, hasPermission } = useAuth();
   const [searchParams] = useSearchParams();
@@ -63,12 +65,12 @@ const Humanize = () => {
     const txt = textOverride ?? testoOriginale;
 
     if (txt.trim().length < 50) {
-      alert('Il testo deve contenere almeno 50 caratteri');
+      alert(t('Il testo deve contenere almeno 50 caratteri'));
       return;
     }
 
     if (mode === 'full' && !selectedSession) {
-      alert('Seleziona una sessione addestrata');
+      alert(t('Seleziona una sessione addestrata'));
       return;
     }
 
@@ -120,7 +122,7 @@ const Humanize = () => {
       if (finalStatus.status === 'completed') {
         setResult(finalStatus.result);
       } else if (finalStatus.status === 'failed') {
-        alert('Errore durante l\'elaborazione: ' + (finalStatus.error || 'Errore sconosciuto'));
+        alert(t('Errore durante l\'elaborazione: ') + (finalStatus.error || t('Errore sconosciuto')));
       }
 
       // Aggiorna saldo crediti
@@ -128,9 +130,9 @@ const Humanize = () => {
     } catch (error) {
       console.error('Errore nell\'elaborazione:', error);
       if (error.response?.status === 402) {
-        alert('Crediti insufficienti per questa operazione.');
+        alert(t('Crediti insufficienti per questa operazione.'));
       } else {
-        alert('Errore nell\'elaborazione del testo');
+        alert(t('Errore nell\'elaborazione del testo'));
       }
     } finally {
       setProcessing(false);
@@ -214,11 +216,11 @@ const Humanize = () => {
           setCompilatioResult(finalStatus.result);
         }
       } else if (finalStatus.status === 'failed') {
-        setCompilatioError(finalStatus.error || 'Scansione fallita');
+        setCompilatioError(finalStatus.error || t('Scansione fallita'));
       }
     } catch (error) {
       console.error('Errore scansione Compilatio:', error);
-      setCompilatioError(error.response?.data?.detail || 'Errore durante la scansione');
+      setCompilatioError(error.response?.data?.detail || t('Errore durante la scansione'));
     } finally {
       setCompilatioScanning(false);
     }
@@ -230,7 +232,7 @@ const Humanize = () => {
         await downloadCompilatioReport(compilatioResult.scan_id);
       } catch (error) {
         console.error('Errore download report:', error);
-        alert('Errore nel download del report');
+        alert(t('Errore nel download del report'));
       }
     }
   };
@@ -249,7 +251,7 @@ const Humanize = () => {
           className="btn btn-secondary gap-2 mb-6"
         >
           <ArrowLeft className="w-4 h-4" />
-          Torna alla Dashboard
+          {t('Torna alla Dashboard')}
         </button>
 
         {/* Mode Toggle */}
@@ -263,7 +265,7 @@ const Humanize = () => {
             }`}
           >
             <Shield className="w-5 h-5" />
-            Correzione Anti-AI
+            {t('Correzione Anti-AI')}
           </button>
           <button
             onClick={() => { setMode('full'); setResult(''); setJobStatus(null); setCompilatioResult(null); setCompilatioError(null); }}
@@ -274,7 +276,7 @@ const Humanize = () => {
             }`}
           >
             <Wand2 className="w-5 h-5" />
-            Umanizzazione con Profilo Stilistico
+            {t('Umanizzazione con Profilo Stilistico')}
           </button>
         </div>
 
@@ -283,24 +285,23 @@ const Humanize = () => {
           <div className="card max-w-md mx-auto text-center mb-6">
             <Wand2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-slate-900 mb-2">
-              Nessuna sessione addestrata
+              {t('Nessuna sessione addestrata')}
             </h2>
             <p className="text-slate-600 mb-6">
-              Per l'umanizzazione con profilo stilistico devi prima addestrare una sessione.
-              Puoi comunque usare la <strong>Correzione Anti-AI</strong>.
+              {t("Per l'umanizzazione con profilo stilistico devi prima addestrare una sessione. Puoi comunque usare la ")}<strong>{t('Correzione Anti-AI')}</strong>.
             </p>
             <div className="flex gap-2 justify-center">
               <button
                 onClick={() => navigate('/train')}
                 className="btn btn-primary"
               >
-                Avvia Training
+                {t('Avvia Training')}
               </button>
               <button
                 onClick={() => setMode('correction')}
                 className="btn btn-secondary"
               >
-                Usa Correzione Anti-AI
+                {t('Usa Correzione Anti-AI')}
               </button>
             </div>
           </div>
@@ -310,12 +311,12 @@ const Humanize = () => {
           {/* Form */}
           <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">
-              {mode === 'correction' ? 'Correzione Anti-AI' : 'Umanizza Testo AI'}
+              {mode === 'correction' ? t('Correzione Anti-AI') : t('Umanizza Testo AI')}
             </h1>
             <p className="text-slate-600 mb-6">
               {mode === 'correction'
-                ? 'Micro-correzioni per ridurre la rilevabilita AI'
-                : 'Riscrivi testi generati da AI nello stile appreso'
+                ? t('Micro-correzioni per ridurre la rilevabilita AI')
+                : t('Riscrivi testi generati da AI nello stile appreso')
               }
             </p>
 
@@ -325,14 +326,12 @@ const Humanize = () => {
                 <div className="flex gap-3">
                   <Shield className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="font-medium text-orange-800 mb-1">Come funziona</h4>
+                    <h4 className="font-medium text-orange-800 mb-1">{t('Come funziona')}</h4>
                     <p className="text-sm text-orange-700">
-                      Applica <strong>micro-correzioni</strong> al tuo testo per ridurre la percentuale di rilevamento AI.
-                      Il testo <strong>non viene riscritto</strong> ma solo ritoccato con sinonimi mirati, leggere variazioni
-                      sintattiche e piccole imperfezioni naturali. Il risultato mantiene il <strong>90%+ del testo originale</strong>.
+                      {t('Applica ')}<strong>{t('micro-correzioni')}</strong>{t(' al tuo testo per ridurre la percentuale di rilevamento AI. Il testo ')}<strong>{t('non viene riscritto')}</strong>{t(' ma solo ritoccato con sinonimi mirati, leggere variazioni sintattiche e piccole imperfezioni naturali. Il risultato mantiene il ')}<strong>{t('90%+ del testo originale')}</strong>.
                     </p>
                     <p className="text-xs text-orange-600 mt-2">
-                      Non richiede una sessione addestrata.
+                      {t('Non richiede una sessione addestrata.')}
                     </p>
                   </div>
                 </div>
@@ -342,15 +341,12 @@ const Humanize = () => {
                 <div className="flex gap-3">
                   <Wand2 className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="font-medium text-purple-800 mb-1">Come funziona</h4>
+                    <h4 className="font-medium text-purple-800 mb-1">{t('Come funziona')}</h4>
                     <p className="text-sm text-purple-700">
-                      Riscrive testi generati da AI applicando lo <strong>stile dell'autore</strong> appreso
-                      durante l'addestramento e tecniche avanzate per aumentare la perplessita e la variabilita,
-                      rendendolo indistinguibile da un testo scritto da un umano. Ideale per superare
-                      i controlli dei detector AI come GPTZero e altri strumenti di rilevamento.
+                      {t('Riscrive testi generati da AI applicando lo ')}<strong>{t("stile dell'autore")}</strong>{t(" appreso durante l'addestramento e tecniche avanzate per aumentare la perplessita e la variabilita, rendendolo indistinguibile da un testo scritto da un umano. Ideale per superare i controlli dei detector AI come GPTZero e altri strumenti di rilevamento.")}
                     </p>
                     <p className="text-xs text-purple-600 mt-2">
-                      Richiede una sessione addestrata.
+                      {t('Richiede una sessione addestrata.')}
                     </p>
                   </div>
                 </div>
@@ -364,7 +360,7 @@ const Humanize = () => {
               {/* Profilo anti-AI (valido per entrambe le modalita) */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Profilo anti-AI
+                  {t('Profilo anti-AI')}
                 </label>
                 <div className="flex gap-2">
                   <button
@@ -377,7 +373,7 @@ const Humanize = () => {
                     }`}
                   >
                     <Sparkles className="w-4 h-4" />
-                    Informale
+                    {t('Informale')}
                   </button>
                   <button
                     type="button"
@@ -389,13 +385,13 @@ const Humanize = () => {
                     }`}
                   >
                     <GraduationCap className="w-4 h-4" />
-                    Accademico
+                    {t('Accademico')}
                   </button>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
                   {profile === 'academic'
-                    ? 'Registro formale: protegge citazioni [x] e note, nessun colloquialismo.'
-                    : 'Piu aggressivo: introduce colloquialismi e variazioni piu marcate.'}
+                    ? t('Registro formale: protegge citazioni [x] e note, nessun colloquialismo.')
+                    : t('Piu aggressivo: introduce colloquialismi e variazioni piu marcate.')}
                 </p>
               </div>
 
@@ -403,7 +399,7 @@ const Humanize = () => {
               {mode === 'full' && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Sessione (Profilo Stilistico)
+                    {t('Sessione (Profilo Stilistico)')}
                   </label>
                   <select
                     value={selectedSession}
@@ -418,27 +414,27 @@ const Humanize = () => {
                     ))}
                   </select>
                   <p className="text-xs text-slate-500 mt-1">
-                    Il testo verra riscritto nello stile dell'autore di questa sessione
+                    {t("Il testo verra riscritto nello stile dell'autore di questa sessione")}
                   </p>
                 </div>
               )}
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  {mode === 'correction' ? 'Testo da Correggere' : 'Testo da Umanizzare'}
+                  {mode === 'correction' ? t('Testo da Correggere') : t('Testo da Umanizzare')}
                 </label>
                 <textarea
                   value={testoOriginale}
                   onChange={(e) => setTestoOriginale(e.target.value)}
                   className="input w-full h-96 resize-y min-h-64"
                   placeholder={mode === 'correction'
-                    ? "Incolla qui il testo su cui applicare micro-correzioni anti-AI...\n\nIl testo verra mantenuto quasi identico all'originale con sole piccole modifiche mirate per ridurre la percentuale di rilevamento AI."
-                    : "Incolla qui il testo generato da AI che vuoi riscrivere...\n\nPuoi incollare articoli, saggi, relazioni o qualsiasi testo generato da intelligenza artificiale.\n\nIl testo verra riscritto applicando lo stile dell'autore della sessione selezionata e tecniche avanzate per evitare la detection AI."
+                    ? t("Incolla qui il testo su cui applicare micro-correzioni anti-AI...\n\nIl testo verra mantenuto quasi identico all'originale con sole piccole modifiche mirate per ridurre la percentuale di rilevamento AI.")
+                    : t("Incolla qui il testo generato da AI che vuoi riscrivere...\n\nPuoi incollare articoli, saggi, relazioni o qualsiasi testo generato da intelligenza artificiale.\n\nIl testo verra riscritto applicando lo stile dell'autore della sessione selezionata e tecniche avanzate per evitare la detection AI.")
                   }
                   required
                 />
                 <p className="text-xs text-slate-500 mt-2">
-                  {countWords(testoOriginale)} parole - {testoOriginale.length} caratteri
+                  {t('{{words}} parole - {{chars}} caratteri', { words: countWords(testoOriginale), chars: testoOriginale.length })}
                 </p>
                 {testoOriginale.trim().length >= 50 && (
                   <CreditEstimatePreview
@@ -471,12 +467,12 @@ const Humanize = () => {
                       <span></span>
                       <span></span>
                     </div>
-                    {mode === 'correction' ? 'Correzione in corso...' : 'Umanizzazione in corso...'}
+                    {mode === 'correction' ? t('Correzione in corso...') : t('Umanizzazione in corso...')}
                   </>
                 ) : (
                   <>
                     {mode === 'correction' ? <Shield className="w-5 h-5" /> : <Wand2 className="w-5 h-5" />}
-                    {mode === 'correction' ? 'Avvia Correzione Anti-AI' : 'Umanizza Testo'}
+                    {mode === 'correction' ? t('Avvia Correzione Anti-AI') : t('Umanizza Testo')}
                   </>
                 )}
               </button>
@@ -486,7 +482,7 @@ const Humanize = () => {
           {/* Result */}
           <div>
             <h2 className="text-xl font-semibold text-slate-900 mb-4">
-              Risultato
+              {t('Risultato')}
             </h2>
 
             {jobStatus && jobStatus.status !== 'completed' && jobStatus.status !== 'failed' && (
@@ -498,12 +494,12 @@ const Humanize = () => {
                     <Wand2 className="w-12 h-12 text-purple-600 animate-pulse mx-auto mb-4" />
                   )}
                   <p className="text-slate-600 mb-2">
-                    {mode === 'correction' ? 'Correzione in corso...' : 'Umanizzazione in corso...'}
+                    {mode === 'correction' ? t('Correzione in corso...') : t('Umanizzazione in corso...')}
                   </p>
                   <p className="text-sm text-slate-500">
                     {mode === 'correction'
-                      ? 'Sto applicando micro-correzioni al testo'
-                      : 'Sto riscrivendo il testo nello stile appreso'
+                      ? t('Sto applicando micro-correzioni al testo')
+                      : t('Sto riscrivendo il testo nello stile appreso')
                     }
                   </p>
                   {jobStatus.progress > 0 && (
@@ -528,7 +524,7 @@ const Humanize = () => {
               <div className="card">
                 <div className="flex justify-between items-center mb-4">
                   <p className="text-sm text-slate-600">
-                    {countWords(result)} parole
+                    {t('{{n}} parole', { n: countWords(result) })}
                   </p>
                   <div className="flex gap-2">
                     <button
@@ -536,14 +532,14 @@ const Humanize = () => {
                       className="btn btn-secondary gap-2 text-sm"
                     >
                       {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      {copied ? 'Copiato!' : 'Copia'}
+                      {copied ? t('Copiato!') : t('Copia')}
                     </button>
                     <button
                       onClick={handleDownload}
                       className="btn btn-primary gap-2 text-sm"
                     >
                       <Download className="w-4 h-4" />
-                      Scarica
+                      {t('Scarica')}
                     </button>
                   </div>
                 </div>
@@ -565,7 +561,7 @@ const Humanize = () => {
                     className="w-full btn gap-2 text-sm bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 h-10"
                   >
                     <Shield className="w-4 h-4" />
-                    Scansione Detector AI (AI Detection + Plagio)
+                    {t('Scansione Detector AI (AI Detection + Plagio)')}
                   </button>
                 )}
 
@@ -573,7 +569,7 @@ const Humanize = () => {
                   <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
                     <div className="flex items-center gap-3 mb-2">
                       <Loader className="w-5 h-5 text-purple-600 animate-spin" />
-                      <span className="text-purple-700 font-medium text-sm">Scansione Detector AI in corso...</span>
+                      <span className="text-purple-700 font-medium text-sm">{t('Scansione Detector AI in corso...')}</span>
                     </div>
                     <div className="w-full bg-purple-200 rounded-full h-2">
                       <div
@@ -581,7 +577,7 @@ const Humanize = () => {
                         style={{ width: `${compilatioProgress}%` }}
                       ></div>
                     </div>
-                    <p className="text-xs text-purple-500 mt-1">L'analisi puo' richiedere alcuni minuti</p>
+                    <p className="text-xs text-purple-500 mt-1">{t("L'analisi puo' richiedere alcuni minuti")}</p>
                   </div>
                 )}
 
@@ -590,7 +586,7 @@ const Humanize = () => {
                     <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
                     <span className="text-red-700 text-sm">{compilatioError}</span>
                     <button onClick={handleCompilatioScan} className="ml-auto text-red-600 hover:text-red-800 text-sm underline">
-                      Riprova
+                      {t('Riprova')}
                     </button>
                   </div>
                 )}
@@ -600,7 +596,7 @@ const Humanize = () => {
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold text-slate-800 flex items-center gap-2">
                         <Shield className="w-4 h-4 text-purple-600" />
-                        Risultati Detector AI
+                        {t('Risultati Detector AI')}
                       </h4>
                       {compilatioResult.has_report && (
                         <button
@@ -608,7 +604,7 @@ const Humanize = () => {
                           className="btn btn-secondary gap-1 text-xs h-8"
                         >
                           <FileText className="w-3 h-3" />
-                          Report PDF
+                          {t('Report PDF')}
                         </button>
                       )}
                     </div>
@@ -616,19 +612,19 @@ const Humanize = () => {
                     <div className="grid grid-cols-2 gap-2">
                       <div className={`rounded-lg p-3 border ${getAIScoreColor(compilatioResult.ai_generated_percent)}`}>
                         <div className="text-2xl font-bold">{compilatioResult.ai_generated_percent?.toFixed(1)}%</div>
-                        <div className="text-xs font-medium opacity-80">AI Generato</div>
+                        <div className="text-xs font-medium opacity-80">{t('AI Generato')}</div>
                       </div>
                       <div className="rounded-lg p-3 border bg-blue-50 border-blue-200 text-blue-600">
                         <div className="text-2xl font-bold">{compilatioResult.similarity_percent?.toFixed(1)}%</div>
-                        <div className="text-xs font-medium opacity-80">Similarita</div>
+                        <div className="text-xs font-medium opacity-80">{t('Similarita')}</div>
                       </div>
                       <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
                         <div className="text-lg font-bold">{compilatioResult.global_score_percent?.toFixed(1)}%</div>
-                        <div className="text-xs font-medium opacity-80">Score Globale</div>
+                        <div className="text-xs font-medium opacity-80">{t('Score Globale')}</div>
                       </div>
                       <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
                         <div className="text-lg font-bold">{compilatioResult.exact_percent?.toFixed(1)}%</div>
-                        <div className="text-xs font-medium opacity-80">Match Esatti</div>
+                        <div className="text-xs font-medium opacity-80">{t('Match Esatti')}</div>
                       </div>
                     </div>
                   </div>
@@ -645,8 +641,8 @@ const Humanize = () => {
                 )}
                 <p className="text-slate-600">
                   {mode === 'correction'
-                    ? 'Il testo corretto apparira qui'
-                    : 'Il testo umanizzato apparira qui'
+                    ? t('Il testo corretto apparira qui')
+                    : t('Il testo umanizzato apparira qui')
                   }
                 </p>
               </div>
@@ -660,7 +656,7 @@ const Humanize = () => {
         isOpen={showCreditDialog}
         onConfirm={handleConfirmedHumanize}
         onCancel={() => setShowCreditDialog(false)}
-        operationName={mode === 'correction' ? 'Correzione Anti-AI' : 'Umanizza Testo'}
+        operationName={mode === 'correction' ? t('Correzione Anti-AI') : t('Umanizza Testo')}
         estimatedCredits={creditEstimate?.credits_needed || 0}
         breakdown={creditEstimate?.breakdown || {}}
         currentBalance={isAdmin ? -1 : (creditEstimate?.current_balance ?? credits)}

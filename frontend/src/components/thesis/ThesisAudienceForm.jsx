@@ -1,6 +1,8 @@
 import { Building2, GraduationCap, Target } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
+  const { t } = useTranslation();
   const handleChange = (field, value) => {
     onChange({ ...data, [field]: value });
   };
@@ -8,8 +10,8 @@ const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Caratteristiche del Pubblico</h2>
-        <p className="text-slate-600">Definisci il pubblico target per personalizzare lo stile e il livello di dettaglio.</p>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Caratteristiche del Pubblico')}</h2>
+        <p className="text-slate-600">{t('Definisci il pubblico target per personalizzare lo stile e il livello di dettaglio.')}</p>
       </div>
 
       <div className="card space-y-6">
@@ -19,7 +21,7 @@ const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
             <label className="block text-sm font-medium text-slate-700 mb-2">
               <div className="flex items-center gap-2">
                 <GraduationCap className="w-4 h-4" />
-                Livello di Conoscenza <span className="text-red-500">*</span>
+                {t('Livello di Conoscenza')} <span className="text-red-500">*</span>
               </div>
             </label>
             <select
@@ -28,7 +30,7 @@ const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
               className="input w-full"
               required
             >
-              <option value="">Seleziona livello</option>
+              <option value="">{t('Seleziona livello')}</option>
               {lookupData?.knowledge_levels?.map((level) => (
                 <option key={level.id} value={level.id}>
                   {level.name}
@@ -47,7 +49,7 @@ const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
             <label className="block text-sm font-medium text-slate-700 mb-2">
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4" />
-                Industria / Settore <span className="text-red-500">*</span>
+                {t('Industria / Settore')} <span className="text-red-500">*</span>
               </div>
             </label>
             <select
@@ -56,7 +58,7 @@ const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
               className="input w-full"
               required
             >
-              <option value="">Seleziona settore</option>
+              <option value="">{t('Seleziona settore')}</option>
               {lookupData?.industries?.map((industry) => (
                 <option key={industry.id} value={industry.id}>
                   {industry.name}
@@ -75,7 +77,7 @@ const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
             <label className="block text-sm font-medium text-slate-700 mb-2">
               <div className="flex items-center gap-2">
                 <Target className="w-4 h-4" />
-                Destinatari <span className="text-red-500">*</span>
+                {t('Destinatari')} <span className="text-red-500">*</span>
               </div>
             </label>
             <select
@@ -84,7 +86,7 @@ const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
               className="input w-full"
               required
             >
-              <option value="">Seleziona destinatari</option>
+              <option value="">{t('Seleziona destinatari')}</option>
               {lookupData?.target_audiences?.map((audience) => (
                 <option key={audience.id} value={audience.id}>
                   {audience.name}
@@ -102,20 +104,20 @@ const ThesisAudienceForm = ({ data, onChange, lookupData }) => {
         {/* Riepilogo */}
         {(data.knowledge_level_id && data.target_audience_id) && (
           <div className="border-t border-slate-200 pt-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Riepilogo Pubblico</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">{t('Riepilogo Pubblico')}</h3>
             <div className="p-4 bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-lg">
               <p className="text-slate-800">
-                Il documento sarà scritto per{' '}
+                {t('Il documento sarà scritto per')}{' '}
                 <strong>
                   {lookupData?.target_audiences?.find(a => a.id === data.target_audience_id)?.name.toLowerCase()}
                 </strong>
-                {' '}con un livello di conoscenza{' '}
+                {' '}{t('con un livello di conoscenza')}{' '}
                 <strong>
                   {lookupData?.knowledge_levels?.find(l => l.id === data.knowledge_level_id)?.name.toLowerCase()}
                 </strong>
                 {data.industry_id && (
                   <>
-                    {' '}nel settore{' '}
+                    {' '}{t('nel settore')}{' '}
                     <strong>
                       {lookupData?.industries?.find(i => i.id === data.industry_id)?.name.toLowerCase()}
                     </strong>

@@ -17,12 +17,14 @@ import {
   deleteThesisAttachment,
   estimateCredits,
 } from '../../services/api';
+import { useTranslation } from 'react-i18next';
 import PaperSearchPanel from '../research/PaperSearchPanel';
 import PaperKeywordSuggestions from './PaperKeywordSuggestions';
 
 const PAPER_MIME_TYPE = 'application/x-research-paper';
 
 const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesisPaid = false }) => {
+  const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedPapers, setSelectedPapers] = useState(() => new Map());
   const [cachedSummaries, setCachedSummaries] = useState(() => new Map());
@@ -103,19 +105,19 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
       const credits = result.credits_consumed || 0;
       // Se la tesi ha gia' pagato la tariffa flat, niente conteggio crediti consumati.
       const summaryNote = isThesisPaid
-        ? `Aggiunti ${result.total} paper. Generati ${summarized} riassunti AI inclusi nella tariffa.`
-        : `Aggiunti ${result.total} paper. Generati ${summarized} riassunti AI (${credits} crediti).`;
+        ? t('Aggiunti {{total}} paper. Generati {{summarized}} riassunti AI inclusi nella tariffa.', { total: result.total, summarized })
+        : t('Aggiunti {{total}} paper. Generati {{summarized}} riassunti AI ({{credits}} crediti).', { total: result.total, summarized, credits });
       setInfo(
         summarized > 0
           ? summaryNote
-          : `Aggiunti ${result.total} paper alla tesi.`
+          : t('Aggiunti {{total}} paper alla tesi.', { total: result.total })
       );
       if (onCreditsChanged) onCreditsChanged();
     } catch (err) {
       if (err.isInsufficientCredits) {
-        setError(err.creditErrorMessage || 'Crediti insufficienti per generare i riassunti AI.');
+        setError(err.creditErrorMessage || t('Crediti insufficienti per generare i riassunti AI.'));
       } else {
-        setError(err.response?.data?.detail || 'Errore durante l\'aggiunta dei paper.');
+        setError(err.response?.data?.detail || t('Errore durante l\'aggiunta dei paper.'));
       }
     } finally {
       setAdding(false);
@@ -131,7 +133,7 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
         attachments: (data.attachments || []).filter((a) => a.id !== attachmentId),
       });
     } catch {
-      setError('Errore durante la rimozione del paper.');
+      setError(t('Errore durante la rimozione del paper.'));
     } finally {
       setRemovingId(null);
     }
@@ -140,11 +142,9 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Paper Scientifici</h2>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Paper Scientifici')}</h2>
         <p className="text-slate-600">
-          Cerca paper accademici da OpenAlex, Semantic Scholar e Crossref e selezionane alcuni come fonti per la tesi.
-          Per ogni paper aggiunto verrà generato un riassunto AI usato dal modello durante la generazione.
-          Questo step è opzionale: puoi anche saltarlo e procedere direttamente agli allegati.
+          {t('Cerca paper accademici da OpenAlex, Semantic Scholar e Crossref e selezionane alcuni come fonti per la tesi. Per ogni paper aggiunto verrà generato un riassunto AI usato dal modello durante la generazione. Questo step è opzionale: puoi anche saltarlo e procedere direttamente agli allegati.')}
         </p>
       </div>
 
@@ -152,7 +152,7 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
         <div className="card space-y-3">
           <h3 className="font-medium text-slate-900 flex items-center gap-2">
             <CheckCircle className="w-4 h-4 text-emerald-500" />
-            Paper già aggiunti alla tesi ({paperAttachments.length})
+            {t('Paper già aggiunti alla tesi ({{count}})', { count: paperAttachments.length })}
           </h3>
           <ul className="space-y-2">
             {paperAttachments.map((att) => (
@@ -166,7 +166,7 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-900 truncate">{att.original_filename}</p>
-                    <p className="text-xs text-slate-500">Paper accademico · contesto attivo per la generazione</p>
+                    <p className="text-xs text-slate-500">{t('Paper accademico · contesto attivo per la generazione')}</p>
                   </div>
                 </div>
                 <button
@@ -174,7 +174,7 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
                   onClick={() => handleRemovePaper(att.id)}
                   disabled={removingId === att.id}
                   className="p-2 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                  title="Rimuovi paper dalla tesi"
+                  title={t('Rimuovi paper dalla tesi')}
                 >
                   {removingId === att.id ? (
                     <Loader className="w-4 h-4 text-slate-400 animate-spin" />
@@ -203,8 +203,8 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
           </div>
           <p className="text-sm text-slate-700">
             {paperAttachments.length === 0
-              ? 'Vuoi cercare paper scientifici da includere come fonti?'
-              : 'Aggiungi altri paper o procedi alla Knowledge Base.'}
+              ? t('Vuoi cercare paper scientifici da includere come fonti?')
+              : t('Aggiungi altri paper o procedi alla Knowledge Base.')}
           </p>
           <button
             type="button"
@@ -212,10 +212,10 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
             className="btn-primary inline-flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Cerca paper
+            {t('Cerca paper')}
           </button>
           <p className="text-xs text-slate-500">
-            Step opzionale — puoi saltarlo e procedere direttamente alla Knowledge Base.
+            {t('Step opzionale — puoi saltarlo e procedere direttamente alla Knowledge Base.')}
           </p>
         </div>
       ) : (
@@ -240,13 +240,17 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
                   <Sparkles className="w-4 h-4 text-orange-500" />
                   <span className="font-medium text-slate-900">{selectedList.length}</span>
                   <span className="text-slate-600">
-                    {selectedList.length === 1 ? 'paper selezionato' : 'paper selezionati'}
+                    {selectedList.length === 1 ? t('paper selezionato') : t('paper selezionati')}
                   </span>
                 </div>
                 {unsummarizedCount > 0 && !isThesisPaid && (
                   <div className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
                     <Coins className="w-3.5 h-3.5" />
-                    ≈ {estimatedExtraCost} crediti per {unsummarizedCount} {unsummarizedCount === 1 ? 'riassunto AI' : 'riassunti AI'} mancanti
+                    {t('≈ {{cost}} crediti per {{count}} {{label}} mancanti', {
+                      cost: estimatedExtraCost,
+                      count: unsummarizedCount,
+                      label: unsummarizedCount === 1 ? t('riassunto AI') : t('riassunti AI'),
+                    })}
                   </div>
                 )}
               </div>
@@ -267,23 +271,23 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
                 {adding ? (
                   <>
                     <Loader className="w-4 h-4 animate-spin" />
-                    Aggiunta paper in corso (genero i riassunti)...
+                    {t('Aggiunta paper in corso (genero i riassunti)...')}
                   </>
                 ) : (
                   <>
                     <Plus className="w-4 h-4" />
-                    Aggiungi {selectedList.length} paper alla tesi
+                    {t('Aggiungi {{count}} paper alla tesi', { count: selectedList.length })}
                   </>
                 )}
               </button>
               {!isThesisPaid && (
                 <p className="text-xs text-slate-500 text-center">
-                  Per i paper di cui hai già generato il riassunto manualmente, i crediti del riassunto AI non vengono riaddebitati.
+                  {t('Per i paper di cui hai già generato il riassunto manualmente, i crediti del riassunto AI non vengono riaddebitati.')}
                 </p>
               )}
               {isThesisPaid && (
                 <p className="text-xs text-emerald-700 text-center">
-                  Inclusi nella tariffa flat della tesi: nessun ulteriore credito verrà addebitato per i riassunti AI dei paper.
+                  {t('Inclusi nella tariffa flat della tesi: nessun ulteriore credito verrà addebitato per i riassunti AI dei paper.')}
                 </p>
               )}
             </div>
@@ -302,12 +306,12 @@ const ThesisPapersForm = ({ data, onChange, thesisId, onCreditsChanged, isThesis
         <div className="flex gap-3">
           <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-blue-800 space-y-1">
-            <p className="font-medium">Come vengono usati i paper?</p>
+            <p className="font-medium">{t('Come vengono usati i paper?')}</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>I metadati (titolo, autori, anno, venue, citazioni) e l'abstract entrano nel contesto della generazione tesi.</li>
-              <li>Per ogni paper viene aggiunto anche un riassunto tecnico AI con keywords e limiti dello studio.</li>
-              <li>I paper aggiunti vengono indicizzati nella Knowledge Base insieme ai documenti caricati nello step precedente.</li>
-              <li>Puoi rimuoverli in qualsiasi momento prima di confermare i capitoli.</li>
+              <li>{t('I metadati (titolo, autori, anno, venue, citazioni) e l\'abstract entrano nel contesto della generazione tesi.')}</li>
+              <li>{t('Per ogni paper viene aggiunto anche un riassunto tecnico AI con keywords e limiti dello studio.')}</li>
+              <li>{t('I paper aggiunti vengono indicizzati nella Knowledge Base insieme ai documenti caricati nello step precedente.')}</li>
+              <li>{t('Puoi rimuoverli in qualsiasi momento prima di confermare i capitoli.')}</li>
             </ul>
           </div>
         </div>

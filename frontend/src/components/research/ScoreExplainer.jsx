@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { HelpCircle, X } from 'lucide-react';
 
 const COMPONENTS = [
@@ -41,6 +42,7 @@ const COMPONENTS = [
 ];
 
 const ScoreExplainer = ({ score, breakdown }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   if (score == null) return null;
@@ -57,13 +59,13 @@ const ScoreExplainer = ({ score, breakdown }) => {
   return (
     <div className="flex flex-col items-end gap-1 flex-shrink-0 relative">
       <div className="flex items-center gap-1">
-        <span className="text-xs text-slate-500">Rilevanza</span>
+        <span className="text-xs text-slate-500">{t('Rilevanza')}</span>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
           className="p-0.5 rounded-full text-slate-400 hover:text-slate-600"
-          aria-label="Spiegazione del punteggio"
-          title="Come viene calcolato il punteggio"
+          aria-label={t('Spiegazione del punteggio')}
+          title={t('Come viene calcolato il punteggio')}
         >
           <HelpCircle className="w-3.5 h-3.5" />
         </button>
@@ -89,20 +91,20 @@ const ScoreExplainer = ({ score, breakdown }) => {
           >
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-semibold text-slate-900">
-                Punteggio di rilevanza
+                {t('Punteggio di rilevanza')}
               </h4>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 className="p-0.5 rounded text-slate-400 hover:text-slate-700"
-                aria-label="Chiudi"
+                aria-label={t('Chiudi')}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <p className="text-xs text-slate-600 mb-3 leading-relaxed">
-              Il punteggio 0-100 pesa sei fattori: più alti i contributi, più il paper è rilevante per la tua ricerca.
+              {t('Il punteggio 0-100 pesa sei fattori: più alti i contributi, più il paper è rilevante per la tua ricerca.')}
             </p>
 
             <ul className="space-y-2">
@@ -112,8 +114,8 @@ const ScoreExplainer = ({ score, breakdown }) => {
                   <li key={r.key} className="text-xs">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-slate-800">
-                        {r.label}
-                        <span className="ml-1 text-slate-400 font-normal">(peso {r.weight}%)</span>
+                        {t(r.label)}
+                        <span className="ml-1 text-slate-400 font-normal">{t('(peso {{weight}}%)', { weight: r.weight })}</span>
                       </span>
                       <span className="text-slate-600 tabular-nums">
                         {componentPct}% × {r.weight}% = <strong className="text-slate-900">{r.contribution.toFixed(1)}</strong>
@@ -125,14 +127,14 @@ const ScoreExplainer = ({ score, breakdown }) => {
                         style={{ width: `${componentPct}%` }}
                       />
                     </div>
-                    <p className="mt-1 text-[11px] text-slate-500 leading-snug">{r.hint}</p>
+                    <p className="mt-1 text-[11px] text-slate-500 leading-snug">{t(r.hint)}</p>
                   </li>
                 );
               })}
             </ul>
 
             <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between text-xs">
-              <span className="text-slate-600">Totale</span>
+              <span className="text-slate-600">{t('Totale')}</span>
               <span className="font-semibold text-slate-900">{total.toFixed(1)} / 100</span>
             </div>
           </div>

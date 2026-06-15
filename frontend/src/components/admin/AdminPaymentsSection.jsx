@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CreditCard, Package, Settings as SettingsIcon, BarChart3, Loader, Check, X, Plus, Edit2, Trash2,
   Upload, AlertTriangle, RefreshCw, Search, Filter, ChevronDown,
@@ -42,6 +43,7 @@ const SUB_TABS = [
 // Sub-tab: Cruscotto
 // ============================================================================
 const DashboardSubtab = () => {
+  const { t } = useTranslation();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -49,7 +51,7 @@ const DashboardSubtab = () => {
   const load = async () => {
     setLoading(true); setError(null);
     try { setStats(await adminPaymentStats()); }
-    catch { setError('Errore caricamento statistiche.'); }
+    catch { setError(t('Errore caricamento statistiche.')); }
     finally { setLoading(false); }
   };
 
@@ -62,7 +64,7 @@ const DashboardSubtab = () => {
 
   if (loading) {
     return <div className="glass rounded-2xl p-8 flex items-center justify-center gap-2 text-slate-500">
-      <Loader className="w-4 h-4 animate-spin" /> Caricamento statistiche…
+      <Loader className="w-4 h-4 animate-spin" /> {t('Caricamento statistiche…')}
     </div>;
   }
   if (error) {
@@ -73,26 +75,26 @@ const DashboardSubtab = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-slate-900">Panoramica pagamenti</h3>
+        <h3 className="text-lg font-semibold text-slate-900">{t('Panoramica pagamenti')}</h3>
         <button onClick={load} className="btn btn-ghost text-sm gap-2">
-          <RefreshCw className="w-4 h-4" /> Aggiorna
+          <RefreshCw className="w-4 h-4" /> {t('Aggiorna')}
         </button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Ricavi totali" value={formatEur(stats.revenue_cents_total)} accent="orange" />
-        <KpiCard label="Ricavi 30gg" value={formatEur(stats.revenue_cents_month)} accent="emerald" />
-        <KpiCard label="Ordini totali" value={stats.count_total?.toLocaleString('it-IT') ?? 0} accent="blue" />
-        <KpiCard label="Tasso successo" value={`${(stats.success_rate * 100).toFixed(1)}%`} accent="purple" />
+        <KpiCard label={t('Ricavi totali')} value={formatEur(stats.revenue_cents_total)} accent="orange" />
+        <KpiCard label={t('Ricavi 30gg')} value={formatEur(stats.revenue_cents_month)} accent="emerald" />
+        <KpiCard label={t('Ordini totali')} value={stats.count_total?.toLocaleString('it-IT') ?? 0} accent="blue" />
+        <KpiCard label={t('Tasso successo')} value={`${(stats.success_rate * 100).toFixed(1)}%`} accent="purple" />
       </div>
 
       {/* Stati */}
       <div className="glass rounded-2xl p-5">
-        <h4 className="font-medium text-slate-700 mb-3">Distribuzione per stato</h4>
+        <h4 className="font-medium text-slate-700 mb-3">{t('Distribuzione per stato')}</h4>
         <div className="flex flex-wrap gap-2">
           {Object.entries(stats.count_by_status || {}).map(([s, c]) => (
             <span key={s} className={`px-3 py-1 rounded-lg text-sm ${STATUS_COLOR[s] || 'bg-slate-100 text-slate-600'}`}>
-              {STATUS_LABELS[s] || s}: <span className="font-bold">{c}</span>
+              {STATUS_LABELS[s] ? t(STATUS_LABELS[s]) : s}: <span className="font-bold">{c}</span>
             </span>
           ))}
         </div>
@@ -100,9 +102,9 @@ const DashboardSubtab = () => {
 
       {/* Daily revenue (SVG bar chart) */}
       <div className="glass rounded-2xl p-5">
-        <h4 className="font-medium text-slate-700 mb-3">Ricavi ultimi 30 giorni</h4>
+        <h4 className="font-medium text-slate-700 mb-3">{t('Ricavi ultimi 30 giorni')}</h4>
         {(!stats.daily || stats.daily.length === 0) ? (
-          <p className="text-sm text-slate-500">Nessun dato disponibile.</p>
+          <p className="text-sm text-slate-500">{t('Nessun dato disponibile.')}</p>
         ) : (
           <div className="space-y-1.5">
             {stats.daily.map((d) => {
@@ -118,7 +120,7 @@ const DashboardSubtab = () => {
                       {formatEur(d.revenue_cents)}
                     </div>
                   </div>
-                  <span className="text-slate-400 w-12 text-right">{d.count} ord.</span>
+                  <span className="text-slate-400 w-12 text-right">{t('{{count}} ord.', { count: d.count })}</span>
                 </div>
               );
             })}
@@ -150,6 +152,7 @@ const KpiCard = ({ label, value, accent = 'orange' }) => {
 // Sub-tab: Ordini
 // ============================================================================
 const OrdersSubtab = () => {
+  const { t } = useTranslation();
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -181,13 +184,13 @@ const OrdersSubtab = () => {
   };
 
   const handleCancel = async (order) => {
-    if (!window.confirm(`Annullare la posizione PagoPA per IUV ${order.iuv}? L'utente non potrà più pagarla.`)) return;
+    if (!window.confirm(t("Annullare la posizione PagoPA per IUV {{iuv}}? L'utente non potrà più pagarla.", { iuv: order.iuv }))) return;
     setActionState({ orderId: order.id, kind: 'cancel' });
     try {
       await adminCancelPayment(order.id);
       await load();
     } catch (err) {
-      alert(err?.response?.data?.detail || 'Errore annullamento');
+      alert(err?.response?.data?.detail || t('Errore annullamento'));
     } finally {
       setActionState({ orderId: null, kind: null });
     }
@@ -201,7 +204,7 @@ const OrdersSubtab = () => {
       setRefundDialog(null);
       await load();
     } catch (err) {
-      alert(err?.response?.data?.detail || 'Errore rimborso');
+      alert(err?.response?.data?.detail || t('Errore rimborso'));
     } finally {
       setActionState({ orderId: null, kind: null });
     }
@@ -214,7 +217,7 @@ const OrdersSubtab = () => {
           <Search className="w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Cerca per IUV o codice fiscale…"
+            placeholder={t('Cerca per IUV o codice fiscale…')}
             className="input flex-1"
             value={filters.q}
             onChange={(e) => setFilters({ ...filters, q: e.target.value })}
@@ -227,38 +230,38 @@ const OrdersSubtab = () => {
             value={filters.status}
             onChange={(e) => setFilters({ ...filters, status: e.target.value, offset: 0 })}
           >
-            <option value="">Tutti gli stati</option>
+            <option value="">{t('Tutti gli stati')}</option>
             {Object.entries(STATUS_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
+              <option key={k} value={k}>{t(v)}</option>
             ))}
           </select>
         </div>
-        <button type="submit" className="btn btn-primary text-sm">Filtra</button>
+        <button type="submit" className="btn btn-primary text-sm">{t('Filtra')}</button>
         <button type="button" onClick={load} className="btn btn-ghost text-sm gap-2">
-          <RefreshCw className="w-4 h-4" /> Aggiorna
+          <RefreshCw className="w-4 h-4" /> {t('Aggiorna')}
         </button>
       </form>
 
       {loading ? (
         <div className="glass rounded-2xl p-8 flex items-center justify-center gap-2 text-slate-500">
-          <Loader className="w-4 h-4 animate-spin" /> Caricamento ordini…
+          <Loader className="w-4 h-4 animate-spin" /> {t('Caricamento ordini…')}
         </div>
       ) : orders.length === 0 ? (
-        <div className="glass rounded-2xl p-12 text-center text-slate-500">Nessun ordine trovato.</div>
+        <div className="glass rounded-2xl p-12 text-center text-slate-500">{t('Nessun ordine trovato.')}</div>
       ) : (
         <div className="glass rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr className="text-left text-slate-600">
-                  <th className="px-3 py-3 font-medium">Data</th>
-                  <th className="px-3 py-3 font-medium">Utente</th>
-                  <th className="px-3 py-3 font-medium">Crediti</th>
-                  <th className="px-3 py-3 font-medium">Importo</th>
-                  <th className="px-3 py-3 font-medium">CF / RS</th>
-                  <th className="px-3 py-3 font-medium">IUV</th>
-                  <th className="px-3 py-3 font-medium">Stato</th>
-                  <th className="px-3 py-3 font-medium text-right">Azioni</th>
+                  <th className="px-3 py-3 font-medium">{t('Data')}</th>
+                  <th className="px-3 py-3 font-medium">{t('Utente')}</th>
+                  <th className="px-3 py-3 font-medium">{t('Crediti')}</th>
+                  <th className="px-3 py-3 font-medium">{t('Importo')}</th>
+                  <th className="px-3 py-3 font-medium">{t('CF / RS')}</th>
+                  <th className="px-3 py-3 font-medium">{t('IUV')}</th>
+                  <th className="px-3 py-3 font-medium">{t('Stato')}</th>
+                  <th className="px-3 py-3 font-medium text-right">{t('Azioni')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -278,7 +281,7 @@ const OrdersSubtab = () => {
                     <td className="px-3 py-3 text-xs font-mono text-slate-500">{o.iuv ? `${o.iuv.substring(0, 12)}…` : '—'}</td>
                     <td className="px-3 py-3">
                       <span className={`inline-block px-2 py-1 rounded-md text-xs font-medium ${STATUS_COLOR[o.status] || ''}`}>
-                        {STATUS_LABELS[o.status] || o.status}
+                        {STATUS_LABELS[o.status] ? t(STATUS_LABELS[o.status]) : o.status}
                       </span>
                     </td>
                     <td className="px-3 py-3 text-right">
@@ -289,11 +292,11 @@ const OrdersSubtab = () => {
                             disabled={actionState.orderId === o.id}
                             onClick={() => handleCancel(o)}
                             className="btn btn-ghost text-xs"
-                            title="Annulla posizione"
+                            title={t('Annulla posizione')}
                           >
                             {actionState.orderId === o.id && actionState.kind === 'cancel'
                               ? <Loader className="w-3 h-3 animate-spin" />
-                              : 'Annulla'}
+                              : t('Annulla')}
                           </button>
                         )}
                         {o.status === 'PAID' && (
@@ -301,9 +304,9 @@ const OrdersSubtab = () => {
                             type="button"
                             onClick={() => setRefundDialog({ order: o, description: '' })}
                             className="btn btn-ghost text-xs text-red-600 hover:bg-red-50"
-                            title="Rimborso interno"
+                            title={t('Rimborso interno')}
                           >
-                            Rimborsa
+                            {t('Rimborsa')}
                           </button>
                         )}
                       </div>
@@ -314,7 +317,7 @@ const OrdersSubtab = () => {
             </table>
           </div>
           <div className="px-3 py-2 text-xs text-slate-500 border-t border-slate-200 bg-slate-50">
-            Totale: {total} ordini
+            {t('Totale: {{total}} ordini', { total })}
           </div>
         </div>
       )}
@@ -322,28 +325,28 @@ const OrdersSubtab = () => {
       {refundDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="font-bold text-lg text-slate-900">Rimborso interno</h3>
+            <h3 className="font-bold text-lg text-slate-900">{t('Rimborso interno')}</h3>
             <p className="text-sm text-slate-600">
-              Verranno scalati <b>{refundDialog.order.credits}</b> crediti dall'utente e l'ordine sarà marcato come REFUNDED.
+              {t('Verranno scalati')} <b>{refundDialog.order.credits}</b> {t("crediti dall'utente e l'ordine sarà marcato come REFUNDED.")}
               <strong className="block mt-1 text-amber-700">
-                Lo storno bancario su PagoPA va gestito manualmente (questo è solo un rimborso interno crediti).
+                {t('Lo storno bancario su PagoPA va gestito manualmente (questo è solo un rimborso interno crediti).')}
               </strong>
             </p>
             <textarea
               className="input w-full min-h-[80px]"
-              placeholder="Motivo del rimborso (obbligatorio)"
+              placeholder={t('Motivo del rimborso (obbligatorio)')}
               value={refundDialog.description}
               onChange={(e) => setRefundDialog({ ...refundDialog, description: e.target.value })}
             />
             <div className="flex gap-3 justify-end">
-              <button type="button" onClick={() => setRefundDialog(null)} className="btn btn-secondary">Annulla</button>
+              <button type="button" onClick={() => setRefundDialog(null)} className="btn btn-secondary">{t('Annulla')}</button>
               <button
                 type="button"
                 disabled={!refundDialog.description?.trim() || actionState.kind === 'refund'}
                 onClick={handleRefund}
                 className="btn btn-danger"
               >
-                {actionState.kind === 'refund' ? <Loader className="w-4 h-4 animate-spin" /> : 'Conferma rimborso'}
+                {actionState.kind === 'refund' ? <Loader className="w-4 h-4 animate-spin" /> : t('Conferma rimborso')}
               </button>
             </div>
           </div>
@@ -357,6 +360,7 @@ const OrdersSubtab = () => {
 // Sub-tab: Pacchetti
 // ============================================================================
 const PackagesSubtab = () => {
+  const { t } = useTranslation();
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // package being edited (or {} for new)
@@ -383,7 +387,7 @@ const PackagesSubtab = () => {
       entity_type: form.entity_type || 'privato',
     };
     if (!payload.name || !payload.credits || !payload.price_cents) {
-      alert('Compila tutti i campi obbligatori.');
+      alert(t('Compila tutti i campi obbligatori.'));
       return;
     }
     try {
@@ -392,32 +396,32 @@ const PackagesSubtab = () => {
       setEditing(null);
       load();
     } catch (err) {
-      alert(err?.response?.data?.detail || 'Errore salvataggio pacchetto');
+      alert(err?.response?.data?.detail || t('Errore salvataggio pacchetto'));
     }
   };
 
   const handleDelete = async (pkg) => {
-    if (!window.confirm(`Eliminare il pacchetto "${pkg.name}"? Se ci sono ordini collegati verrà solo disattivato.`)) return;
+    if (!window.confirm(t('Eliminare il pacchetto "{{name}}"? Se ci sono ordini collegati verrà solo disattivato.', { name: pkg.name }))) return;
     try {
       await adminDeleteCreditPackage(pkg.id);
       load();
     } catch (err) {
-      alert(err?.response?.data?.detail || 'Errore eliminazione');
+      alert(err?.response?.data?.detail || t('Errore eliminazione'));
     }
   };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-slate-900">Pacchetti acquistabili</h3>
+        <h3 className="font-semibold text-slate-900">{t('Pacchetti acquistabili')}</h3>
         <button onClick={() => setEditing({ is_active: true, sort_order: (packages.length + 1) * 10 })} className="btn btn-primary text-sm gap-2">
-          <Plus className="w-4 h-4" /> Nuovo pacchetto
+          <Plus className="w-4 h-4" /> {t('Nuovo pacchetto')}
         </button>
       </div>
 
       {loading ? (
         <div className="glass rounded-2xl p-8 flex items-center justify-center gap-2 text-slate-500">
-          <Loader className="w-4 h-4 animate-spin" /> Caricamento…
+          <Loader className="w-4 h-4 animate-spin" /> {t('Caricamento…')}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -427,13 +431,13 @@ const PackagesSubtab = () => {
                 <div>
                   <p className="text-xs text-slate-500 uppercase font-medium">{p.name}</p>
                   <p className="text-2xl font-bold text-slate-900">{p.credits.toLocaleString('it-IT')}</p>
-                  <p className="text-xs text-slate-400">crediti · ordine {p.sort_order}</p>
+                  <p className="text-xs text-slate-400">{t('crediti · ordine {{sort_order}}', { sort_order: p.sort_order })}</p>
                   <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold capitalize">
                     {p.entity_type || 'privato'}
                   </span>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded ${p.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                  {p.is_active ? 'Attivo' : 'Inattivo'}
+                  {p.is_active ? t('Attivo') : t('Inattivo')}
                 </span>
               </div>
               <p className="text-xl font-bold text-orange-600">{formatEur(p.price_cents)}</p>
@@ -443,12 +447,12 @@ const PackagesSubtab = () => {
                   onClick={() => setEditing({ ...p, price_eur: (p.price_cents / 100).toFixed(2) })}
                   className="btn btn-secondary text-xs gap-1 flex-1"
                 >
-                  <Edit2 className="w-3 h-3" /> Modifica
+                  <Edit2 className="w-3 h-3" /> {t('Modifica')}
                 </button>
                 <button
                   onClick={() => handleDelete(p)}
                   className="btn btn-ghost text-xs text-red-600 hover:bg-red-50"
-                  title="Elimina"
+                  title={t('Elimina')}
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
@@ -470,6 +474,7 @@ const PackagesSubtab = () => {
 };
 
 const PackageEditDialog = ({ pkg, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     id: pkg.id,
     name: pkg.name || '',
@@ -484,36 +489,36 @@ const PackageEditDialog = ({ pkg, onSave, onClose }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
       <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-lg text-slate-900">{form.id ? 'Modifica pacchetto' : 'Nuovo pacchetto'}</h3>
+          <h3 className="font-bold text-lg text-slate-900">{form.id ? t('Modifica pacchetto') : t('Nuovo pacchetto')}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="text-xs text-slate-600 font-medium">Nome</label>
+            <label className="text-xs text-slate-600 font-medium">{t('Nome')}</label>
             <input className="input w-full" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
           <div>
-            <label className="text-xs text-slate-600 font-medium">Crediti</label>
+            <label className="text-xs text-slate-600 font-medium">{t('Crediti')}</label>
             <input type="number" className="input w-full" value={form.credits} onChange={(e) => setForm({ ...form, credits: e.target.value })} min={1} />
           </div>
           <div>
-            <label className="text-xs text-slate-600 font-medium">Prezzo (EUR)</label>
+            <label className="text-xs text-slate-600 font-medium">{t('Prezzo (EUR)')}</label>
             <input type="number" step="0.01" className="input w-full" value={form.price_eur} onChange={(e) => setForm({ ...form, price_eur: e.target.value })} min={0.01} />
           </div>
           <div>
-            <label className="text-xs text-slate-600 font-medium">Ordine</label>
+            <label className="text-xs text-slate-600 font-medium">{t('Ordine')}</label>
             <input type="number" className="input w-full" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} />
           </div>
           <div className="col-span-2">
-            <label className="text-xs text-slate-600 font-medium">Destinatario (sottotipo)</label>
+            <label className="text-xs text-slate-600 font-medium">{t('Destinatario (sottotipo)')}</label>
             <select
               className="input w-full"
               value={form.entity_type}
               onChange={(e) => setForm({ ...form, entity_type: e.target.value })}
             >
-              <option value="distributore">Distributore</option>
-              <option value="rivenditore">Rivenditore</option>
-              <option value="privato">Privato</option>
+              <option value="distributore">{t('Distributore')}</option>
+              <option value="rivenditore">{t('Rivenditore')}</option>
+              <option value="privato">{t('Privato')}</option>
             </select>
           </div>
           <div className="flex items-end">
@@ -524,18 +529,18 @@ const PackageEditDialog = ({ pkg, onSave, onClose }) => {
                 checked={form.is_active}
                 onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
               />
-              Attivo
+              {t('Attivo')}
             </label>
           </div>
           <div className="col-span-2">
-            <label className="text-xs text-slate-600 font-medium">Descrizione (opzionale)</label>
+            <label className="text-xs text-slate-600 font-medium">{t('Descrizione (opzionale)')}</label>
             <textarea className="input w-full min-h-[60px]" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
         </div>
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="btn btn-secondary">Annulla</button>
+          <button onClick={onClose} className="btn btn-secondary">{t('Annulla')}</button>
           <button onClick={() => onSave(form)} className="btn btn-primary inline-flex gap-2">
-            <Check className="w-4 h-4" /> Salva
+            <Check className="w-4 h-4" /> {t('Salva')}
           </button>
         </div>
       </div>
@@ -547,6 +552,7 @@ const PackageEditDialog = ({ pkg, onSave, onClose }) => {
 // Sub-tab: Configurazione
 // ============================================================================
 const ConfigSubtab = () => {
+  const { t } = useTranslation();
   const [cfg, setCfg] = useState(null);
   const [loading, setLoading] = useState(true);
   const [savingTest, setSavingTest] = useState(false);
@@ -567,7 +573,7 @@ const ConfigSubtab = () => {
       const updated = await adminUpdatePagopaConfig({ test_mode: !cfg.test_mode });
       setCfg(updated);
     } catch (err) {
-      alert(err?.response?.data?.detail || 'Errore aggiornamento configurazione');
+      alert(err?.response?.data?.detail || t('Errore aggiornamento configurazione'));
     } finally {
       setSavingTest(false);
     }
@@ -582,7 +588,7 @@ const ConfigSubtab = () => {
       const res = await adminUploadEstrcc(file);
       setUploadResult(res);
     } catch (err) {
-      alert(err?.response?.data?.detail || 'Errore upload riconciliazione');
+      alert(err?.response?.data?.detail || t('Errore upload riconciliazione'));
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -591,7 +597,7 @@ const ConfigSubtab = () => {
 
   if (loading) {
     return <div className="glass rounded-2xl p-8 flex items-center justify-center gap-2 text-slate-500">
-      <Loader className="w-4 h-4 animate-spin" /> Caricamento configurazione…
+      <Loader className="w-4 h-4 animate-spin" /> {t('Caricamento configurazione…')}
     </div>;
   }
   if (!cfg) return null;
@@ -600,61 +606,59 @@ const ConfigSubtab = () => {
     <div className="space-y-6">
       <div className="glass rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Connessione SolutionPA</h3>
+          <h3 className="font-semibold text-slate-900">{t('Connessione SolutionPA')}</h3>
           <button
             onClick={toggleTestMode}
             disabled={savingTest}
             className={`btn ${cfg.test_mode ? 'btn-secondary' : 'btn-primary'} text-sm gap-2`}
           >
             {savingTest && <Loader className="w-4 h-4 animate-spin" />}
-            {cfg.test_mode ? 'Modalità TEST attiva' : 'Modalità PRODUZIONE'}
+            {cfg.test_mode ? t('Modalità TEST attiva') : t('Modalità PRODUZIONE')}
           </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <ConfigRow label="WSDL URL" value={cfg.wsdl_url} mono />
-          <ConfigRow label="Dominio (Codice Ente)" value={cfg.dominio || <em className="text-red-600">non configurato</em>} mono />
-          <ConfigRow label="UB (Unità Beneficiaria)" value={cfg.ub || <em className="text-red-600">non configurato</em>} mono />
-          <ConfigRow label="Codice Tributo" value={cfg.cod_tributo || <em className="text-red-600">non configurato</em>} mono />
-          <ConfigRow label="Username (mascherato)" value={cfg.username_masked || <em className="text-red-600">non configurato</em>} mono />
-          <ConfigRow label="Password" value={cfg.password_set ? 'Impostata ✓' : <em className="text-red-600">non configurata</em>} />
-          <ConfigRow label="Return URL" value={cfg.return_url_base || <em className="text-red-600">non configurato</em>} mono />
+          <ConfigRow label={t('WSDL URL')} value={cfg.wsdl_url} mono />
+          <ConfigRow label={t('Dominio (Codice Ente)')} value={cfg.dominio || <em className="text-red-600">{t('non configurato')}</em>} mono />
+          <ConfigRow label={t('UB (Unità Beneficiaria)')} value={cfg.ub || <em className="text-red-600">{t('non configurato')}</em>} mono />
+          <ConfigRow label={t('Codice Tributo')} value={cfg.cod_tributo || <em className="text-red-600">{t('non configurato')}</em>} mono />
+          <ConfigRow label={t('Username (mascherato)')} value={cfg.username_masked || <em className="text-red-600">{t('non configurato')}</em>} mono />
+          <ConfigRow label={t('Password')} value={cfg.password_set ? t('Impostata ✓') : <em className="text-red-600">{t('non configurata')}</em>} />
+          <ConfigRow label={t('Return URL')} value={cfg.return_url_base || <em className="text-red-600">{t('non configurato')}</em>} mono />
           <ConfigRow
-            label="Webhook auth"
+            label={t('Webhook auth')}
             value={(cfg.notify_username_set && cfg.notify_password_set)
-              ? 'Configurata ✓'
-              : <em className="text-red-600">non configurata</em>}
+              ? t('Configurata ✓')
+              : <em className="text-red-600">{t('non configurata')}</em>}
           />
         </div>
         <p className="text-xs text-slate-500 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          Le credenziali vengono lette dalle variabili d'ambiente al boot del server (PAGOPA_USERNAME, PAGOPA_PASSWORD,
-          PAGOPA_DOMINIO, PAGOPA_UB, PAGOPA_COD_TRIBUTO, PAGOPA_NOTIFY_AUTH_USER, PAGOPA_NOTIFY_AUTH_PASS).
-          Modificarle richiede un riavvio. Il toggle TEST/PROD si applica al volo (resetta la cache del client SOAP).
+          {t("Le credenziali vengono lette dalle variabili d'ambiente al boot del server (PAGOPA_USERNAME, PAGOPA_PASSWORD, PAGOPA_DOMINIO, PAGOPA_UB, PAGOPA_COD_TRIBUTO, PAGOPA_NOTIFY_AUTH_USER, PAGOPA_NOTIFY_AUTH_PASS). Modificarle richiede un riavvio. Il toggle TEST/PROD si applica al volo (resetta la cache del client SOAP).")}
         </p>
       </div>
 
       <div className="glass rounded-2xl p-5 space-y-3">
-        <h3 className="font-semibold text-slate-900">Riconciliazione (estrcc XML)</h3>
+        <h3 className="font-semibold text-slate-900">{t('Riconciliazione (estrcc XML)')}</h3>
         <p className="text-sm text-slate-600">
-          Carica il file giornaliero di riconciliazione fornito da SolutionPA. Verranno confrontati gli IUV con gli ordini e segnalate eventuali discrepanze sull'importo.
+          {t("Carica il file giornaliero di riconciliazione fornito da SolutionPA. Verranno confrontati gli IUV con gli ordini e segnalate eventuali discrepanze sull'importo.")}
         </p>
         <label className="btn btn-primary inline-flex items-center gap-2 cursor-pointer">
           <Upload className="w-4 h-4" />
-          {uploading ? 'Caricamento…' : 'Seleziona file XML'}
+          {uploading ? t('Caricamento…') : t('Seleziona file XML')}
           <input type="file" accept=".xml,application/xml,text/xml" className="hidden" onChange={handleUploadFile} disabled={uploading} />
         </label>
 
         {uploadResult && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm space-y-2">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <KpiCard label="Righe" value={uploadResult.parsed} accent="blue" />
-              <KpiCard label="Match" value={uploadResult.matched} accent="emerald" />
-              <KpiCard label="Senza match" value={uploadResult.unmatched} accent="orange" />
-              <KpiCard label="Discrepanze" value={uploadResult.discrepancies} accent="purple" />
+              <KpiCard label={t('Righe')} value={uploadResult.parsed} accent="blue" />
+              <KpiCard label={t('Match')} value={uploadResult.matched} accent="emerald" />
+              <KpiCard label={t('Senza match')} value={uploadResult.unmatched} accent="orange" />
+              <KpiCard label={t('Discrepanze')} value={uploadResult.discrepancies} accent="purple" />
             </div>
             {uploadResult.discrepancies > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800 text-xs">
-                Trovate {uploadResult.discrepancies} righe con importo non corrispondente. Controlla manualmente gli ordini coinvolti.
+                {t('Trovate {{count}} righe con importo non corrispondente. Controlla manualmente gli ordini coinvolti.', { count: uploadResult.discrepancies })}
               </div>
             )}
           </div>
@@ -675,25 +679,26 @@ const ConfigRow = ({ label, value, mono = false }) => (
 // Componente principale
 // ============================================================================
 const AdminPaymentsSection = () => {
+  const { t } = useTranslation();
   const [activeSub, setActiveSub] = useState('dashboard');
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1 w-fit flex-wrap">
-        {SUB_TABS.map((t) => {
-          const Icon = t.icon;
-          const active = activeSub === t.id;
+        {SUB_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const active = activeSub === tab.id;
           return (
             <button
-              key={t.id}
+              key={tab.id}
               type="button"
-              onClick={() => setActiveSub(t.id)}
+              onClick={() => setActiveSub(tab.id)}
               className={`px-3 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 transition-colors ${
                 active ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Icon className="w-4 h-4" />
-              {t.label}
+              {t(tab.label)}
             </button>
           );
         })}

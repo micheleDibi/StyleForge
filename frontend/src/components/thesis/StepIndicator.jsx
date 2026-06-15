@@ -1,4 +1,5 @@
 import { Check, Settings, Users, Paperclip, List, FileText, Sparkles, Download, BookMarked, Brain } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const STEPS = [
   { num: 1, label: 'Parametri', icon: Settings },
@@ -29,6 +30,7 @@ const StepIndicator = ({
   onStepClick,
   isStepAccessible,
 }) => {
+  const { t } = useTranslation();
   const accessible = isStepAccessible || ((n) => n <= currentStep);
 
   return (
@@ -62,7 +64,7 @@ const StepIndicator = ({
                   <step.icon className="w-5 h-5" />
                 )}
               </div>
-              <span className={labelCls}>{step.label}</span>
+              <span className={labelCls}>{t(step.label)}</span>
             </>
           );
 
@@ -74,7 +76,7 @@ const StepIndicator = ({
                     type="button"
                     onClick={() => onStepClick(step.num)}
                     className="flex flex-col items-center bg-transparent border-0 p-0"
-                    title={`Vai allo step "${step.label}"`}
+                    title={t('Vai allo step "{{label}}"', { label: t(step.label) })}
                   >
                     {inner}
                   </button>

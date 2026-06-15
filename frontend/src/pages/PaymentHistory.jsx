@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Loader, Receipt, Coins, ArrowRight, Copy, Check, ChevronLeft, ChevronRight,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { getUserPaymentHistory } from '../services/api';
 
 const formatEur = (cents) => (typeof cents === 'number'
@@ -27,6 +28,7 @@ const STATUS_LABELS = {
 const PAGE_SIZE = 20;
 
 const PaymentHistory = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
@@ -45,7 +47,7 @@ const PaymentHistory = () => {
         setOrders(res.orders || []);
         setTotal(res.total || 0);
       })
-      .catch(() => { if (!cancelled) setError('Errore caricamento cronologia'); })
+      .catch(() => { if (!cancelled) setError(t('Errore caricamento cronologia')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [offset]);
@@ -68,35 +70,35 @@ const PaymentHistory = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Receipt className="w-6 h-6 text-orange-500" />
-            Cronologia pagamenti
+            {t('Cronologia pagamenti')}
           </h1>
-          <p className="text-slate-600 mt-1">Tutti gli acquisti di crediti effettuati tramite PagoPA.</p>
+          <p className="text-slate-600 mt-1">{t('Tutti gli acquisti di crediti effettuati tramite PagoPA.')}</p>
         </div>
         <button onClick={() => navigate('/credits/buy')} className="btn btn-primary inline-flex items-center gap-2">
-          <Coins className="w-4 h-4" /> Compra crediti <ArrowRight className="w-4 h-4" />
+          <Coins className="w-4 h-4" /> {t('Compra crediti')} <ArrowRight className="w-4 h-4" />
         </button>
       </div>
 
       {loading ? (
         <div className="glass rounded-2xl p-8 flex items-center justify-center gap-2 text-slate-500">
-          <Loader className="w-4 h-4 animate-spin" /> Caricamento…
+          <Loader className="w-4 h-4 animate-spin" /> {t('Caricamento…')}
         </div>
       ) : error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       ) : orders.length === 0 ? (
         <div className="glass rounded-2xl p-12 text-center text-slate-500">
           <Receipt className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-          <p>Nessun pagamento ancora effettuato.</p>
+          <p>{t('Nessun pagamento ancora effettuato.')}</p>
         </div>
       ) : (
         <div className="glass rounded-2xl overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr className="text-left text-slate-600">
-                <th className="px-4 py-3 font-medium">Data</th>
-                <th className="px-4 py-3 font-medium">Crediti</th>
-                <th className="px-4 py-3 font-medium">Importo</th>
-                <th className="px-4 py-3 font-medium">Stato</th>
+                <th className="px-4 py-3 font-medium">{t('Data')}</th>
+                <th className="px-4 py-3 font-medium">{t('Crediti')}</th>
+                <th className="px-4 py-3 font-medium">{t('Importo')}</th>
+                <th className="px-4 py-3 font-medium">{t('Stato')}</th>
                 <th className="px-4 py-3 font-medium">IUV</th>
               </tr>
             </thead>
@@ -110,7 +112,7 @@ const PaymentHistory = () => {
                     <td className="px-4 py-3 text-slate-700">{formatEur(o.amount_cents)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-block px-2 py-1 rounded-md text-xs font-medium ${st.cls}`}>
-                        {st.label}
+                        {STATUS_LABELS[o.status] ? t(st.label) : st.label}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -119,7 +121,7 @@ const PaymentHistory = () => {
                           type="button"
                           onClick={() => handleCopyIuv(o.iuv)}
                           className="inline-flex items-center gap-1 text-xs font-mono text-slate-500 hover:text-slate-700"
-                          title="Copia IUV"
+                          title={t('Copia IUV')}
                         >
                           {copiedIuv === o.iuv ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                           {o.iuv.substring(0, 12)}…
@@ -136,7 +138,7 @@ const PaymentHistory = () => {
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
-              <span className="text-xs text-slate-500">Pagina {page} di {totalPages} · {total} ordini</span>
+              <span className="text-xs text-slate-500">{t('Pagina {{page}} di {{totalPages}} · {{total}} ordini', { page, totalPages, total })}</span>
               <div className="flex gap-2">
                 <button
                   className="btn btn-secondary p-2 disabled:opacity-50 disabled:cursor-not-allowed"
