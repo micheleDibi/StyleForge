@@ -660,6 +660,183 @@ def run_lint(thesis_id: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# AUTO-FIX delle mancanze rilevate dal lint
+# ---------------------------------------------------------------------------
+
+# Campi del report su cui ha senso un intervento automatico (gli altri —
+# contradictions, stale_pages — sono informativi e non auto-correggibili).
+_FIXABLE_FIELDS = (
+    "missing_concepts", "gaps", "frontmatter_issues",
+    "broken_wikilinks", "orphan_pages", "exploration_suggestions",
+)
+
+
+def _has_actionable_issues(report: Optional[Dict[str, Any]]) -> bool:
+    if not report:
+        return False
+    return any(report.get(f) for f in _FIXABLE_FIELDS)
+
+
+def _fmt_simple(items: List[Any], n: int = 20) -> str:
+    items = items or []
+    shown = [str(x) for x in items[:n]]
+    out = "\n".join(f"- {x}" for x in shown)
+    extra = len(items) - len(shown)
+    if extra > 0:
+        out += f"\n- …e altri {extra}"
+    return out
+
+
+def run_fix_issues(
+    thesis_id: str,
+    report: Dict[str, Any],
+    on_progress: Optional[Callable[..., None]] = None,
+) -> Dict[str, Any]:
+    """
+    Round di auto-correzione: passa al modello le mancanze del lint e gli chiede
+    di crearle/sistemarle nel wiki (pagine di concetti/entità/temi mancanti,
+    frontmatter, wikilink rotti, gap). Modalità scrittura, riusa il tool-loop.
+    Ritorna un piccolo riepilogo {tool_calls, errors}.
+    """
+    out = {"tool_calls": 0, "errors": []}
+    if not _has_actionable_issues(report):
+        return out
+
+    wiki_root = wiki_workspace.get_wiki_root(thesis_id).resolve()
+    if not wiki_root.exists():
+        raise RuntimeError(f"wiki_root non esiste: {wiki_root}")
+
+    if on_progress:
+        on_progress(92, "Correggo le mancanze rilevate…")
+
+    # Costruisci le sezioni del prompt solo per i campi valorizzati.
+    sections: List[str] = []
+
+    if report.get("missing_concepts"):
+        sections.append(
+            "### Concetti/entità mancanti\n"
+            "Per ognuno, crea una pagina `wiki/concetti/<slug>.md` (idee/teorie/"
+            "framework) o `wiki/entita/<slug>.md` (persone/organizzazioni/prodotti) "
+            "con frontmatter completo + almeno 4 righe sostantive basate sulle fonti:\n"
+            f"{_fmt_simple(report['missing_concepts'])}"
+        )
+    if report.get("gaps"):
+        sections.append(
+            "### Gap tematici\n"
+            "Crea o arricchisci pagine `wiki/temi/<slug>.md` o `wiki/sintesi/<slug>.md` "
+            "che colmino questi vuoti, citando con `[[...]]` le fonti pertinenti:\n"
+            f"{_fmt_simple(report['gaps'])}"
+        )
+    if report.get("frontmatter_issues"):
+        fm = "\n".join(
+            f"- `{it.get('page','?')}`: {it.get('issue','')}"
+            for it in report["frontmatter_issues"][:20]
+        )
+        sections.append(
+            "### Frontmatter da correggere\n"
+            "Per ognuna: `read_file` la pagina, poi `write_file` riscrivendola col "
+            "frontmatter sistemato (NON cambiare il contenuto sostanziale):\n"
+            f"{fm}"
+        )
+    if report.get("broken_wikilinks") or report.get("orphan_pages"):
+        bl = "\n".join(
+            f"- `[[{it.get('target','?')}]]` (in `{it.get('in_page','?')}`)"
+            for it in (report.get("broken_wikilinks") or [])[:20]
+        )
+        orph_block = ""
+        if report.get("orphan_pages"):
+            orph_block = "\nPagine orfane:\n" + _fmt_simple(report.get("orphan_pages"), 15)
+        sections.append(
+            "### Wikilink rotti / pagine orfane\n"
+            "Per i wikilink rotti: crea la pagina mancante (se merita) oppure togli "
+            "le parentesi `[[ ]]` dalla pagina sorgente. Per le orfane: collegale da "
+            "`index.md` o da una pagina tema pertinente.\n"
+            f"{bl}{orph_block}"
+        )
+    if report.get("exploration_suggestions"):
+        sections.append(
+            "### Suggerimenti di esplorazione\n"
+            "Applica quelli sensati creando le pagine indicate (tema/sintesi/concetto):\n"
+            f"{_fmt_simple(report['exploration_suggestions'])}"
+        )
+
+    if not sections:
+        return out
+
+    constitution = _load_constitution()
+    system = _build_system(constitution, "ingest")  # modalità scrittura
+    claude_wrapper = get_claude_client()
+    client = claude_wrapper.client
+    model = config.WIKI_CLAUDE_MODEL
+    deadline_ts = time.time() + config.WIKI_INGEST_TIMEOUT_SEC
+
+    user_msg = (
+        f"{INGEST_TRIGGER}\n\n"
+        "**Pass di auto-correzione delle mancanze** (sez. 7-9 di CLAUDE.md).\n"
+        "Il lint ha rilevato le lacune qui sotto. Correggile con i tool "
+        "`read_file`/`write_file`/`append_file` (sei in modalità scrittura; `raw/` resta "
+        "READ-ONLY). Usa SOLO informazioni desumibili dalle fonti in `raw/` e dalle pagine "
+        "esistenti: **non inventare fatti**.\n\n"
+        + "\n\n".join(sections)
+        + "\n\nQuando hai finito, aggiorna `index.md` con le nuove pagine e appendi a "
+        "`log.md` una riga `- Auto-fix: <riepilogo sintetico>`. Procedi ora."
+    )
+
+    messages: List[Dict[str, Any]] = [{"role": "user", "content": user_msg}]
+    try:
+        _resp, stats = _run_tool_loop(
+            client=client,
+            system=system,
+            messages=messages,
+            tools=wiki_tools.WIKI_FS_TOOLS_RW,
+            wiki_root=wiki_root,
+            model=model,
+            max_tokens=config.WIKI_INGEST_MAX_TOKENS,
+            read_only=False,
+            deadline_ts=deadline_ts,
+            force_first_tool=True,
+        )
+        out["tool_calls"] = stats.total_tool_calls
+        logger.warning(
+            "wiki_runner FIX-ISSUES done tesi=%s tool_calls=%d",
+            thesis_id, stats.total_tool_calls,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Auto-fix delle mancanze fallito tesi %s", thesis_id)
+        out["errors"].append(str(e))
+    return out
+
+
+def run_lint_and_autofix(
+    thesis_id: str,
+    on_progress: Optional[Callable[..., None]] = None,
+) -> Tuple[Dict[str, Any], bool]:
+    """
+    Esegue il lint; se ci sono mancanze correggibili, lancia UN round di auto-fix
+    e poi ri-esegue il lint per riflettere lo stato corretto.
+    Ritorna (report_finale, fixed) dove fixed=True se è stato fatto un round di fix.
+    """
+    if on_progress:
+        on_progress(90, "Controllo qualità del wiki…")
+    report = run_lint(thesis_id)
+
+    if not _has_actionable_issues(report):
+        return report, False
+
+    try:
+        run_fix_issues(thesis_id, report, on_progress=on_progress)
+    except Exception:  # noqa: BLE001
+        # Se l'auto-fix esplode, restituiamo comunque il primo report (utilizzabile).
+        logger.exception("run_lint_and_autofix: fix fallito tesi %s", thesis_id)
+        return report, False
+
+    if on_progress:
+        on_progress(96, "Verifico le correzioni…")
+    report2 = run_lint(thesis_id)
+    return report2, True
+
+
+# ---------------------------------------------------------------------------
 # Helpers privati
 # ---------------------------------------------------------------------------
 

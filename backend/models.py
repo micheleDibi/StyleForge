@@ -602,6 +602,31 @@ class WikiLintReportResponse(BaseModel):
     generated_at: Optional[datetime] = None
 
 
+class WikiContentItem(BaseModel):
+    """Una pagina estratta dal wiki, in forma leggibile per l'utente."""
+    slug: str
+    title: str
+    summary: str = ""
+    subtype: Optional[str] = None
+    fonti: Optional[int] = None
+    tag: List[str] = []
+
+
+class WikiContentCategory(BaseModel):
+    key: str
+    label: str
+    count: int
+    items: List[WikiContentItem] = []
+
+
+class WikiContentResponse(BaseModel):
+    """Informazioni estratte dai documenti, raggruppate per categoria (vista utente)."""
+    thesis_id: str
+    wiki_status: ThesisWikiStatus
+    totals: Dict[str, int] = {}
+    categories: List[WikiContentCategory] = []
+
+
 # ============================================================================
 # PAPER KEYWORD SUGGESTIONS (estrazione keyword dai documenti caricati)
 # ============================================================================

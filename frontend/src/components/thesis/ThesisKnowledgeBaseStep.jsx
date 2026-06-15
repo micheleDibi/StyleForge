@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Brain, BookMarked, Paperclip, Loader, AlertTriangle, CheckCircle2, Play,
-  RefreshCw, FileText, ScrollText, ArrowRight, Clock,
+  RefreshCw, FileText, ScrollText, ArrowRight, Clock, Sparkles, Wrench, ChevronDown,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { startWikiIngest, getWikiStatus, getWikiReport, cancelWikiIngest } from '../../services/api';
+import { startWikiIngest, getWikiStatus, getWikiReport, getWikiContent, cancelWikiIngest } from '../../services/api';
 import WikiLintReport from './WikiLintReport';
+import WikiExtractedInfo from './WikiExtractedInfo';
 
 const STATUS_LABELS = {
   none:      { label: 'Non avviata', cls: 'bg-slate-100 text-slate-700' },
@@ -56,6 +57,7 @@ const ThesisKnowledgeBaseStep = ({
   const { t } = useTranslation();
   const [status, setStatus] = useState(null);
   const [report, setReport] = useState(null);
+  const [content, setContent] = useState(null);
   const [loadingAction, setLoadingAction] = useState(false);
   const [error, setError] = useState(null);
   const [now, setNow] = useState(() => Date.now());
@@ -77,6 +79,13 @@ const ThesisKnowledgeBaseStep = ({
         try {
           const r = await getWikiReport(thesisId);
           setReport(r.report || null);
+        } catch { /* ignore */ }
+      }
+      // Informazioni estratte (vista utente): disponibili appena ci sono pagine.
+      if (s.wiki_status === 'linted' || s.wiki_status === 'ingested') {
+        try {
+          const c = await getWikiContent(thesisId);
+          setContent(c);
         } catch { /* ignore */ }
       }
       return s;
@@ -131,6 +140,7 @@ const ThesisKnowledgeBaseStep = ({
       const s = await startWikiIngest(thesisId, force);
       setStatus(s);
       setReport(null);
+      setContent(null);
       startedAtRef.current = Date.now();
       stopPolling();
       pollingRef.current = setTimeout(pollLoop, POLL_MS);
@@ -422,7 +432,7 @@ const ThesisKnowledgeBaseStep = ({
                   <h3 className="font-semibold">{t('Knowledge base pronta')}</h3>
                 </div>
                 <p className="text-sm text-slate-600">
-                  {t('Il wiki contiene {{pages}} pagine derivate da {{sources}} fonti. Procedi alla generazione capitoli o consulta il report sotto.', { pages: status?.pages_count || 0, sources: status?.sources_count || 0 })}
+                  {t('Il wiki contiene {{pages}} pagine derivate da {{sources}} fonti. Procedi alla generazione capitoli o consulta le informazioni estratte qui sotto.', { pages: status?.pages_count || 0, sources: status?.sources_count || 0 })}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -441,14 +451,29 @@ const ThesisKnowledgeBaseStep = ({
             </div>
           </div>
 
-          {(ws === 'linted' || report) && (
+          {/* Informazioni estratte dai documenti — vista principale per l'utente */}
+          {content && (
             <div className="glass rounded-2xl p-6">
-              <h3 className="font-semibold text-slate-900 mb-3">{t('Report di lint')}</h3>
-              <WikiLintReport
-                report={report}
-                summary={report?._raw_summary}
-              />
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="w-5 h-5 text-orange-500" />
+                <h3 className="font-semibold text-slate-900">{t('Informazioni estratte dai documenti')}</h3>
+              </div>
+              <WikiExtractedInfo content={content} />
             </div>
+          )}
+
+          {/* Report tecnico di lint — nascosto in un expander per chi vuole i dettagli */}
+          {(ws === 'linted' || report) && (
+            <details className="glass rounded-2xl p-6 group">
+              <summary className="flex items-center gap-2 cursor-pointer list-none font-semibold text-slate-700">
+                <Wrench className="w-4 h-4 text-slate-400" />
+                {t('Dettagli tecnici (qualità del wiki)')}
+                <ChevronDown className="w-4 h-4 text-slate-400 ml-auto transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-4">
+                <WikiLintReport report={report} summary={report?._raw_summary} />
+              </div>
+            </details>
           )}
         </>
       )}

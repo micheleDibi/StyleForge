@@ -221,6 +221,173 @@ def count_wiki_pages(thesis_id: str) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Lettura del contenuto estratto (per la vista "informazioni estratte" utente)
+# ---------------------------------------------------------------------------
+
+# Etichette leggibili per categoria (la chiave resta il nome cartella).
+WIKI_CATEGORY_LABELS = {
+    "fonti": "Fonti",
+    "entita": "Entità",
+    "concetti": "Concetti",
+    "temi": "Temi",
+    "sintesi": "Sintesi",
+    "domande": "Domande aperte",
+}
+
+
+def _parse_frontmatter(text: str) -> tuple[dict, str]:
+    """
+    Estrae il frontmatter YAML semplice (key: value, e liste inline [a, b]) e il
+    corpo. Parser minimale e tollerante (niente dipendenza da PyYAML).
+    Ritorna (meta: dict, body: str).
+    """
+    meta: dict = {}
+    body = text
+    if text.startswith("---"):
+        # trova la chiusura del blocco frontmatter
+        end = text.find("\n---", 3)
+        if end != -1:
+            fm = text[3:end].strip("\n")
+            body = text[end + 4:].lstrip("\n")
+            for line in fm.splitlines():
+                if ":" not in line or line.lstrip().startswith("#"):
+                    continue
+                key, _, val = line.partition(":")
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                if not key:
+                    continue
+                if val.startswith("[") and val.endswith("]"):
+                    inner = val[1:-1].strip()
+                    meta[key] = [
+                        t.strip().strip('"').strip("'")
+                        for t in inner.split(",") if t.strip()
+                    ] if inner else []
+                else:
+                    meta[key] = val
+    return meta, body
+
+
+def _extract_summary(body: str, max_chars: int = 320) -> str:
+    """
+    Prende un riassunto leggibile dal corpo: preferisce la sezione '## Riassunto',
+    altrimenti il primo paragrafo di testo (saltando heading e wikilink isolati).
+    """
+    lines = body.splitlines()
+    # 1) sezione Riassunto
+    collected: List[str] = []
+    in_riassunto = False
+    for ln in lines:
+        stripped = ln.strip()
+        if stripped.lower().startswith("## riassunto"):
+            in_riassunto = True
+            continue
+        if in_riassunto:
+            if stripped.startswith("#"):
+                break
+            if stripped:
+                collected.append(stripped)
+            elif collected:
+                break
+    text = " ".join(collected).strip()
+    # 2) fallback: primo paragrafo non-heading
+    if not text:
+        para: List[str] = []
+        for ln in lines:
+            stripped = ln.strip()
+            if not stripped:
+                if para:
+                    break
+                continue
+            if stripped.startswith("#") or stripped.startswith("---"):
+                continue
+            para.append(stripped.lstrip("-* ").strip())
+        text = " ".join(para).strip()
+    if len(text) > max_chars:
+        text = text[:max_chars].rsplit(" ", 1)[0].rstrip(",.;:") + "…"
+    return text
+
+
+def _page_title(meta: dict, body: str, slug: str) -> str:
+    """Titolo: frontmatter nome/titolo -> primo H1 -> slug normalizzato."""
+    for key in ("nome", "titolo", "title"):
+        if meta.get(key):
+            return str(meta[key])
+    for ln in body.splitlines():
+        s = ln.strip()
+        if s.startswith("# "):
+            return s[2:].strip()
+    return slug.replace("-", " ").replace("_", " ").strip().capitalize()
+
+
+def read_extracted_content(thesis_id: str) -> dict:
+    """
+    Legge le pagine generate sotto wiki/ e restituisce le informazioni estratte
+    in forma leggibile, raggruppate per categoria. Per l'utente finale (non il
+    report tecnico di lint). FS-only, nessuna chiamata LLM.
+
+    Ritorna:
+        {
+          "totals": {"pages": int, "sources": int},
+          "categories": [
+            {"key","label","count","items":[
+                {"slug","title","summary","subtype","fonti","tag":[...]}, ...
+            ]}, ...
+          ]
+        }
+    """
+    root = get_wiki_root(thesis_id)
+    wiki = root / "wiki"
+    categories: List[dict] = []
+    total_pages = 0
+
+    for sub in WIKI_SUBDIRS:
+        d = wiki / sub
+        items: List[dict] = []
+        if d.exists():
+            for p in sorted(d.iterdir(), key=lambda x: x.name):
+                if not (p.is_file() and p.suffix == ".md"):
+                    continue
+                try:
+                    text = p.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                meta, body = _parse_frontmatter(text)
+                slug = p.stem
+                fonti_val = meta.get("fonti")
+                try:
+                    fonti_int = int(fonti_val) if fonti_val not in (None, "") else None
+                except (TypeError, ValueError):
+                    fonti_int = None
+                tag = meta.get("tag")
+                if isinstance(tag, str):
+                    tag = [tag] if tag else []
+                items.append({
+                    "slug": slug,
+                    "title": _page_title(meta, body, slug),
+                    "summary": _extract_summary(body),
+                    "subtype": meta.get("sottotipo") or None,
+                    "fonti": fonti_int,
+                    "tag": tag or [],
+                })
+        total_pages += len(items)
+        categories.append({
+            "key": sub,
+            "label": WIKI_CATEGORY_LABELS.get(sub, sub.capitalize()),
+            "count": len(items),
+            "items": items,
+        })
+
+    return {
+        "totals": {
+            "pages": total_pages,
+            "sources": len(list_raw_files(thesis_id)) if root.exists() else 0,
+        },
+        "categories": categories,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Lock per impedire ingest concorrenti sulla stessa tesi
 # ---------------------------------------------------------------------------
 

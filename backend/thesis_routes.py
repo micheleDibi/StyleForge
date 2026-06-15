@@ -33,6 +33,7 @@ from models import (
     ThesisResearchSearchRequest, ThesisResearchSummarizeRequest,
     ThesisAddPapersRequest, ThesisAddPapersResponse,
     WikiIngestRequest, WikiStatusResponse, WikiLintReportResponse,
+    WikiContentResponse,
     PaperKeywordSuggestResponse,
 )
 from db_models import (
@@ -1153,9 +1154,14 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
         if thesis:
             thesis.wiki_status = "linting"
             db.commit()
-        _set_progress("lint", 92, "Controllo qualità del wiki…")
+        _set_progress("lint", 90, "Controllo qualità del wiki…")
         try:
-            report = _wr.run_lint(thesis_id)
+            # Lint + auto-fix: se il lint trova mancanze correggibili, un round di
+            # AI le sistema e poi ri-controlla, così il report finale è già pulito.
+            report, _fixed = _wr.run_lint_and_autofix(
+                thesis_id,
+                on_progress=lambda pct, msg, files=None: _set_progress("lint", pct, msg),
+            )
             thesis = db.query(Thesis).get(thesis_id)
             if thesis:
                 thesis.wiki_status = "linted"
@@ -1273,7 +1279,7 @@ async def start_wiki_lint(
             t.wiki_status = "linting"
             d.commit()
             try:
-                report = _wr.run_lint(tid)
+                report, _fixed = _wr.run_lint_and_autofix(tid)
                 t = d.query(Thesis).get(tid)
                 if t:
                     t.wiki_status = "linted"
@@ -1391,6 +1397,31 @@ async def get_wiki_report(
         wiki_status=ThesisWikiStatus(thesis.wiki_status or "none"),
         report=thesis.wiki_lint_report,
         generated_at=thesis.wiki_linted_at,
+    )
+
+
+@router.get("/{thesis_id}/wiki/content", response_model=WikiContentResponse)
+async def get_wiki_content(
+    thesis_id: str,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Informazioni estratte dai documenti (vista utente): pagine del wiki
+    raggruppate per categoria (fonti/entità/concetti/temi/sintesi/domande)
+    con titolo, riassunto e tag. Sostituisce il report tecnico per l'utente.
+    """
+    from llm_wiki import wiki_workspace as _ww
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+    data = _ww.read_extracted_content(thesis_id) if thesis.wiki_path else {
+        "totals": {"pages": 0, "sources": 0}, "categories": [],
+    }
+    return WikiContentResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus(thesis.wiki_status or "none"),
+        totals=data.get("totals", {}),
+        categories=data.get("categories", []),
     )
 
 

@@ -664,6 +664,13 @@ export const getWikiReport = async (thesisId) => {
   return response.data;
 };
 
+// Informazioni estratte dai documenti (vista utente): pagine del wiki
+// raggruppate per categoria (fonti/entità/concetti/temi/sintesi/domande).
+export const getWikiContent = async (thesisId) => {
+  const response = await api.get(`/api/thesis/${thesisId}/wiki/content`);
+  return response.data;
+};
+
 // Generation phases - timeout estesi per operazioni AI
 export const generateThesisChapters = async (thesisId) => {
   const response = await api.post(`/api/thesis/${thesisId}/generate-chapters`, {}, {
