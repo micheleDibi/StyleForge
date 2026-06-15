@@ -572,6 +572,51 @@ class Thesis(Base):
             "completed_at": self.completed_at
         }
 
+    def to_summary_dict(self) -> dict:
+        """
+        Versione leggera per la LISTA tesi (dashboard): esclude i campi pesanti
+        (generated_content, chapters_structure, custom_outline, wiki_lint_report),
+        che da soli costituiscono la quasi totalità del payload. Usato con il
+        deferimento di quelle colonne nella query per non caricarle nemmeno dal DB.
+        """
+        return {
+            "id": str(self.id),
+            "user_id": str(self.user_id),
+            "session_id": str(self.session_id) if self.session_id else None,
+            "title": self.title,
+            "description": self.description,
+            "key_topics": self.key_topics or [],
+            "writing_style_id": self.writing_style_id,
+            "content_depth_id": self.content_depth_id,
+            "num_chapters": self.num_chapters,
+            "sections_per_chapter": self.sections_per_chapter,
+            "words_per_section": self.words_per_section,
+            "knowledge_level_id": self.knowledge_level_id,
+            "audience_size_id": self.audience_size_id,
+            "industry_id": self.industry_id,
+            "target_audience_id": self.target_audience_id,
+            "ai_provider": self.ai_provider or "openai",
+            "citation_style": self.citation_style or "footnotes",
+            "credits_charged": bool(self.credits_charged),
+            "chapters_structure": None,
+            "generated_content": None,
+            "status": self.status,
+            "current_phase": self.current_phase,
+            "generation_progress": self.generation_progress,
+            "total_words_generated": self.total_words_generated,
+            "restrict_to_sources": bool(self.restrict_to_sources) if self.restrict_to_sources is not None else True,
+            "wiki_status": self.wiki_status or "none",
+            "wiki_path": self.wiki_path,
+            "wiki_lint_report": None,
+            "wiki_ingested_at": self.wiki_ingested_at,
+            "wiki_linted_at": self.wiki_linted_at,
+            "use_custom_outline": bool(self.use_custom_outline) if self.use_custom_outline is not None else False,
+            "custom_outline": None,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "completed_at": self.completed_at,
+        }
+
 
 class ThesisAttachment(Base):
     """Allegati per le tesi."""

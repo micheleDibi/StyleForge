@@ -31,10 +31,26 @@ const Dashboard = () => {
   const [editSessionValue, setEditSessionValue] = useState('');
   const editSessionRef = useRef(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const hasActiveWorkRef = useRef(false);
+  const templatesLoadedRef = useRef(false);
 
+  // Caricamento iniziale completo (una sola volta).
+  useEffect(() => { loadData(); }, []);
+
+  // Tiene traccia se ci sono lavori/tesi in corso (decide se fare polling).
   useEffect(() => {
-    loadData();
-    const interval = setInterval(() => { if (!editingSessionName) loadData(); }, 30000);
+    hasActiveWorkRef.current =
+      jobs.some(j => ['pending', 'training', 'generating'].includes(j.status)) ||
+      theses.some(t => t.status === 'generating');
+  }, [jobs, theses]);
+
+  // Polling leggero ogni 30s: solo job + lista tesi leggera, e SOLO se c'è
+  // qualcosa in corso (dashboard ferma = nessuna richiesta in background).
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (editingSessionName || !hasActiveWorkRef.current) return;
+      refreshLive();
+    }, 30000);
     return () => clearInterval(interval);
   }, [editingSessionName]);
 
@@ -44,16 +60,35 @@ const Dashboard = () => {
 
   const loadData = async () => {
     try {
-      const [sessionsData, healthData, jobsData, thesesData, templatesData] = await Promise.all([
+      const [sessionsData, healthData, jobsData, thesesData] = await Promise.all([
         getSessions(), healthCheck(), getJobs(),
-        getTheses().catch(() => ({ theses: [] })),
-        getExportTemplates().catch(() => ({ templates: [] }))
+        getTheses().catch(() => ({ theses: [] }))
       ]);
       setSessions(sessionsData.sessions); setHealth(healthData);
       setJobs(jobsData.jobs || []); setTheses(thesesData.theses || []);
-      setTemplates(templatesData.templates || []);
     } catch (error) { console.error('Errore nel caricamento:', error); }
     finally { setLoading(false); setRefreshing(false); }
+  };
+
+  // Refresh leggero per il polling: solo job + lista tesi leggera.
+  const refreshLive = async () => {
+    try {
+      const [jobsData, thesesData] = await Promise.all([
+        getJobs(), getTheses().catch(() => ({ theses: [] }))
+      ]);
+      setJobs(jobsData.jobs || []); setTheses(thesesData.theses || []);
+    } catch { /* ignora errori di polling */ }
+  };
+
+  // Template di export: caricati on-demand (solo admin, una sola volta) quando
+  // si apre una tesi. Erano scaricati a ogni load/polling pur servendo solo all'export.
+  const ensureTemplates = async () => {
+    if (templatesLoadedRef.current || !isAdmin) return;
+    templatesLoadedRef.current = true;
+    try {
+      const d = await getExportTemplates();
+      setTemplates(d.templates || []);
+    } catch { templatesLoadedRef.current = false; }
   };
 
   useEffect(() => {
@@ -344,7 +379,7 @@ const Dashboard = () => {
               const expanded = expandedThesis === thesis.id;
               return (
                 <div key={thesis.id} className="glass rounded-2xl overflow-hidden">
-                  <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/50 transition-colors" onClick={() => setExpandedThesis(expanded ? null : thesis.id)}>
+                  <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/50 transition-colors" onClick={() => { const willExpand = !expanded; setExpandedThesis(willExpand ? thesis.id : null); if (willExpand) ensureTemplates(); }}>
                     <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-lg flex-shrink-0">
                       <BookOpen className="w-5 h-5 text-white" />
                     </div>

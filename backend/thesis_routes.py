@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Depends, Form
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import Session as DBSession, defer
 from sqlalchemy import text
 
 from models import (
@@ -465,8 +465,14 @@ async def list_theses(
     current_user: User = Depends(get_current_active_user),
     db: DBSession = Depends(get_db)
 ):
-    """Elenca tutte le tesi dell'utente."""
-    query = db.query(Thesis).filter(Thesis.user_id == current_user.id)
+    """Elenca tutte le tesi dell'utente (payload leggero: niente corpo generato)."""
+    # Deferisce i campi pesanti: non vengono nemmeno letti dal DB per la lista.
+    query = db.query(Thesis).filter(Thesis.user_id == current_user.id).options(
+        defer(Thesis.generated_content),
+        defer(Thesis.chapters_structure),
+        defer(Thesis.custom_outline),
+        defer(Thesis.wiki_lint_report),
+    )
 
     if status:
         query = query.filter(Thesis.status == status)
@@ -474,7 +480,7 @@ async def list_theses(
     theses = query.order_by(Thesis.created_at.desc()).all()
 
     return ThesisListResponse(
-        theses=[ThesisResponse(**t.to_dict()) for t in theses],
+        theses=[ThesisResponse(**t.to_summary_dict()) for t in theses],
         total=len(theses)
     )
 
