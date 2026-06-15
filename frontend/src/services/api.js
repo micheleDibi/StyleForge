@@ -674,7 +674,7 @@ export const getWikiContent = async (thesisId) => {
 // Generation phases - timeout estesi per operazioni AI
 export const generateThesisChapters = async (thesisId) => {
   const response = await api.post(`/api/thesis/${thesisId}/generate-chapters`, {}, {
-    timeout: 120000 // 2 minuti per generazione AI
+    timeout: 300000 // 5 minuti: generazione AI sincrona (Claude Opus è più lento)
   });
   return response.data;
 };
@@ -688,7 +688,7 @@ export const confirmThesisChapters = async (thesisId, chapters) => {
 
 export const generateThesisSections = async (thesisId) => {
   const response = await api.post(`/api/thesis/${thesisId}/generate-sections`, {}, {
-    timeout: 120000 // 2 minuti per generazione AI
+    timeout: 300000 // 5 minuti: generazione AI sincrona (Claude Opus è più lento)
   });
   return response.data;
 };
