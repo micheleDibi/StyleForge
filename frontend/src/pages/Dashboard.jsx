@@ -176,7 +176,7 @@ const Dashboard = () => {
       </div>
 
       {/* ═══ HEADER ═══ */}
-      <header className="relative z-10 glass border-b border-white/20">
+      <header className="relative z-40 glass border-b border-white/20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
