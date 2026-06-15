@@ -19,7 +19,10 @@ OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "16000"))
 
 # AI Provider per Thesis Generation
 # Valori: "openai" (default) o "claude"
-THESIS_AI_PROVIDER = os.getenv("THESIS_AI_PROVIDER", "openai")
+# Provider per la generazione del contenuto tesi. Default "claude": rispetta
+# temperature/top_p (più varietà/perplessità => meno rilevabile) a differenza dei
+# modelli reasoning OpenAI (o3) che li ignorano.
+THESIS_AI_PROVIDER = os.getenv("THESIS_AI_PROVIDER", "claude")
 THESIS_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-opus-4-8")
 
 # ----------------------------------------------------------------------------

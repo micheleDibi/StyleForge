@@ -87,7 +87,7 @@ const ThesisGenerator = () => {
     num_chapters: 5,
     sections_per_chapter: 3,
     words_per_section: 1000,
-    ai_provider: 'openai',
+    ai_provider: 'claude',
     citation_style: 'footnotes',
     restrict_to_sources: true,
     use_custom_outline: false,

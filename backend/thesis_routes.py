@@ -426,7 +426,7 @@ async def create_thesis(
         audience_size_id=request.audience_size_id,
         industry_id=request.industry_id,
         target_audience_id=request.target_audience_id,
-        ai_provider=request.ai_provider.value if request.ai_provider else "openai",
+        ai_provider=request.ai_provider.value if request.ai_provider else config.THESIS_AI_PROVIDER,
         citation_style=request.citation_style or "footnotes",
         status='draft',
         # True solo per admin (gratis) -> nessun addebito per step. Le tesi nuove
@@ -1493,7 +1493,7 @@ def generate_chapters_task(thesis_id: str, user_id: str):
         attachments_context = _build_context_for_thesis(thesis, db)
 
         # Genera capitoli con il provider AI selezionato
-        provider = thesis.ai_provider or "openai"
+        provider = thesis.ai_provider or config.THESIS_AI_PROVIDER
         client = get_ai_client(provider)
         logger.info(f"Generazione capitoli con provider: {provider}")
         result = client.generate_chapters(thesis_data, attachments_context)
@@ -1626,7 +1626,7 @@ async def generate_chapters(
         attachments_context = _build_context_for_thesis(thesis, db)
 
         # Genera capitoli con il provider AI selezionato (sincrono)
-        provider = thesis.ai_provider or "openai"
+        provider = thesis.ai_provider or config.THESIS_AI_PROVIDER
         client = get_ai_client(provider)
         logger.info(f"Generazione capitoli (sincrono) con provider: {provider}")
         result = client.generate_chapters(thesis_data, attachments_context)
@@ -1784,7 +1784,7 @@ def generate_sections_task(thesis_id: str, user_id: str):
         attachments_context = _build_context_for_thesis(thesis, db, query_extra=chapter_titles_q)
 
         # Genera sezioni con il provider AI selezionato
-        provider = thesis.ai_provider or "openai"
+        provider = thesis.ai_provider or config.THESIS_AI_PROVIDER
         client = get_ai_client(provider)
         logger.info(f"Generazione sezioni con provider: {provider}")
         result = client.generate_sections(thesis_data, chapters, attachments_context)
@@ -1916,7 +1916,7 @@ async def generate_sections(
         attachments_context = _build_context_for_thesis(thesis, db, query_extra=chapter_titles_q)
 
         # Genera sezioni con il provider AI selezionato (sincrono)
-        provider = thesis.ai_provider or "openai"
+        provider = thesis.ai_provider or config.THESIS_AI_PROVIDER
         client = get_ai_client(provider)
         logger.info(f"Generazione sezioni (sincrono) con provider: {provider}")
         result = client.generate_sections(thesis_data, chapters, attachments_context)
@@ -2265,7 +2265,7 @@ def generate_content_task(thesis_id: str, user_id: str):
                     trained_session_client = None
 
         # Usa il provider AI selezionato per la generazione contenuto
-        provider = thesis.ai_provider or "openai"
+        provider = thesis.ai_provider or config.THESIS_AI_PROVIDER
         client = get_ai_client(provider)
         logger.info(f"Generazione contenuto con provider: {provider}")
 
