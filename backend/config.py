@@ -38,6 +38,19 @@ THESIS_REWRITE_MODEL = os.getenv("THESIS_REWRITE_MODEL", "claude-opus-4-8")
 # Profilo del pass algoritmico: "academic" (no colloquialismi) per le tesi.
 THESIS_ANTI_AI_PROFILE = os.getenv("THESIS_ANTI_AI_PROFILE", "academic")
 
+# Riscrittura controllata (DIPPER-style): leva principale anti-rilevamento.
+# Parafrasi per sezione che massimizza diversità lessicale + riordino, applicata
+# in modo RICORSIVO (la ricerca mostra che la ricorsività abbatte di più il
+# rilevamento). Preserva registro accademico, citazioni [x], note e lunghezza.
+THESIS_PARAPHRASE_ENABLED = os.getenv("THESIS_PARAPHRASE_ENABLED", "true").lower() == "true"
+THESIS_PARAPHRASE_ROUNDS = int(os.getenv("THESIS_PARAPHRASE_ROUNDS", "2"))
+THESIS_PARAPHRASE_MODEL = os.getenv("THESIS_PARAPHRASE_MODEL", "claude-opus-4-8")
+# Temperatura/top_p alti = più varietà (perplessità) nella generazione del contenuto.
+# NB: i modelli reasoning OpenAI (o3) li ignorano; per varietà reale usare un modello
+# sampling-capable (es. Claude) come provider del contenuto.
+THESIS_GEN_TEMPERATURE = float(os.getenv("THESIS_GEN_TEMPERATURE", "1.0"))
+THESIS_GEN_TOP_P = float(os.getenv("THESIS_GEN_TOP_P", "0.95"))
+
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")

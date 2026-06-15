@@ -291,7 +291,8 @@ def build_section_content_prompt(
     section: Dict[str, Any],
     previous_sections_summary: str = "",
     attachments_context: str = "",
-    author_style_context: str = ""
+    author_style_context: str = "",
+    human_style_examples: str = ""
 ) -> str:
     """
     Costruisce il prompt per la FASE 3: Generazione contenuto sezione.
@@ -360,6 +361,16 @@ BASE DI CONOSCENZA (LLM WIKI)
 STILE DELL'AUTORE
 ═══════════════════════════════════════════════════════════════════════════════
 {author_style_context if author_style_context else "Nessuno stile specifico addestrato - usa lo stile richiesto nei parametri."}
+{(
+'''
+═══════════════════════════════════════════════════════════════════════════════
+ESEMPI DI STILE UMANO (imita RITMO e LESSICO, NON i contenuti)
+═══════════════════════════════════════════════════════════════════════════════
+I brani qui sotto sono prosa accademica UMANA reale. Studiane il ritmo irregolare,
+la varietà delle costruzioni e il lessico, e scrivi con uno stile simile.
+NON copiare frasi né contenuti: prendi solo lo STILE (le Similitudini devono restare basse).
+
+''' + human_style_examples) if human_style_examples else ""}
 
 ═══════════════════════════════════════════════════════════════════════════════
 ISTRUZIONI DI SCRITTURA

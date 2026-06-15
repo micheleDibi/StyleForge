@@ -212,7 +212,8 @@ class BaseAIClient(ABC):
         section: Dict[str, Any],
         previous_sections_summary: str = "",
         attachments_context: str = "",
-        author_style_context: str = ""
+        author_style_context: str = "",
+        human_style_examples: str = ""
     ) -> str:
         """Genera il contenuto di una singola sezione."""
         from thesis_prompts import build_section_content_prompt
@@ -223,7 +224,8 @@ class BaseAIClient(ABC):
             section=section,
             previous_sections_summary=previous_sections_summary,
             attachments_context=attachments_context,
-            author_style_context=author_style_context
+            author_style_context=author_style_context,
+            human_style_examples=human_style_examples
         )
 
         # Calcola max_tokens in base alle parole richieste
@@ -232,7 +234,15 @@ class BaseAIClient(ABC):
         estimated_tokens = int(words_per_section * 2.5) + 2000
         max_tokens = max(estimated_tokens, MAX_TOKENS)
 
-        return self.generate_text(prompt, max_tokens=max_tokens)
+        # Sampling ad alta varietà (più perplessità => meno rilevabile). Ignorato
+        # dai modelli reasoning OpenAI; efficace con modelli sampling-capable (Claude).
+        try:
+            temperature = float(os.getenv("THESIS_GEN_TEMPERATURE", "1.0"))
+            top_p = float(os.getenv("THESIS_GEN_TOP_P", "0.95"))
+        except (TypeError, ValueError):
+            temperature, top_p = None, None
+
+        return self.generate_text(prompt, max_tokens=max_tokens, temperature=temperature, top_p=top_p)
 
 
 class OpenAIClient(BaseAIClient):
@@ -254,14 +264,25 @@ class OpenAIClient(BaseAIClient):
         self.max_tokens = MAX_TOKENS
         self.provider = "openai"
 
-    def generate_text(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+    def generate_text(
+        self, prompt: str, max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None, top_p: Optional[float] = None,
+    ) -> str:
         try:
-            response = self.client.chat.completions.create(
-                model=self.model_id,
-                messages=[{"role": "user", "content": prompt}],
-                max_completion_tokens=max_tokens or self.max_tokens,
-                timeout=300.0
-            )
+            kwargs = {
+                "model": self.model_id,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_completion_tokens": max_tokens or self.max_tokens,
+                "timeout": 300.0,
+            }
+            # I modelli reasoning (o1/o3/o4...) NON accettano temperature/top_p.
+            is_reasoning = str(self.model_id).lower().startswith(("o1", "o3", "o4", "o5"))
+            if not is_reasoning:
+                if temperature is not None:
+                    kwargs["temperature"] = temperature
+                if top_p is not None:
+                    kwargs["top_p"] = top_p
+            response = self.client.chat.completions.create(**kwargs)
             return response.choices[0].message.content
         except InsufficientCreditsError:
             raise  # Rilancia direttamente senza wrapping
@@ -289,14 +310,23 @@ class ClaudeClient(BaseAIClient):
         self.max_tokens = MAX_TOKENS
         self.provider = "claude"
 
-    def generate_text(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+    def generate_text(
+        self, prompt: str, max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None, top_p: Optional[float] = None,
+    ) -> str:
         try:
-            message = self.client.messages.create(
-                model=self.model_id,
-                max_tokens=max_tokens or self.max_tokens,
-                messages=[{"role": "user", "content": prompt}],
-                timeout=300.0
-            )
+            kwargs = {
+                "model": self.model_id,
+                "max_tokens": max_tokens or self.max_tokens,
+                "messages": [{"role": "user", "content": prompt}],
+                "timeout": 300.0,
+            }
+            # Anthropic: usare temperature OPPURE top_p, non entrambi.
+            if temperature is not None:
+                kwargs["temperature"] = temperature
+            elif top_p is not None:
+                kwargs["top_p"] = top_p
+            message = self.client.messages.create(**kwargs)
             return message.content[0].text
         except InsufficientCreditsError:
             raise  # Rilancia direttamente senza wrapping
@@ -683,6 +713,110 @@ def academic_deai_rewrite(text: str, model_id: Optional[str] = None) -> str:
             f"academic_deai_rewrite fallita ({e}); uso il testo originale"
         )
         return text
+
+
+# ============================================================================
+# PARAFRASI CONTROLLATA (DIPPER-style) — leva principale anti-rilevamento
+# ============================================================================
+# Diversamente da academic_deai_rewrite (riscrittura "generica" che riavvicina
+# il testo alla distribuzione AI), qui imponiamo esplicitamente le due manopole
+# che la ricerca indica come efficaci: ALTA DIVERSITÀ LESSICALE + RIORDINO.
+# Applicata in modo RICORSIVO (la ricorsività abbatte di più il rilevamento).
+_CONTROLLED_PARAPHRASE_TEMPLATE = """Sei un revisore accademico esperto. Devi PARAFRASARE il brano di tesi qui sotto (italiano) producendo un testo nuovo che dica le STESSE cose ma con forma il più possibile DIVERSA dall'originale. Obiettivo: un testo accademico formale che non assomigli a quello di partenza a livello di parole e struttura.
+
+═══════════════════════════════════════════════════════════════
+DUE LEVE OBBLIGATORIE
+═══════════════════════════════════════════════════════════════
+1. DIVERSITÀ LESSICALE MASSIMA: riformula con parole e costruzioni DIVERSE dall'originale. Sostituisci verbi, sostantivi e aggettivi con sinonimi formali; cambia le perifrasi; evita di ricalcare gli stessi n-gram (sequenze di 3-4 parole) del testo di partenza. Non limitarti a cambiare qualche parola: riscrivi davvero le frasi.
+2. RIORDINO STRUTTURALE: cambia l'ordine delle frasi e dei blocchi argomentativi quando il senso lo permette; unisci frasi brevi in periodi articolati e spezza i periodi lunghi (ritmo irregolare, "burstiness"). Non mantenere lo stesso ordine frase-per-frase dell'originale.
+
+═══════════════════════════════════════════════════════════════
+REGISTRO — VINCOLI
+═══════════════════════════════════════════════════════════════
+- Resta FORMALE e accademico. VIETATI colloquialismi, interiezioni ("beh", "cioè", "insomma", "ecco"), autocorrezioni, domande retoriche con risposta, esclamazioni, incisi ironici.
+- Niente "errori finti": il testo deve restare corretto e scorrevole.
+- Evita i pattern AI: triadi/tricolon, antitesi bilanciate ("non solo... ma anche"), transizioni da manuale ("Inoltre", "Pertanto", "In conclusione", "È importante notare che"), chiuse a effetto a fine paragrafo.
+
+═══════════════════════════════════════════════════════════════
+DA PRESERVARE OBBLIGATORIAMENTE
+═══════════════════════════════════════════════════════════════
+- SIGNIFICATO: stessi contenuti, argomenti e conclusioni. Non aggiungere né togliere informazioni.
+- LUNGHEZZA: ALMENO __WORDCOUNT__ parole (come l'originale). Non riassumere.
+- CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni [n] (es. [1], [2]) e le note {{nota: ...}}: non rimuoverle, non rinumerarle, non modificarle.
+- Numeri, percentuali, date, nomi propri, titoli di opere e termini tecnici: identici.
+
+═══════════════════════════════════════════════════════════════
+TESTO DA PARAFRASARE (__WORDCOUNT__ parole)
+═══════════════════════════════════════════════════════════════
+__TEXTBODY__
+
+═══════════════════════════════════════════════════════════════
+Restituisci SOLO il testo parafrasato, senza commenti, titoli aggiunti o premesse."""
+
+
+def _controlled_paraphrase_once(text: str, model_id: str, temperature: float = 1.0) -> str:
+    """Una passata di parafrasi controllata. Ritorna il testo o l'originale su errore."""
+    if not text or not text.strip():
+        return text
+    word_count = len(text.split())
+    max_tokens = max(int(word_count * 2.5) + 2000, 8192)
+    prompt = (
+        _CONTROLLED_PARAPHRASE_TEMPLATE
+        .replace("__WORDCOUNT__", str(word_count))
+        .replace("__TEXTBODY__", text)
+    )
+    client = _get_rewrite_client(model_id)
+    out = client.generate_text(prompt, max_tokens=max_tokens, temperature=temperature)
+    return out.strip() if out else text
+
+
+def controlled_paraphrase(
+    text: str,
+    model_id: Optional[str] = None,
+    rounds: Optional[int] = None,
+    target_words: int = 0,
+) -> str:
+    """
+    Parafrasi controllata RICORSIVA (DIPPER-style): max diversità lessicale +
+    riordino, applicata `rounds` volte (default da THESIS_PARAPHRASE_ROUNDS).
+    Preserva citazioni [x], note {{nota}}, registro e lunghezza.
+
+    Floor di lunghezza per passata: se una passata scende sotto il 90% del testo
+    in ingresso a quella passata (o del target), la passata viene SCARTATA e si
+    tiene il testo precedente. Su errore (non crediti) ritorna l'ultimo testo valido.
+    """
+    if not text or not text.strip():
+        return text
+    model = model_id or os.getenv("THESIS_PARAPHRASE_MODEL", DEFAULT_CLAUDE_MODEL)
+    try:
+        n_rounds = rounds if rounds is not None else int(os.getenv("THESIS_PARAPHRASE_ROUNDS", "2"))
+    except (TypeError, ValueError):
+        n_rounds = 2
+
+    current = text
+    for i in range(max(0, n_rounds)):
+        try:
+            candidate = _controlled_paraphrase_once(current, model)
+        except InsufficientCreditsError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning(
+                f"controlled_paraphrase passata {i + 1} fallita ({e}); tengo il testo precedente"
+            )
+            break
+        floor = int(max(len(current.split()), target_words) * 0.9)
+        if len(candidate.split()) >= floor:
+            current = candidate
+        else:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"controlled_paraphrase passata {i + 1} troppo corta "
+                f"({len(candidate.split())} < {floor}); scarto questa passata"
+            )
+            # Una passata corta interrompe la ricorsione (evita degradi cumulativi).
+            break
+    return current
 
 
 # ============================================================================

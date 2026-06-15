@@ -1399,6 +1399,37 @@ class AntiAIProcessor:
                     testo = testo[:match.start()] + sost + testo[match.end():]
         return testo
 
+    def _sostituisci_frasi_ai_academic(self, testo: str) -> str:
+        """
+        Sostituisce le FRASI (n-gram) ad alta frequenza AI con alternative FORMALI.
+        Rompe gli n-gram esatti che i classificatori riconoscono, restando
+        accademico. Va eseguito PRIMA di _perturba_lessico_academic (frasi > parole).
+        """
+        frasi = {
+            r'è\s+importante\s+notare\s+che': ['va osservato che', 'si deve rilevare che', 'è degno di nota che', 'merita rilevare che'],
+            r'è\s+importante\s+sottolineare\s+che': ['va rimarcato che', 'occorre rilevare che', 'si deve osservare che'],
+            r'è\s+importante\s+ricordare\s+che': ['va ricordato che', 'giova ricordare che'],
+            r'è\s+interessante\s+notare\s+che': ['colpisce il fatto che', 'è notevole che', 'va osservato che'],
+            r'va\s+sottolineato\s+che': ['va rimarcato che', 'si deve rilevare che', 'è da osservare che'],
+            r'questo\s+significa\s+che': ['ne consegue che', 'ciò comporta che', 'da ciò deriva che', 'il che implica che'],
+            r'ciò\s+significa\s+che': ['ne discende che', 'ne consegue che', 'da ciò deriva che'],
+            r'(gioca|svolge|riveste|assume)\s+un\s+ruolo\s+(fondamentale|cruciale|centrale|chiave|decisivo)': ['è determinante', 'ha un peso decisivo', 'risulta centrale', 'è di primaria importanza'],
+            r'in\s+conclusione': ['in chiusura', 'a conclusione', 'da ultimo'],
+            r'in\s+sintesi': ['in breve', 'riassumendo', 'in estrema sintesi'],
+            r'è\s+possibile\s+affermare\s+che': ['si può affermare che', 'è lecito sostenere che', 'può sostenersi che'],
+            r'non\s+si\s+può\s+negare\s+che': ['è innegabile che', 'è fuori discussione che'],
+        }
+        for pattern, alternative in frasi.items():
+            regex = re.compile(pattern, re.IGNORECASE)
+            matches = list(regex.finditer(testo))
+            for match in reversed(matches):
+                if random.random() < 0.75:
+                    sost = random.choice(alternative)
+                    if match.group()[0].isupper():
+                        sost = sost[0].upper() + sost[1:]
+                    testo = testo[:match.start()] + sost + testo[match.end():]
+        return testo
+
     def aumenta_entropia_lessicale(self, testo: str) -> str:
         """
         Introduce scelte lessicali rare che aumentano l'entropia a livello di token.
@@ -1500,11 +1531,14 @@ class AntiAIProcessor:
 
         return ' '.join(frasi)
 
-    def varia_perplexita_tra_frasi(self, testo: str) -> str:
+    def varia_perplexita_tra_frasi(self, testo: str, register_safe: bool = False) -> str:
         """
         Alterna deliberatamente frasi semplici/brevi e frasi complesse.
         Compilatio rileva che le frasi AI hanno perplessità uniforme.
         Le frasi umane alternano tra molto semplici e molto complesse.
+
+        register_safe=True (tesi/academic): esegue SOLO lo split strutturale dei
+        periodi (nessun inserto editoriale), restando pienamente formale.
         """
         frasi = re.split(r'(?<=[.!?])\s+', testo)
         if len(frasi) < 8:
@@ -1542,8 +1576,8 @@ class AntiAIProcessor:
                         seconda_parte = seconda_parte[0].upper() + seconda_parte[1:]
                     frasi[i] = prima_parte + ' ' + seconda_parte
                     modifiche += 1
-            elif roll < 0.50:
-                # Complessificazione: aggiungi subordinata
+            elif roll < 0.50 and not register_safe:
+                # Complessificazione: aggiungi subordinata (inserti meta: NON academic)
                 inserti = [
                     ', il che non è affatto banale,',
                     ', e questo va tenuto presente,',
@@ -1663,8 +1697,10 @@ class AntiAIProcessor:
             testo = self.sostituisci_lista_nera(testo)
             testo = self.diversifica_vocabolario_ripetitivo(testo)
         else:
-            # Versione register-safe: marcatori AI -> alternative formali, più
-            # diversificazione delle ripetizioni (entrambe neutre di registro).
+            # Versione register-safe: prima le FRASI AI (n-gram) -> alternative
+            # formali, poi i marcatori a parola singola, poi diversificazione delle
+            # ripetizioni (tutte neutre di registro).
+            testo = self._sostituisci_frasi_ai_academic(testo)
             testo = self._perturba_lessico_academic(testo)
             testo = self.diversifica_vocabolario_ripetitivo(testo)
 
@@ -1682,6 +1718,11 @@ class AntiAIProcessor:
             testo = self.aumenta_entropia_lessicale(testo)
             testo = self.inserisci_micro_imperfezioni(testo)
             testo = self.varia_perplexita_tra_frasi(testo)
+        else:
+            # Register-safe: variazione di perplessità con SOLO split strutturale
+            # (no inserti editoriali) — leva diretta sulla metrica del detector,
+            # registro accademico preservato.
+            testo = self.varia_perplexita_tra_frasi(testo, register_safe=True)
 
         # ═══════════════════════════════════════════════════════════════
         # FASE 6: VARIAZIONE STRUTTURALE NATURALE
@@ -1788,7 +1829,8 @@ def get_processor(profile: str = 'informal') -> AntiAIProcessor:
     return processor
 
 
-def humanize_text_post_processing(testo: str, profile: str = 'informal') -> str:
+def humanize_text_post_processing(testo: str, profile: str = 'informal',
+                                  seed: Optional[int] = None) -> str:
     """
     Funzione principale da chiamare per il post-processing anti-AI.
 
@@ -1799,6 +1841,8 @@ def humanize_text_post_processing(testo: str, profile: str = 'informal') -> str:
         testo: Il testo generato dal modello da processare
         profile: 'informal' (default) anti-AI completo con colloquialismi;
             'academic' solo trasformazioni meccaniche register-safe (per le tesi).
+        seed: se fornito, usa un processore con seed dedicato (variazione per-sezione
+            riproducibile; rompe la firma uniforme a livello di documento).
 
     Returns:
         Il testo trasformato, anti-AI
@@ -1807,7 +1851,8 @@ def humanize_text_post_processing(testo: str, profile: str = 'informal') -> str:
         >>> from anti_ai_processor import humanize_text_post_processing
         >>> testo_umano = humanize_text_post_processing(testo_ai, profile='academic')
     """
-    processor = get_processor(profile)
+    # Con seed: processore dedicato (no singleton) per variazione per-sezione.
+    processor = AntiAIProcessor(seed=seed, profile=profile) if seed is not None else get_processor(profile)
     # Profilo accademico: processa per paragrafo per PRESERVARE la struttura in
     # paragrafi (le tesi ne dipendono per leggibilità ed export/TOC). Le fasi
     # academic operano a livello di frase/clausola, quindi processare i blocchi

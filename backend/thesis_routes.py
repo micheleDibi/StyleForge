@@ -2043,19 +2043,17 @@ Output SOLO il testo riscritto.
         return content
 
 
-def _apply_anti_ai(content: str, label: str = "Sezione", target_words: int = 0) -> str:
+def _apply_anti_ai(content: str, label: str = "Sezione", target_words: int = 0,
+                   seed: Optional[int] = None) -> str:
     """
     Applica gli stage anti-rilevamento AI al contenuto di una tesi:
-      1) riscrittura "de-AI accademica" via LLM (ai_client.academic_deai_rewrite)
-      2) pass algoritmico register-safe (anti_ai_processor, profilo 'academic')
+      0) PARAFRASI CONTROLLATA ricorsiva (DIPPER-style): max diversità lessicale +
+         riordino, applicata 2x (leva principale). Flag THESIS_PARAPHRASE_ENABLED.
+      1) (legacy/opzionale) riscrittura de-AI accademica via LLM. THESIS_REWRITE_ENABLED.
+      2) pass algoritmico register-safe (anti_ai_processor, profilo 'academic').
 
-    Controllato dai flag THESIS_ANTI_AI_ENABLED / THESIS_REWRITE_ENABLED /
-    THESIS_ALGO_ENABLED / THESIS_REWRITE_MODEL / THESIS_ANTI_AI_PROFILE.
-
-    Fallback: se la riscrittura LLM accorcia il testo di oltre il 10% rispetto
-    a max(parole originali, target), scarta la riscrittura e tiene il testo
-    pre-rewrite (il pass algoritmico viene comunque applicato).
-    NON va usato sulla bibliografia (lista formale).
+    La parafrasi e la riscrittura preservano citazioni [x], note {{nota}}, registro
+    e lunghezza (floor interno al 90%). NON va usato sulla bibliografia (lista formale).
     """
     import config
 
@@ -2067,25 +2065,34 @@ def _apply_anti_ai(content: str, label: str = "Sezione", target_words: int = 0) 
     result = content
     original_words = len(content.split())
 
-    # Stage 1: riscrittura de-AI accademica (LLM)
-    if getattr(config, 'THESIS_REWRITE_ENABLED', True):
+    # Stage 0: parafrasi controllata ricorsiva (leva principale)
+    if getattr(config, 'THESIS_PARAPHRASE_ENABLED', True):
+        try:
+            from ai_client import controlled_paraphrase
+            result = controlled_paraphrase(
+                result,
+                model_id=getattr(config, 'THESIS_PARAPHRASE_MODEL', None),
+                rounds=getattr(config, 'THESIS_PARAPHRASE_ROUNDS', 2),
+                target_words=max(original_words, target_words),
+            )
+        except InsufficientCreditsError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Parafrasi controllata errore per '{label}': {e}; tengo il testo precedente")
+
+    # Stage 1: riscrittura de-AI accademica (LLM) — legacy, OFF di default
+    if getattr(config, 'THESIS_REWRITE_ENABLED', False):
         try:
             from ai_client import academic_deai_rewrite
             rewritten = academic_deai_rewrite(
-                content, model_id=getattr(config, 'THESIS_REWRITE_MODEL', None)
+                result, model_id=getattr(config, 'THESIS_REWRITE_MODEL', None)
             )
-            rew_words = len(rewritten.split())
             floor = int(max(original_words, target_words) * 0.9)
-            if rew_words >= floor:
+            if len(rewritten.split()) >= floor:
                 result = rewritten
-            else:
-                logger.warning(
-                    f"Anti-AI rewrite scartata per '{label}': {rew_words} parole < {floor}; "
-                    f"uso il testo pre-rewrite"
-                )
         except InsufficientCreditsError:
             raise
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"Anti-AI rewrite errore per '{label}': {e}; uso il testo pre-rewrite")
 
     # Stage 2: pass algoritmico (profilo accademico, register-safe)
@@ -2093,8 +2100,12 @@ def _apply_anti_ai(content: str, label: str = "Sezione", target_words: int = 0) 
         try:
             from anti_ai_processor import humanize_text_post_processing
             profile = getattr(config, 'THESIS_ANTI_AI_PROFILE', 'academic')
-            result = humanize_text_post_processing(result, profile=profile)
-        except Exception as e:
+            result = humanize_text_post_processing(result, profile=profile, seed=seed)
+        except TypeError:
+            # Compat: versione senza parametro seed
+            from anti_ai_processor import humanize_text_post_processing
+            result = humanize_text_post_processing(result, profile=getattr(config, 'THESIS_ANTI_AI_PROFILE', 'academic'))
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"Anti-AI algo pass errore per '{label}': {e}")
 
     return result
@@ -2172,6 +2183,50 @@ def _refund_content_if_charged(db, thesis_id: str, user_id: str):
         logger.exception("Rimborso contenuto fallito tesi %s", thesis_id)
 
 
+def _extract_human_style_examples(thesis, db, max_examples: int = 2, words_each: int = 160) -> str:
+    """
+    Estrae 1-2 brani brevi di prosa UMANA dalle fonti della tesi (allegati con
+    extracted_text o file raw/ del wiki) come ancora di stile (few-shot) nel prompt.
+    Ritorna stringa vuota se non ci sono fonti testuali sufficienti.
+    """
+    texts = []
+    try:
+        atts = db.query(ThesisAttachment).filter(
+            ThesisAttachment.thesis_id == thesis.id,
+            ThesisAttachment.extracted_text.isnot(None),
+        ).all()
+        texts = [a.extracted_text.strip() for a in atts
+                 if a.extracted_text and len(a.extracted_text.split()) >= 80]
+    except Exception:  # noqa: BLE001
+        logger.exception("Esempi stile umano: errore lettura allegati tesi %s", thesis.id)
+
+    if not texts and getattr(thesis, 'wiki_path', None):
+        try:
+            from llm_wiki import wiki_workspace as _ww
+            for p in _ww.list_raw_files(str(thesis.id))[:3]:
+                try:
+                    t = p.read_text(encoding="utf-8", errors="replace").strip()
+                    if len(t.split()) >= 80:
+                        texts.append(t)
+                except OSError:
+                    continue
+        except Exception:  # noqa: BLE001
+            logger.exception("Esempi stile umano: errore lettura raw wiki tesi %s", thesis.id)
+
+    if not texts:
+        return ""
+
+    examples = []
+    for t in texts[:max_examples]:
+        words = t.split()
+        # Brano "centrale" (evita header/abstract iniziali)
+        start = min(len(words) // 4, max(0, len(words) - words_each))
+        snippet = " ".join(words[start:start + words_each]).strip()
+        if snippet:
+            examples.append(f"--- Esempio ---\n{snippet}")
+    return "\n\n".join(examples)
+
+
 def generate_content_task(thesis_id: str, user_id: str):
     """Task background per generare il contenuto completo."""
     db = SessionLocal()
@@ -2185,6 +2240,9 @@ def generate_content_task(thesis_id: str, user_id: str):
 
         # Costruisci contesto: Wiki retriever se disponibile, altrimenti fallback
         attachments_context = _build_context_for_thesis(thesis, db)
+
+        # Few-shot di prosa umana (dalle fonti) per un draft meno rilevabile come AI.
+        human_examples = _extract_human_style_examples(thesis, db)
 
         # Verifica se c'è una sessione addestrata per umanizzazione avanzata
         trained_session_client = None
@@ -2247,7 +2305,8 @@ def generate_content_task(thesis_id: str, user_id: str):
                     section=section,
                     previous_sections_summary=previous_summary,
                     attachments_context=attachments_context,
-                    author_style_context=author_style_context
+                    author_style_context=author_style_context,
+                    human_style_examples=human_examples
                 )
 
                 # Verifica word count e richiedi continuazione se troppo corto
