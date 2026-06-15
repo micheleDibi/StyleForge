@@ -283,8 +283,12 @@ const ThesisGenerator = () => {
           }
           setCurrentStep(6);
         } else {
-          // draft or other early status
-          setCurrentStep(1);
+          // draft o status iniziale: se l'ingest della Knowledge Base è già
+          // stato avviato o completato, riprendi dallo step Knowledge Base (5)
+          // così l'utente rivede stato/progresso dell'ingest, invece di tornare
+          // a Parametri e credere di doverlo rifare da capo.
+          const ws = (thesisData.wiki_status || 'none').toLowerCase();
+          setCurrentStep(ws !== 'none' ? 5 : 1);
         }
       } catch (err) {
         console.error('Errore nel resume della tesi:', err);
