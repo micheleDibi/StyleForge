@@ -43,7 +43,7 @@ from db_models import (
 )
 from database import SessionLocal, get_db
 from auth import get_current_active_user, require_permission
-from credits import estimate_credits, deduct_credits
+from credits import estimate_credits, deduct_credits, add_credits
 from attachment_processor import (
     process_attachment, save_uploaded_file, delete_attachment_file,
     build_attachments_context, cleanup_thesis_attachments,
@@ -394,21 +394,8 @@ async def create_thesis(
         if session:
             session_uuid = session.id
 
-    # Addebito flat tesi (valore unico per tutti gli utenti; solo per non-admin)
-    flat_charged = False
-    if not current_user.is_admin:
-        estimate = estimate_credits('thesis_total', {}, db)
-        cost = int(estimate.get('credits_needed', 0) or 0)
-        if cost > 0:
-            title_short = (request.title or 'Tesi senza titolo')[:80]
-            deduct_credits(
-                current_user,
-                cost,
-                'thesis_total',
-                f"Tesi flat: {title_short}",
-                db,
-            )
-            flat_charged = True
+    # Nessun addebito alla creazione: la tesi si paga PER STEP (Capitoli/Sezioni/
+    # Contenuto). Gli admin non pagano nulla; le tesi nuove non-admin pagano per step.
 
     # Indice custom (se l'utente ha scelto la modalita' "definisci tu l'indice")
     use_custom_outline = bool(getattr(request, 'use_custom_outline', False))
@@ -442,9 +429,9 @@ async def create_thesis(
         ai_provider=request.ai_provider.value if request.ai_provider else "openai",
         citation_style=request.citation_style or "footnotes",
         status='draft',
-        # Marca come "già pagata" sia per addebito flat che per admin
-        # (così gli step successivi non riaddebitano)
-        credits_charged=(flat_charged or bool(current_user.is_admin)),
+        # True solo per admin (gratis) -> nessun addebito per step. Le tesi nuove
+        # non-admin restano False e pagano per step (Capitoli/Sezioni/Contenuto).
+        credits_charged=bool(current_user.is_admin),
         # LLM Wiki: vincolo "solo fonti selezionate" (default ON)
         restrict_to_sources=bool(getattr(request, 'restrict_to_sources', True)),
         wiki_status='none',
@@ -773,9 +760,8 @@ async def thesis_research_search(
     else:
         sources = DEFAULT_SOURCES
 
-    # Per tesi pre-tariffa-flat (credits_charged=False) addebito per step (back-compat).
-    # Le tesi nuove pagano flat alla creazione e qui non vengono addebitate.
-    if not getattr(thesis, 'credits_charged', False):
+    # Ricerca paper a pagamento (gratis per admin e vecchie tesi flat).
+    if not thesis.credits_charged:
         credit_estimate = estimate_credits("research_search", {"num_sources": len(sources)}, db=db)
         deduct_credits(
             user=current_user,
@@ -824,8 +810,8 @@ async def thesis_research_summarize(
     except Exception:
         raise HTTPException(status_code=400, detail="Paper non valido")
 
-    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
-    if not getattr(thesis, 'credits_charged', False):
+    # Riassunto paper a pagamento (gratis per admin e vecchie tesi flat).
+    if not thesis.credits_charged:
         credit_estimate = estimate_credits("research_summary", {}, db=db)
         deduct_credits(
             user=current_user,
@@ -875,8 +861,9 @@ async def suggest_paper_keywords(
     # Cap: massimo 5 documenti per contenere costo e token.
     eligible_used = eligible[:5]
 
+    # Suggerimento keyword a pagamento (gratis per admin e vecchie tesi flat).
     credits_consumed = 0
-    if not getattr(thesis, 'credits_charged', False):
+    if not thesis.credits_charged:
         credit_estimate = estimate_credits(
             "paper_keyword_suggest",
             {"num_attachments": len(eligible_used)},
@@ -1004,6 +991,30 @@ async def add_paper_attachments(
 # LLM WIKI (second-brain) ENDPOINTS
 # ============================================================================
 
+def _refund_wiki_if_charged(db, thesis_id: str, user_id: str):
+    """
+    Se l'analisi documenti/paper era stata addebitata, rimborsa la quota e azzera
+    il flag (così l'ingest è ri-tentabile). Usato quando l'ingest fallisce.
+    """
+    try:
+        thesis = db.query(Thesis).get(thesis_id)
+        if not thesis or not thesis.wiki_charged:
+            return
+        user = db.query(User).get(user_id)
+        n_sources = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis_id).count()
+        cost = int(estimate_credits('wiki_ingest', {'num_sources': n_sources}, db).get('credits_needed', 0) or 0)
+        if user and cost > 0:
+            add_credits(
+                user, cost,
+                f"Rimborso analisi documenti/paper (fallita) - {(thesis.title or '')[:50]}",
+                db, transaction_type='refund',
+            )
+        thesis.wiki_charged = False
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("Rimborso analisi KB fallito tesi %s", thesis_id)
+
+
 def _wiki_ingest_task(thesis_id: str, user_id: str):
     """Background task: scarica paper, materializza upload, lancia ingest+lint."""
     from filelock import Timeout as _LockTimeout
@@ -1102,6 +1113,7 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
                 thesis.wiki_status = "failed"
                 thesis.wiki_lint_report = {"error": str(e)[:500]}
                 db.commit()
+            _refund_wiki_if_charged(db, thesis_id, user_id)
             # Rollback al backup pre-ingest
             if backup is not None:
                 try:
@@ -1134,6 +1146,7 @@ def _wiki_ingest_task(thesis_id: str, user_id: str):
                     },
                 }
                 db.commit()
+            _refund_wiki_if_charged(db, thesis_id, user_id)
             if backup is not None:
                 try:
                     _ww.restore_snapshot(thesis_id, backup)
@@ -1224,6 +1237,22 @@ async def start_wiki_ingest(
             wiki_ingested_at=thesis.wiki_ingested_at,
             wiki_linted_at=thesis.wiki_linted_at,
         )
+
+    # Addebito dell'analisi documenti/paper (Knowledge Base), una sola volta per
+    # tesi. Salta admin/vecchie tesi flat (credits_charged) e se già addebitata.
+    # Un eventuale 402 (saldo insufficiente) blocca qui senza cambiare lo stato.
+    if not thesis.credits_charged and not thesis.wiki_charged:
+        n_sources = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis.id).count()
+        wiki_estimate = estimate_credits('wiki_ingest', {'num_sources': n_sources}, db=db)
+        deduct_credits(
+            user=current_user,
+            amount=int(wiki_estimate['credits_needed']),
+            operation_type='wiki_ingest',
+            description=f"Analisi documenti/paper (Knowledge Base) - {thesis.title[:50]}",
+            db=db,
+        )
+        thesis.wiki_charged = True
+        db.commit()
 
     # Reset stato e schedula task
     _now_iso = datetime.utcnow().isoformat()
@@ -1567,21 +1596,27 @@ async def generate_chapters(
             db.commit()
             raise HTTPException(status_code=500, detail=f"Errore nel caricamento dell'indice personalizzato: {str(e)}")
 
-    # Calcola caratteri allegati per crediti
+    # Caratteri allegati per lo scaling del costo capitoli.
     ch_attachments = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis.id).all()
     ch_attachment_chars = sum(len(a.extracted_text or '') for a in ch_attachments)
 
-    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
-    # Le tesi nuove sono già pagate flat alla creazione (credits_charged=True).
-    if not getattr(thesis, 'credits_charged', False):
+    # Addebito PER STEP (quota fissa + scaling). Salta se "tutto pagato" (admin /
+    # vecchie flat) o se la fase è già stata addebitata (idempotenza su retry).
+    charged_chapters_now = False
+    chapters_cost = 0
+    if not thesis.credits_charged and not thesis.chapters_charged:
         credit_estimate = estimate_credits('thesis_chapters', {'attachment_chars': ch_attachment_chars}, db=db)
+        chapters_cost = int(credit_estimate['credits_needed'])
         deduct_credits(
             user=current_user,
-            amount=credit_estimate['credits_needed'],
+            amount=chapters_cost,
             operation_type='thesis_chapters',
             description=f"Generazione struttura capitoli - {thesis.title[:50]}",
-            db=db
+            db=db,
         )
+        thesis.chapters_charged = True
+        charged_chapters_now = True
+        db.commit()
 
     try:
         # Costruisci i dati per il prompt
@@ -1612,6 +1647,9 @@ async def generate_chapters(
         }
 
     except InsufficientCreditsError as e:
+        if charged_chapters_now:
+            add_credits(current_user, chapters_cost, f"Rimborso generazione capitoli (fallita) - {thesis.title[:50]}", db, transaction_type='refund')
+            thesis.chapters_charged = False
         thesis.status = 'failed'
         db.commit()
         raise HTTPException(
@@ -1619,6 +1657,9 @@ async def generate_chapters(
             detail=e.user_message
         )
     except Exception as e:
+        if charged_chapters_now:
+            add_credits(current_user, chapters_cost, f"Rimborso generazione capitoli (fallita) - {thesis.title[:50]}", db, transaction_type='refund')
+            thesis.chapters_charged = False
         thesis.status = 'failed'
         db.commit()
         raise HTTPException(
@@ -1846,17 +1887,22 @@ async def generate_sections(
             db.commit()
             raise HTTPException(status_code=500, detail=f"Errore nel caricamento delle sezioni custom: {str(e)}")
 
-    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
-    # Le tesi nuove sono già pagate flat alla creazione (credits_charged=True).
-    if not getattr(thesis, 'credits_charged', False):
-        credit_estimate = estimate_credits('thesis_sections', {}, db=db)
+    # Addebito PER STEP (quota fissa), idempotente per fase.
+    charged_sections_now = False
+    sections_cost = 0
+    if not thesis.credits_charged and not thesis.sections_charged:
+        credit_estimate = estimate_credits('thesis_sections', {'num_chapters': thesis.num_chapters}, db=db)
+        sections_cost = int(credit_estimate['credits_needed'])
         deduct_credits(
             user=current_user,
-            amount=credit_estimate['credits_needed'],
+            amount=sections_cost,
             operation_type='thesis_sections',
             description=f"Generazione struttura sezioni - {thesis.title[:50]}",
-            db=db
+            db=db,
         )
+        thesis.sections_charged = True
+        charged_sections_now = True
+        db.commit()
 
     try:
         # Costruisci dati
@@ -1891,6 +1937,9 @@ async def generate_sections(
         }
 
     except InsufficientCreditsError as e:
+        if charged_sections_now:
+            add_credits(current_user, sections_cost, f"Rimborso generazione sezioni (fallita) - {thesis.title[:50]}", db, transaction_type='refund')
+            thesis.sections_charged = False
         thesis.status = 'failed'
         db.commit()
         raise HTTPException(
@@ -1898,6 +1947,9 @@ async def generate_sections(
             detail=e.user_message
         )
     except Exception as e:
+        if charged_sections_now:
+            add_credits(current_user, sections_cost, f"Rimborso generazione sezioni (fallita) - {thesis.title[:50]}", db, transaction_type='refund')
+            thesis.sections_charged = False
         thesis.status = 'failed'
         db.commit()
         raise HTTPException(
@@ -2091,6 +2143,33 @@ SCRIVI la continuazione (almeno {missing_words} parole):"""
             break
 
     return content
+
+
+def _refund_content_if_charged(db, thesis_id: str, user_id: str):
+    """
+    Se il contenuto era stato addebitato, rimborsa la quota e azzera il flag
+    (così la generazione contenuto è ri-tentabile). Usato quando il task fallisce.
+    """
+    try:
+        thesis = db.query(Thesis).get(thesis_id)
+        if not thesis or not thesis.content_charged:
+            return
+        user = db.query(User).get(user_id)
+        cost = int(estimate_credits('thesis_content', {
+            'num_chapters': thesis.num_chapters,
+            'sections_per_chapter': thesis.sections_per_chapter,
+            'words_per_section': thesis.words_per_section,
+        }, db).get('credits_needed', 0) or 0)
+        if user and cost > 0:
+            add_credits(
+                user, cost,
+                f"Rimborso generazione contenuto (fallita) - {(thesis.title or '')[:50]}",
+                db, transaction_type='refund',
+            )
+        thesis.content_charged = False
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("Rimborso contenuto fallito tesi %s", thesis_id)
 
 
 def generate_content_task(thesis_id: str, user_id: str):
@@ -2392,6 +2471,7 @@ def generate_content_task(thesis_id: str, user_id: str):
         if thesis:
             thesis.status = 'failed'
             db.commit()
+        _refund_content_if_charged(db, thesis_id, user_id)
 
     except Exception as e:
         job = db.query(ThesisGenerationJob).filter(
@@ -2408,6 +2488,7 @@ def generate_content_task(thesis_id: str, user_id: str):
         if thesis:
             thesis.status = 'failed'
             db.commit()
+        _refund_content_if_charged(db, thesis_id, user_id)
 
     finally:
         db.close()
@@ -2436,21 +2517,22 @@ async def start_content_generation(
     chapters = thesis.chapters_structure.get("chapters", [])
     total_sections = sum(len(c.get("sections", [])) for c in chapters)
 
-    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
-    # Le tesi nuove sono già pagate flat alla creazione (credits_charged=True).
-    if not getattr(thesis, 'credits_charged', False):
+    # Addebito PER STEP (quota fissa), idempotente per fase. Il rimborso in caso di
+    # fallimento avviene nel task generate_content_task (vedi gestione 'failed').
+    if not thesis.credits_charged and not thesis.content_charged:
         credit_estimate = estimate_credits('thesis_content', {
             'num_chapters': thesis.num_chapters,
             'sections_per_chapter': thesis.sections_per_chapter,
-            'words_per_section': thesis.words_per_section
+            'words_per_section': thesis.words_per_section,
         }, db=db)
         deduct_credits(
             user=current_user,
-            amount=credit_estimate['credits_needed'],
+            amount=int(credit_estimate['credits_needed']),
             operation_type='thesis_content',
-            description=f"Generazione contenuto tesi - {thesis.title[:50]} ({thesis.num_chapters} cap, {thesis.sections_per_chapter} sez/cap)",
-            db=db
+            description=f"Generazione contenuto tesi - {thesis.title[:50]}",
+            db=db,
         )
+        thesis.content_charged = True
 
     # Aggiorna stato
     thesis.status = 'generating'

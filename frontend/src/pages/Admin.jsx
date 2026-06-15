@@ -7,7 +7,7 @@ import {
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
   Sparkles, Settings, UserPlus, RotateCcw,
   AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image,
-  CreditCard, Mail, Calendar, Power, Globe
+  CreditCard, Mail, Calendar, Power, Globe, BookOpen, Brain, Wand2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -42,17 +42,33 @@ const ENTITY_TYPE_LABELS = {
   privato: 'Privato',
 };
 
-// Labels per le operazioni dei costi crediti
+// Aree dei costi crediti (per raggruppare le operazioni nella pagina impostazioni).
+const COST_GROUPS = [
+  { key: 'thesis', label: 'Tesi', icon: BookOpen, hint: 'Costo addebitato a ogni step del wizard tesi.' },
+  { key: 'wiki', label: 'Knowledge Base', icon: Brain, hint: 'Analisi dei documenti caricati e dei paper selezionati.' },
+  { key: 'research', label: 'Ricerca & Paper', icon: Search, hint: 'Ricerca e riassunto dei paper accademici nel wizard.' },
+  { key: 'tools', label: 'Altri strumenti', icon: Wand2, hint: 'Operazioni fuori dal flusso tesi.' },
+];
+
+// Operazioni con costo in crediti (niente emoji: icone per gruppo, layout pulito).
 const COST_OPERATION_LABELS = {
-  train: { label: 'Training', icon: '🎓', fields: { base: 'Costo base', per_page: 'Per pagina PDF' } },
-  generate: { label: 'Generazione Contenuto', icon: '✍️', fields: { base: 'Costo base', per_1000_words: 'Per 1000 parole' } },
-  humanize: { label: 'Umanizzazione', icon: '🤖', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
-  thesis_total: { label: 'Tesi - Tariffa flat', icon: '🎯', description: 'Addebito unico alla creazione di una nuova tesi (valore unico per tutti gli utenti). Sostituisce i costi per step (capitoli/sezioni/contenuto) per le tesi nuove.', fields: { base: 'Costo tesi' } },
-  thesis_chapters: { label: 'Tesi - Capitoli (legacy)', icon: '📚', fields: { base: 'Costo base', per_1000_attachment_chars: 'Per 1000 caratteri allegati' } },
-  thesis_sections: { label: 'Tesi - Sezioni (legacy)', icon: '📄', fields: { base: 'Costo base' } },
-  thesis_content: { label: 'Tesi - Contenuto (legacy)', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
-  compilatio_scan: { label: 'Detector AI - Scansione (manuale/generate/humanize)', icon: '🔍', description: 'Scansione AI/plagio. Costo variabile in base alla lunghezza del testo.', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
-  compilatio_scan_thesis: { label: 'Detector AI - Scansione tesi', icon: '🎓', description: 'Tariffa flat per la scansione AI/plagio dentro il wizard tesi. Indipendente dalla lunghezza del documento.', fields: { base: 'Costo base (flat)' } }
+  // Tesi
+  thesis_chapters: { group: 'thesis', label: 'Capitoli (Step 1)', description: 'Quota fissa + scaling sui caratteri degli allegati.', fields: { base: 'Quota fissa', per_1000_attachment_chars: 'Per 1000 caratteri allegati' } },
+  thesis_sections: { group: 'thesis', label: 'Sezioni (Step 2)', description: 'Quota fissa + scaling per capitolo.', fields: { base: 'Quota fissa', per_chapter: 'Per capitolo' } },
+  thesis_content: { group: 'thesis', label: 'Contenuto (Step 3)', description: 'Quota fissa + scaling per capitolo, sezione e parole.', fields: { base: 'Quota fissa', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
+  // Knowledge Base
+  wiki_ingest: { group: 'wiki', label: 'Analisi documenti e paper', description: 'Quota fissa + per fonte analizzata. Copre ingest, controllo qualità e auto-fix.', fields: { base: 'Quota fissa', per_source: 'Per fonte' } },
+  wiki_lint: { group: 'wiki', label: 'Ricontrollo qualità', description: 'Rilancio del solo controllo qualità del wiki.', fields: { base: 'Costo base' } },
+  // Ricerca & Paper
+  research_search: { group: 'research', label: 'Ricerca paper', description: 'Costo base + per fonte interrogata.', fields: { base: 'Costo base', per_source: 'Per fonte' } },
+  research_summary: { group: 'research', label: 'Riassunto paper', description: 'Riassunto AI di un singolo paper.', fields: { base: 'Costo base' } },
+  paper_keyword_suggest: { group: 'research', label: 'Suggerimento keyword', description: 'Estrazione termini di ricerca dai documenti caricati.', fields: { base: 'Costo base', per_attachment: 'Per documento' } },
+  // Altri strumenti
+  train: { group: 'tools', label: 'Addestramento stile', description: 'Addestramento del modello sui PDF caricati.', fields: { base: 'Costo base', per_page: 'Per pagina PDF' } },
+  generate: { group: 'tools', label: 'Generazione contenuto', description: 'Generazione di testo con lo stile addestrato.', fields: { base: 'Costo base', per_1000_words: 'Per 1000 parole' } },
+  humanize: { group: 'tools', label: 'Umanizzazione', description: 'Riscrittura anti-AI del testo.', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
+  compilatio_scan: { group: 'tools', label: 'Detector AI - Scansione', description: 'Scansione AI/plagio. Costo variabile sulla lunghezza del testo.', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
+  compilatio_scan_thesis: { group: 'tools', label: 'Detector AI - Scansione tesi', description: 'Tariffa fissa per la scansione AI/plagio dentro il wizard tesi.', fields: { base: 'Costo base (flat)' } },
 };
 
 const Admin = () => {
@@ -1360,7 +1376,7 @@ const Admin = () => {
                 {/* EUR per credito */}
                 <div className="glass rounded-2xl p-5">
                   <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                    <span className="text-xl">💶</span>
+                    <CreditCard className="w-5 h-5 text-orange-500" />
                     {t('Conversione EUR / Credito')}
                   </h3>
                   <div className="flex items-center gap-4">
@@ -1399,38 +1415,55 @@ const Admin = () => {
                   </p>
                 </div>
 
-                {/* Cost cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Object.entries(COST_OPERATION_LABELS).map(([opType, opConfig]) => (
-                    <div key={opType} className="glass rounded-2xl p-5">
-                      <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
-                        <span className="text-xl">{opConfig.icon}</span>
-                        {t(opConfig.label)}
-                      </h3>
-                      {opConfig.description && (
-                        <p className="text-xs text-gray-500 mb-3">{t(opConfig.description)}</p>
-                      )}
-                      <div className="space-y-3">
-                        {Object.entries(opConfig.fields).map(([field, fieldLabel]) => (
-                          <div key={field} className="flex items-center justify-between gap-4">
-                            <label className="text-sm text-gray-600 flex-1">{t(fieldLabel)}</label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min="0"
-                                step="1"
-                                className="input w-24 text-center text-sm py-1.5"
-                                value={editedCosts[opType]?.[field] ?? 0}
-                                onChange={(e) => handleCostChange(opType, field, e.target.value)}
-                              />
-                              <span className="text-xs text-gray-400 w-12">{t('crediti')}</span>
+                {/* Costi per area */}
+                {COST_GROUPS.map((group) => {
+                  const ops = Object.entries(COST_OPERATION_LABELS).filter(([, c]) => c.group === group.key);
+                  if (ops.length === 0) return null;
+                  const GIcon = group.icon;
+                  return (
+                    <div key={group.key} className="space-y-3">
+                      <div className="flex items-center gap-3 px-1 pt-1">
+                        <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0">
+                          <GIcon className="w-[18px] h-[18px]" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900 leading-tight">{t(group.label)}</h3>
+                          <p className="text-xs text-gray-400">{t(group.hint)}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {ops.map(([opType, opConfig]) => (
+                          <div key={opType} className="glass rounded-2xl p-5">
+                            <div className="mb-3">
+                              <h4 className="font-semibold text-gray-900">{t(opConfig.label)}</h4>
+                              {opConfig.description && (
+                                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{t(opConfig.description)}</p>
+                              )}
+                            </div>
+                            <div>
+                              {Object.entries(opConfig.fields).map(([field, fieldLabel]) => (
+                                <div key={field} className="flex items-center justify-between gap-4 py-2 border-t border-slate-100 first:border-t-0 first:pt-0">
+                                  <label className="text-sm text-gray-600 flex-1">{t(fieldLabel)}</label>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      className="input w-24 text-center text-sm py-1.5"
+                                      value={editedCosts[opType]?.[field] ?? 0}
+                                      onChange={(e) => handleCostChange(opType, field, e.target.value)}
+                                    />
+                                    <span className="text-xs text-gray-400 w-12">{t('crediti')}</span>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
 
                 {/* Actions */}
                 <div className="glass rounded-2xl p-4">

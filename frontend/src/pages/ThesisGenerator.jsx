@@ -122,17 +122,6 @@ const ThesisGenerator = () => {
   const [creditOperationName, setCreditOperationName] = useState('');
   const [pendingCreditAction, setPendingCreditAction] = useState(null);
 
-  // Costo della tariffa flat tesi (valore unico, configurabile da admin).
-  const [thesisFlatCost, setThesisFlatCost] = useState(null);
-  useEffect(() => {
-    if (isAdmin) return;
-    let cancelled = false;
-    estimateCredits('thesis_total', {}).then((res) => {
-      if (!cancelled && res?.credits_needed != null) setThesisFlatCost(res.credits_needed);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [isAdmin]);
-
   // Helper: extract error message with credit error detection
   const handleApiError = (err, fallbackMessage) => {
     if (err.isInsufficientCredits || err.response?.status === 402) {
@@ -346,14 +335,14 @@ const ThesisGenerator = () => {
     return newThesis.id;
   };
 
-  // Indica che la tesi ha gia' pagato la tariffa flat (o utente admin):
-  // tutti gli step interni non devono piu' chiedere o scalare crediti.
+  // True per admin e per le vecchie tesi "tutto pagato" (flat): nessun addebito per step.
   const isThesisPaid = isAdmin || thesis?.credits_charged === true;
 
-  // Helper: mostra dialog crediti e poi esegui azione
-  const showCreditConfirmation = async (operationType, params, operationLabel, action) => {
-    // Se la tesi ha gia' pagato il flat (o utente admin), niente dialog: esegui direttamente.
-    if (isThesisPaid) {
+  // Helper: mostra dialog crediti e poi esegui azione.
+  // alreadyPaid = fase già addebitata (idempotenza): salta il dialog.
+  const showCreditConfirmation = async (operationType, params, operationLabel, action, alreadyPaid = false) => {
+    // Tesi "tutto pagato" (admin/flat) o fase già pagata: niente dialog, esegui direttamente.
+    if (isThesisPaid || alreadyPaid) {
       await action();
       refreshUser();
       return;
@@ -418,7 +407,8 @@ const ThesisGenerator = () => {
         } finally {
           setIsLoading(false);
         }
-      }
+      },
+      thesis?.chapters_charged === true,
     );
   };
 
@@ -427,7 +417,7 @@ const ThesisGenerator = () => {
     // Prima: stima crediti per generazione sezioni
     await showCreditConfirmation(
       'thesis_sections',
-      {},
+      { num_chapters: parametersData.num_chapters },
       t('Genera Struttura Sezioni'),
       async () => {
         setIsLoading(true);
@@ -455,7 +445,8 @@ const ThesisGenerator = () => {
         } finally {
           setIsLoading(false);
         }
-      }
+      },
+      thesis?.sections_charged === true,
     );
   };
 
@@ -504,7 +495,8 @@ const ThesisGenerator = () => {
         } finally {
           setIsLoading(false);
         }
-      }
+      },
+      thesis?.content_charged === true,
     );
   };
 
@@ -817,6 +809,7 @@ const ThesisGenerator = () => {
               paperCount={(attachmentsData.attachments || []).filter(a => a.mime_type === PAPER_MIME).length}
               attachmentCount={(attachmentsData.attachments || []).filter(a => a.mime_type !== PAPER_MIME).length}
               restrictToSources={!!parametersData.restrict_to_sources}
+              analysisFree={isThesisPaid || thesis?.wiki_charged === true}
               onComplete={generateChaptersForThesis}
               onBack={() => setCurrentStep(4)}
             />
@@ -867,17 +860,11 @@ const ThesisGenerator = () => {
         {currentStep >= 2 && currentStep <= 8 && parametersData.title && (isAdmin || !isThesisPaid) && (
           <div className="mt-4">
             <CreditEstimatePreview
-              operations={
-                isAdmin
-                  ? [
-                      { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5) }, label: t('Capitoli + allegati') },
-                      { type: 'thesis_sections', params: {}, label: t('Sezioni') },
-                      { type: 'thesis_content', params: { num_chapters: parametersData.num_chapters, sections_per_chapter: parametersData.sections_per_chapter, words_per_section: parametersData.words_per_section }, label: t('Contenuto') },
-                    ]
-                  : [
-                      { type: 'thesis_total', params: {}, label: t('Tesi (tariffa flat)') },
-                    ]
-              }
+              operations={[
+                { type: 'thesis_chapters', params: { attachment_chars: Math.round((attachmentsData.attachments?.reduce((sum, a) => sum + (a.file_size || 0), 0) || 0) * 0.5) }, label: t('Capitoli') },
+                { type: 'thesis_sections', params: { num_chapters: parametersData.num_chapters }, label: t('Sezioni') },
+                { type: 'thesis_content', params: { num_chapters: parametersData.num_chapters, sections_per_chapter: parametersData.sections_per_chapter, words_per_section: parametersData.words_per_section }, label: t('Contenuto') },
+              ]}
             />
           </div>
         )}
@@ -907,24 +894,22 @@ const ThesisGenerator = () => {
           </div>
         )}
 
-        {/* Avviso "addebito non rimborsabile" prima di lasciare lo step 2.
-            La creazione tesi (passaggio 2 → 3) addebita la tariffa flat in base al tipo ente. */}
+        {/* Info "pagamento per step" prima di lasciare lo step 2.
+            La creazione tesi non addebita nulla: si paga a ogni fase di generazione. */}
         {currentStep === 2 && !isAdmin && !thesisId && (
-          <div className="mt-6 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
+          <div className="mt-6 rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4 shadow-sm">
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 mt-0.5">
-                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div className="flex-1 text-sm">
-                <p className="font-semibold text-amber-900 mb-1">
-                  {t('Addebito alla creazione: {{cost}} crediti', { cost: thesisFlatCost != null ? thesisFlatCost : '—' })}
+                <p className="font-semibold text-emerald-900 mb-1">
+                  {t('Nessun addebito alla creazione: paghi per ogni fase')}
                 </p>
-                <p className="text-amber-800">
-                  {t('Cliccando su')} <strong>{t('Continua')}</strong>{' '}
-                  {t('verrà creata la tesi e verrà addebitata in un\'unica soluzione la tariffa flat. Tutti gli step successivi (paper, allegati, capitoli, sezioni, contenuto) sono inclusi.')}
-                  <strong> {t('L\'importo non è rimborsabile in caso di abbandono del wizard.')}</strong>
+                <p className="text-emerald-800">
+                  {t('I crediti vengono scalati ad ogni fase di generazione (Capitoli, Sezioni, Contenuto). Paghi solo gli step che completi e, se una fase fallisce, i suoi crediti ti vengono restituiti.')}
                 </p>
               </div>
             </div>

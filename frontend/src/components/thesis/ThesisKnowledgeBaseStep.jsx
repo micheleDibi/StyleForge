@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Brain, BookMarked, Paperclip, Loader, AlertTriangle, CheckCircle2, Play,
-  RefreshCw, FileText, ScrollText, ArrowRight, Clock, Sparkles, Wrench, ChevronDown,
+  RefreshCw, FileText, ScrollText, ArrowRight, Clock, Sparkles, Wrench, ChevronDown, Coins,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { startWikiIngest, getWikiStatus, getWikiReport, getWikiContent, cancelWikiIngest } from '../../services/api';
+import { startWikiIngest, getWikiStatus, getWikiReport, getWikiContent, cancelWikiIngest, estimateCredits } from '../../services/api';
 import WikiLintReport from './WikiLintReport';
 import WikiExtractedInfo from './WikiExtractedInfo';
 
@@ -51,6 +51,7 @@ const ThesisKnowledgeBaseStep = ({
   paperCount = 0,
   attachmentCount = 0,
   restrictToSources = true,
+  analysisFree = false,
   onComplete,
   onBack,
 }) => {
@@ -58,6 +59,7 @@ const ThesisKnowledgeBaseStep = ({
   const [status, setStatus] = useState(null);
   const [report, setReport] = useState(null);
   const [content, setContent] = useState(null);
+  const [analysisCost, setAnalysisCost] = useState(null);
   const [loadingAction, setLoadingAction] = useState(false);
   const [error, setError] = useState(null);
   const [now, setNow] = useState(() => Date.now());
@@ -132,6 +134,16 @@ const ThesisKnowledgeBaseStep = ({
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [status]);
+
+  // Stima del costo dell'analisi documenti/paper (mostrata prima dell'avvio).
+  useEffect(() => {
+    if (analysisFree) { setAnalysisCost(null); return undefined; }
+    let cancelled = false;
+    estimateCredits('wiki_ingest', { num_sources: paperCount + attachmentCount })
+      .then((res) => { if (!cancelled && res?.credits_needed != null) setAnalysisCost(res.credits_needed); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [analysisFree, paperCount, attachmentCount]);
 
   const handleStart = async (force = false) => {
     setError(null);
@@ -258,6 +270,12 @@ const ThesisKnowledgeBaseStep = ({
               ? t('Non hai caricato fonti. Puoi procedere comunque (la tesi sarà generata sulla conoscenza generale del modello), oppure tornare agli step precedenti per caricare allegati o paper.')
               : t('Pronto a indicizzare {{count}} font{{suffix}}.', { count: totalSources, suffix: totalSources === 1 ? 'e' : 'i' })}
           </p>
+          {!analysisFree && analysisCost != null && totalSources > 0 && (
+            <p className="text-xs text-slate-500 mb-4 inline-flex items-center gap-1.5">
+              <Coins className="w-3.5 h-3.5 text-orange-500" />
+              {t("L'analisi dei documenti costa {{cost}} crediti (una sola volta).", { cost: analysisCost })}
+            </p>
+          )}
           <div className="flex gap-3 justify-center flex-wrap">
             <button
               onClick={() => handleStart(false)}

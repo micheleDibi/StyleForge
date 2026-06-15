@@ -516,9 +516,18 @@ class Thesis(Base):
     # File allegati
     attachments_path = Column(Text, nullable=True)
 
-    # Flag tariffazione: True se la tesi ha già pagato il flat thesis_total alla creazione
-    # (modello introdotto post-deploy 2026-05). Le tesi pre-deploy hanno False e usano il vecchio pay-per-step.
+    # Flag tariffazione "tutto pagato / gratis": True per admin e per le vecchie
+    # tesi a tariffa flat (hanno già pagato 1000 in un colpo) -> nessun addebito per step.
+    # False per le tesi nuove non-admin: si paga PER STEP (vedi flag sotto).
     credits_charged = Column(Boolean, default=False, nullable=False)
+
+    # Idempotenza dell'addebito per step (quote fisse che sommano a 1000): evita
+    # doppi addebiti su rigenerazioni/retry. Azzerati in caso di rimborso su errore.
+    chapters_charged = Column(Boolean, default=False, nullable=False)
+    sections_charged = Column(Boolean, default=False, nullable=False)
+    content_charged = Column(Boolean, default=False, nullable=False)
+    # Analisi documenti/paper (ingest Knowledge Base): addebitata una sola volta.
+    wiki_charged = Column(Boolean, default=False, nullable=False)
 
     # LLM Wiki (second-brain per-tesi). Se restrict_to_sources=True la generazione
     # si attiene SOLO alle fonti caricate (paper + upload). wiki_path e' la cartella
@@ -579,6 +588,10 @@ class Thesis(Base):
             "ai_provider": self.ai_provider or "openai",
             "citation_style": self.citation_style or "footnotes",
             "credits_charged": bool(self.credits_charged),
+            "chapters_charged": bool(self.chapters_charged),
+            "sections_charged": bool(self.sections_charged),
+            "content_charged": bool(self.content_charged),
+            "wiki_charged": bool(self.wiki_charged),
             "chapters_structure": self.chapters_structure,
             "generated_content": self.generated_content,
             "status": self.status,
@@ -624,6 +637,10 @@ class Thesis(Base):
             "ai_provider": self.ai_provider or "openai",
             "citation_style": self.citation_style or "footnotes",
             "credits_charged": bool(self.credits_charged),
+            "chapters_charged": bool(self.chapters_charged),
+            "sections_charged": bool(self.sections_charged),
+            "content_charged": bool(self.content_charged),
+            "wiki_charged": bool(self.wiki_charged),
             "chapters_structure": None,
             "generated_content": None,
             "status": self.status,
