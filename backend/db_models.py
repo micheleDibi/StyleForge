@@ -965,3 +965,51 @@ class PagoPAEvent(Base):
             "error": self.error,
             "created_at": self.created_at,
         }
+
+
+# ============================================================================
+# i18n: lingue + traduzioni
+# ============================================================================
+
+class Language(Base):
+    """Lingua disponibile nell'app (gestita dall'admin)."""
+    __tablename__ = "languages"
+
+    code = Column(String(10), primary_key=True)              # es. 'it', 'en', 'fr'
+    name = Column(String(100), nullable=False)               # es. 'Inglese'
+    native_name = Column(String(100), nullable=False)        # es. 'English'
+    flag_country_code = Column(String(8), nullable=False)    # codice ISO paese (flag-icons)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_default = Column(Boolean, default=False, nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "code": self.code,
+            "name": self.name,
+            "native_name": self.native_name,
+            "flag_country_code": self.flag_country_code,
+            "is_active": bool(self.is_active),
+            "is_default": bool(self.is_default),
+            "sort_order": self.sort_order,
+        }
+
+
+class Translation(Base):
+    """Traduzione di una label per una lingua. key = stringa italiana (chiave naturale)."""
+    __tablename__ = "translations"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    language_code = Column(String(10), ForeignKey("languages.code", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(Text, nullable=False)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "language_code": self.language_code,
+            "key": self.key,
+            "value": self.value,
+        }

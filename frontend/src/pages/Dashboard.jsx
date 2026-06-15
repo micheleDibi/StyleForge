@@ -12,6 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { getSessions, deleteSession, renameSession, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, downloadCompilatioReport } from '../services/api';
 import JobCard from '../components/JobCard';
 import Logo from '../components/Logo';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -207,6 +208,7 @@ const Dashboard = () => {
                   </button>
                 )}
               </div>
+              <LanguageSwitcher />
               {/* User menu (desktop) */}
               <div className="hidden md:block relative">
                 <button

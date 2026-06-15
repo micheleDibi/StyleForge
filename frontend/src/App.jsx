@@ -1,4 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { LanguageProvider } from './context/LanguageContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -28,17 +30,20 @@ import Footer from './components/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
 import OfflineBanner from './components/OfflineBanner';
 
-const PageLoader = () => (
+const PageLoader = () => {
+  const { t } = useTranslation();
+  return (
   <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-orange-50">
     <div className="flex flex-col items-center gap-4">
       <div className="relative w-12 h-12">
         <div className="absolute inset-0 rounded-full border-[3px] border-slate-200"></div>
         <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
       </div>
-      <p className="text-sm text-slate-500 font-medium">Caricamento...</p>
+      <p className="text-sm text-slate-500 font-medium">{t('Caricamento...')}</p>
     </div>
   </div>
-);
+  );
+};
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -240,6 +245,7 @@ const AppRoutes = () => {
 function App() {
   return (
     <ErrorBoundary>
+    <LanguageProvider>
     <AuthProvider>
       <BrowserRouter>
         <OfflineBanner />
@@ -252,6 +258,7 @@ function App() {
         <AuthenticatedHelper />
       </BrowserRouter>
     </AuthProvider>
+    </LanguageProvider>
     </ErrorBoundary>
   );
 }

@@ -248,6 +248,64 @@ export const setPassword = async (token, newPassword) => {
   return response.data;
 };
 
+// --- i18n: lingue + traduzioni (pubblici, no auth) ---
+export const getActiveLanguages = async () => {
+  const response = await api.get('/api/languages');
+  return response.data;
+};
+
+export const getPublicTranslations = async (code) => {
+  const response = await api.get(`/api/translations/${code}`);
+  return response.data; // mappa { chiave: valore }
+};
+
+// --- i18n admin ---
+export const adminListLanguages = async () => {
+  const response = await api.get('/admin/languages');
+  return response.data;
+};
+
+export const adminCreateLanguage = async (payload) => {
+  const response = await api.post('/admin/languages', payload);
+  return response.data;
+};
+
+export const adminUpdateLanguage = async (code, payload) => {
+  const response = await api.put(`/admin/languages/${code}`, payload);
+  return response.data;
+};
+
+export const adminDeleteLanguage = async (code) => {
+  const response = await api.delete(`/admin/languages/${code}`);
+  return response.data;
+};
+
+export const adminGetLanguageDetail = async (code, search = null) => {
+  const params = search ? { search } : {};
+  const response = await api.get(`/admin/languages/${code}/detail`, { params });
+  return response.data;
+};
+
+export const adminSaveTranslations = async (code, translations) => {
+  const response = await api.put(`/admin/languages/${code}/translations`, { translations });
+  return response.data;
+};
+
+export const adminSyncBaseLabels = async (catalog) => {
+  const response = await api.post('/admin/languages/sync-base', { translations: catalog });
+  return response.data;
+};
+
+export const adminTranslateEmpty = async (code) => {
+  const response = await api.post(`/admin/languages/${code}/translate-empty`);
+  return response.data;
+};
+
+export const adminGetTranslateStatus = async (jobId) => {
+  const response = await api.get(`/admin/languages/translate-status/${jobId}`);
+  return response.data;
+};
+
 // ============================================================================
 // SESSIONS
 // ============================================================================

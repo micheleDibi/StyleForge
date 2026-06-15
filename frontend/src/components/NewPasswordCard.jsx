@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff, Loader, CheckCircle2, AlertTriangle } from 'lucide-react';
 
@@ -8,6 +9,7 @@ import { Lock, Eye, EyeOff, Loader, CheckCircle2, AlertTriangle } from 'lucide-r
  * Props: title, subtitle, submitFn(token, password) -> Promise, successText.
  */
 const NewPasswordCard = ({ title, subtitle, submitFn, successText }) => {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const navigate = useNavigate();
@@ -20,8 +22,8 @@ const NewPasswordCard = ({ title, subtitle, submitFn, successText }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (pw.length < 6) { setError('La password deve essere di almeno 6 caratteri'); return; }
-    if (pw !== confirm) { setError('Le password non coincidono'); return; }
+    if (pw.length < 6) { setError(t('La password deve essere di almeno 6 caratteri')); return; }
+    if (pw !== confirm) { setError(t('Le password non coincidono')); return; }
     setLoading(true);
     setError('');
     try {
@@ -29,7 +31,7 @@ const NewPasswordCard = ({ title, subtitle, submitFn, successText }) => {
       setDone(true);
       setTimeout(() => navigate('/login'), 2500);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Link non valido o scaduto.');
+      setError(err.response?.data?.detail || t('Link non valido o scaduto.'));
     } finally {
       setLoading(false);
     }
@@ -43,18 +45,18 @@ const NewPasswordCard = ({ title, subtitle, submitFn, successText }) => {
             <div className="w-14 h-14 rounded-2xl bg-red-100 flex items-center justify-center mx-auto mb-4">
               <AlertTriangle className="w-8 h-8 text-red-500" />
             </div>
-            <h1 className="text-xl font-bold text-slate-900 mb-2">Link non valido</h1>
-            <p className="text-slate-600 mb-6">Token mancante. Richiedi un nuovo link.</p>
-            <Link to="/login" className="btn btn-secondary w-full">Torna al login</Link>
+            <h1 className="text-xl font-bold text-slate-900 mb-2">{t('Link non valido')}</h1>
+            <p className="text-slate-600 mb-6">{t('Token mancante. Richiedi un nuovo link.')}</p>
+            <Link to="/login" className="btn btn-secondary w-full">{t('Torna al login')}</Link>
           </div>
         ) : done ? (
           <div className="text-center">
             <div className="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="w-8 h-8 text-green-600" />
             </div>
-            <h1 className="text-xl font-bold text-slate-900 mb-2">Fatto!</h1>
+            <h1 className="text-xl font-bold text-slate-900 mb-2">{t('Fatto!')}</h1>
             <p className="text-slate-600 mb-6">{successText}</p>
-            <Link to="/login" className="btn btn-primary w-full">Vai al login</Link>
+            <Link to="/login" className="btn btn-primary w-full">{t('Vai al login')}</Link>
           </div>
         ) : (
           <>
@@ -66,7 +68,7 @@ const NewPasswordCard = ({ title, subtitle, submitFn, successText }) => {
                 <input
                   type={show ? 'text' : 'password'}
                   className="input pl-11 pr-12"
-                  placeholder="Nuova password"
+                  placeholder={t('Nuova password')}
                   value={pw}
                   onChange={(e) => setPw(e.target.value)}
                 />
@@ -83,7 +85,7 @@ const NewPasswordCard = ({ title, subtitle, submitFn, successText }) => {
                 <input
                   type={show ? 'text' : 'password'}
                   className="input pl-11"
-                  placeholder="Conferma password"
+                  placeholder={t('Conferma password')}
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                 />
@@ -93,7 +95,7 @@ const NewPasswordCard = ({ title, subtitle, submitFn, successText }) => {
               )}
               <button type="submit" disabled={loading} className="btn btn-primary btn-lg w-full gap-2">
                 {loading ? <Loader className="w-4 h-4 animate-spin" /> : null}
-                Conferma
+                {t('Conferma')}
               </button>
             </form>
           </>

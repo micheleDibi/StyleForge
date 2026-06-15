@@ -45,6 +45,7 @@ from research_routes import router as research_router
 from pagopa_routes import router as pagopa_router
 from pagopa_webhooks import router as pagopa_webhook_router
 from distributor_routes import router as distributor_router
+from i18n_routes import public_router as i18n_public_router, admin_router as i18n_admin_router
 from db_models import User
 from database import init_db, get_db
 from ai_exceptions import InsufficientCreditsError
@@ -107,6 +108,10 @@ app.include_router(pagopa_webhook_router)
 
 # Registra router dashboard distributore (sola lettura sui propri rivenditori)
 app.include_router(distributor_router)
+
+# Registra router i18n (lingue + traduzioni: pubblico runtime + admin)
+app.include_router(i18n_public_router)
+app.include_router(i18n_admin_router)
 
 
 # ============================================================================

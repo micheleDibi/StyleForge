@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { resendVerification } from '../services/api';
 import { UserPlus, Sparkles, Mail, User, Lock, ArrowRight, Eye, EyeOff, ArrowLeft, CheckCircle, MailCheck, Loader } from 'lucide-react';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 const Register = () => {
+  const { t } = useTranslation();
   const { register } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -31,27 +34,27 @@ const Register = () => {
 
   const validateForm = () => {
     if (!formData.email || !formData.username || !formData.password) {
-      setError('Compila tutti i campi obbligatori');
+      setError(t('Compila tutti i campi obbligatori'));
       return false;
     }
 
     if (!formData.email.includes('@')) {
-      setError('Inserisci un indirizzo email valido');
+      setError(t('Inserisci un indirizzo email valido'));
       return false;
     }
 
     if (formData.username.length < 3) {
-      setError('Lo username deve essere di almeno 3 caratteri');
+      setError(t('Lo username deve essere di almeno 3 caratteri'));
       return false;
     }
 
     if (formData.password.length < 6) {
-      setError('La password deve essere di almeno 6 caratteri');
+      setError(t('La password deve essere di almeno 6 caratteri'));
       return false;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Le password non coincidono');
+      setError(t('Le password non coincidono'));
       return false;
     }
 
@@ -113,7 +116,7 @@ const Register = () => {
     if (/[0-9]/.test(password)) strength++;
     if (/[^A-Za-z0-9]/.test(password)) strength++;
 
-    const labels = ['', 'Debole', 'Media', 'Buona', 'Forte', 'Ottima'];
+    const labels = ['', t('Debole'), t('Media'), t('Buona'), t('Forte'), t('Ottima')];
     const colors = ['', 'bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-green-500', 'bg-emerald-500'];
 
     return { strength, label: labels[strength], color: colors[strength] };
@@ -128,18 +131,18 @@ const Register = () => {
           <div className="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center mx-auto mb-4">
             <MailCheck className="w-8 h-8 text-green-600" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Controlla la tua email</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">{t('Controlla la tua email')}</h1>
           <p className="text-slate-600 mb-6">
-            Ti abbiamo inviato un'email a <strong>{formData.email}</strong>. Clicca il link per confermare l'indirizzo e attivare l'accesso.
+            {t('Ti abbiamo inviato un\'email a {{email}}. Clicca il link per confermare l\'indirizzo e attivare l\'accesso.', { email: formData.email })}
           </p>
           {resent && (
-            <div className="p-3 mb-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700">Email reinviata.</div>
+            <div className="p-3 mb-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700">{t('Email reinviata.')}</div>
           )}
           <button onClick={handleResend} disabled={resending} className="btn btn-secondary w-full mb-3 gap-2">
             {resending ? <Loader className="w-4 h-4 animate-spin" /> : null}
-            Reinvia email
+            {t('Reinvia email')}
           </button>
-          <Link to="/login" className="btn btn-primary w-full">Vai al login</Link>
+          <Link to="/login" className="btn btn-primary w-full">{t('Vai al login')}</Link>
         </div>
       </div>
     );
@@ -147,6 +150,9 @@ const Register = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="absolute top-4 right-4 z-20">
+        <LanguageSwitcher />
+      </div>
       {/* Background Animation */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-gradient-to-br from-orange-200 to-orange-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
@@ -165,7 +171,7 @@ const Register = () => {
           className="inline-flex items-center gap-2 text-gray-600 hover:text-orange-600 transition-colors mb-6 group"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          <span className="text-sm font-medium">Torna al login</span>
+          <span className="text-sm font-medium">{t('Torna al login')}</span>
         </Link>
 
         {/* Logo/Header */}
@@ -186,10 +192,10 @@ const Register = () => {
             </div>
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-1">
-            Crea il tuo account
+            {t('Crea il tuo account')}
           </h1>
           <p className="text-gray-600">
-            Inizia a generare contenuti personalizzati
+            {t('Inizia a generare contenuti personalizzati')}
           </p>
         </div>
 
@@ -200,7 +206,7 @@ const Register = () => {
               <UserPlus className="w-6 h-6 text-orange-600" />
             </div>
             <h2 className="text-xl font-bold text-gray-900">
-              Registrazione
+              {t('Registrazione')}
             </h2>
           </div>
 
@@ -208,7 +214,7 @@ const Register = () => {
             {/* Full Name */}
             <div>
               <label htmlFor="fullName" className="block text-sm font-semibold text-gray-700 mb-2">
-                Nome completo <span className="text-gray-400 font-normal">(opzionale)</span>
+                {t('Nome completo')} <span className="text-gray-400 font-normal">({t('opzionale')})</span>
               </label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -230,7 +236,7 @@ const Register = () => {
             {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
-                Email <span className="text-red-500">*</span>
+                {t('Email')} <span className="text-red-500">*</span>
               </label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -253,7 +259,7 @@ const Register = () => {
             {/* Username */}
             <div>
               <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-2">
-                Username <span className="text-red-500">*</span>
+                {t('Username')} <span className="text-red-500">*</span>
               </label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -274,7 +280,7 @@ const Register = () => {
               {formData.username && formData.username.length >= 3 && (
                 <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
                   <CheckCircle className="w-3 h-3" />
-                  Username valido
+                  {t('Username valido')}
                 </p>
               )}
             </div>
@@ -282,7 +288,7 @@ const Register = () => {
             {/* Password */}
             <div>
               <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
-                Password <span className="text-red-500">*</span>
+                {t('Password')} <span className="text-red-500">*</span>
               </label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -323,7 +329,7 @@ const Register = () => {
                     ))}
                   </div>
                   <p className="text-xs text-gray-500">
-                    Sicurezza: <span className="font-medium">{passwordStrength.label}</span>
+                    {t('Sicurezza:')} <span className="font-medium">{passwordStrength.label}</span>
                   </p>
                 </div>
               )}
@@ -332,7 +338,7 @@ const Register = () => {
             {/* Confirm Password */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-2">
-                Conferma Password <span className="text-red-500">*</span>
+                {t('Conferma Password')} <span className="text-red-500">*</span>
               </label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -366,7 +372,7 @@ const Register = () => {
               {formData.confirmPassword && formData.password === formData.confirmPassword && (
                 <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
                   <CheckCircle className="w-3 h-3" />
-                  Le password coincidono
+                  {t('Le password coincidono')}
                 </p>
               )}
             </div>
@@ -390,11 +396,11 @@ const Register = () => {
               {isLoading ? (
                 <>
                   <div className="spinner"></div>
-                  <span>Registrazione in corso...</span>
+                  <span>{t('Registrazione in corso...')}</span>
                 </>
               ) : (
                 <>
-                  <span>Crea Account</span>
+                  <span>{t('Crea Account')}</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
@@ -404,12 +410,12 @@ const Register = () => {
           {/* Login Link */}
           <div className="mt-6 pt-6 border-t border-gray-200">
             <p className="text-sm text-center text-gray-600">
-              Hai già un account?{' '}
+              {t('Hai già un account?')}{' '}
               <Link
                 to="/login"
                 className="font-semibold text-orange-600 hover:text-orange-700 transition-colors"
               >
-                Accedi
+                {t('Accedi')}
               </Link>
             </p>
           </div>

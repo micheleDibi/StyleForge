@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { WifiOff } from 'lucide-react';
 
 const OfflineBanner = () => {
+  const { t } = useTranslation();
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   useEffect(() => {
@@ -22,7 +24,7 @@ const OfflineBanner = () => {
   return (
     <div className="fixed top-0 left-0 right-0 z-[100] bg-red-600 text-white text-center py-2 px-4 text-sm font-medium flex items-center justify-center gap-2 shadow-lg">
       <WifiOff className="w-4 h-4" />
-      Sei offline. Alcune funzionalita potrebbero non essere disponibili.
+      {t('Sei offline. Alcune funzionalita potrebbero non essere disponibili.')}
     </div>
   );
 };

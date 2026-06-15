@@ -1237,3 +1237,69 @@ class AdminEstrccUploadResponse(BaseModel):
     unmatched: int
     discrepancies: int
     items: List[Dict[str, Any]]
+
+
+# ============================================================================
+# i18n: lingue + traduzioni
+# ============================================================================
+
+class LanguageResponse(BaseModel):
+    code: str
+    name: str
+    native_name: str
+    flag_country_code: str
+    is_active: bool = True
+    is_default: bool = False
+    sort_order: int = 0
+
+
+class LanguageListResponse(BaseModel):
+    languages: List[LanguageResponse]
+
+
+class LanguageCreateRequest(BaseModel):
+    code: str = Field(..., min_length=2, max_length=10)
+    name: str = Field(..., min_length=1, max_length=100)
+    native_name: str = Field(..., min_length=1, max_length=100)
+    flag_country_code: str = Field(..., min_length=2, max_length=8)
+    is_active: bool = True
+    sort_order: int = 0
+    translate_all: bool = False  # se True, avvia subito la traduzione AT di tutte le label
+
+
+class LanguageUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    native_name: Optional[str] = None
+    flag_country_code: Optional[str] = None
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class TranslationEntry(BaseModel):
+    key: str
+    value: Optional[str] = None
+    is_empty: bool = True
+
+
+class LanguageDetailResponse(BaseModel):
+    language: LanguageResponse
+    entries: List[TranslationEntry]
+    total: int
+    translated: int
+    empty: int
+
+
+class TranslationsUpsertRequest(BaseModel):
+    translations: Dict[str, str]  # { chiave: valore }
+
+
+class TranslateJobResponse(BaseModel):
+    job_id: str
+    message: str
+
+
+class TranslateStatusResponse(BaseModel):
+    status: str            # 'running' | 'completed' | 'failed'
+    total: int = 0
+    done: int = 0
+    error: Optional[str] = None

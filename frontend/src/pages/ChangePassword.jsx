@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Lock, Eye, EyeOff, Loader, CheckCircle2 } from 'lucide-react';
 import { changePassword } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const ChangePassword = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [current, setCurrent] = useState('');
@@ -17,9 +19,9 @@ const ChangePassword = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!current) { setError('Inserisci la password attuale'); return; }
-    if (pw.length < 6) { setError('La nuova password deve essere di almeno 6 caratteri'); return; }
-    if (pw !== confirm) { setError('Le password non coincidono'); return; }
+    if (!current) { setError(t('Inserisci la password attuale')); return; }
+    if (pw.length < 6) { setError(t('La nuova password deve essere di almeno 6 caratteri')); return; }
+    if (pw !== confirm) { setError(t('Le password non coincidono')); return; }
     setLoading(true);
     setError('');
     try {
@@ -28,7 +30,7 @@ const ChangePassword = () => {
       // Il backend revoca tutte le sessioni: forziamo un nuovo login.
       setTimeout(async () => { await logout(); navigate('/login'); }, 2200);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Errore nel cambio password');
+      setError(err.response?.data?.detail || t('Errore nel cambio password'));
     } finally {
       setLoading(false);
     }
@@ -38,7 +40,7 @@ const ChangePassword = () => {
     <div className="min-h-screen p-6">
       <div className="max-w-md mx-auto">
         <button onClick={() => navigate('/')} className="btn btn-secondary gap-2 mb-6">
-          <ArrowLeft className="w-4 h-4" /> Torna alla Dashboard
+          <ArrowLeft className="w-4 h-4" /> {t('Torna alla Dashboard')}
         </button>
 
         <div className="glass rounded-3xl p-8 shadow-xl">
@@ -47,20 +49,20 @@ const ChangePassword = () => {
               <div className="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center mx-auto mb-4">
                 <CheckCircle2 className="w-8 h-8 text-green-600" />
               </div>
-              <h1 className="text-xl font-bold text-slate-900 mb-2">Password cambiata</h1>
-              <p className="text-slate-600">Verrai disconnesso: effettua nuovamente l'accesso con la nuova password.</p>
+              <h1 className="text-xl font-bold text-slate-900 mb-2">{t('Password cambiata')}</h1>
+              <p className="text-slate-600">{t('Verrai disconnesso: effettua nuovamente l\'accesso con la nuova password.')}</p>
             </div>
           ) : (
             <>
-              <h1 className="text-2xl font-bold text-slate-900 mb-1">Cambia password</h1>
-              <p className="text-slate-500 text-sm mb-6">Per sicurezza verrai disconnesso da tutti i dispositivi.</p>
+              <h1 className="text-2xl font-bold text-slate-900 mb-1">{t('Cambia password')}</h1>
+              <p className="text-slate-500 text-sm mb-6">{t('Per sicurezza verrai disconnesso da tutti i dispositivi.')}</p>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type={show ? 'text' : 'password'}
                     className="input pl-11 pr-12"
-                    placeholder="Password attuale"
+                    placeholder={t('Password attuale')}
                     value={current}
                     onChange={(e) => setCurrent(e.target.value)}
                   />
@@ -77,7 +79,7 @@ const ChangePassword = () => {
                   <input
                     type={show ? 'text' : 'password'}
                     className="input pl-11"
-                    placeholder="Nuova password"
+                    placeholder={t('Nuova password')}
                     value={pw}
                     onChange={(e) => setPw(e.target.value)}
                   />
@@ -87,7 +89,7 @@ const ChangePassword = () => {
                   <input
                     type={show ? 'text' : 'password'}
                     className="input pl-11"
-                    placeholder="Conferma nuova password"
+                    placeholder={t('Conferma nuova password')}
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
                   />
@@ -97,7 +99,7 @@ const ChangePassword = () => {
                 )}
                 <button type="submit" disabled={loading} className="btn btn-primary btn-lg w-full gap-2">
                   {loading ? <Loader className="w-4 h-4 animate-spin" /> : null}
-                  Cambia password
+                  {t('Cambia password')}
                 </button>
               </form>
             </>

@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft, Loader, CheckCircle2 } from 'lucide-react';
 import { forgotPassword } from '../services/api';
 
 const ForgotPassword = () => {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -11,7 +13,7 @@ const ForgotPassword = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email.trim()) { setError('Inserisci la tua email'); return; }
+    if (!email.trim()) { setError(t('Inserisci la tua email')); return; }
     setLoading(true);
     setError('');
     try {
@@ -32,14 +34,14 @@ const ForgotPassword = () => {
             <div className="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="w-8 h-8 text-green-600" />
             </div>
-            <h1 className="text-xl font-bold text-slate-900 mb-2">Controlla la tua email</h1>
-            <p className="text-slate-600 mb-6">Se l'indirizzo è registrato, riceverai un link per reimpostare la password.</p>
-            <Link to="/login" className="btn btn-secondary w-full">Torna al login</Link>
+            <h1 className="text-xl font-bold text-slate-900 mb-2">{t('Controlla la tua email')}</h1>
+            <p className="text-slate-600 mb-6">{t('Se l\'indirizzo è registrato, riceverai un link per reimpostare la password.')}</p>
+            <Link to="/login" className="btn btn-secondary w-full">{t('Torna al login')}</Link>
           </div>
         ) : (
           <>
-            <h1 className="text-2xl font-bold text-slate-900 mb-1">Password dimenticata?</h1>
-            <p className="text-slate-500 text-sm mb-6">Inserisci la tua email: ti invieremo un link per reimpostarla.</p>
+            <h1 className="text-2xl font-bold text-slate-900 mb-1">{t('Password dimenticata?')}</h1>
+            <p className="text-slate-500 text-sm mb-6">{t('Inserisci la tua email: ti invieremo un link per reimpostarla.')}</p>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -56,11 +58,11 @@ const ForgotPassword = () => {
               )}
               <button type="submit" disabled={loading} className="btn btn-primary btn-lg w-full gap-2">
                 {loading ? <Loader className="w-4 h-4 animate-spin" /> : null}
-                Invia link
+                {t('Invia link')}
               </button>
             </form>
             <Link to="/login" className="mt-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
-              <ArrowLeft className="w-4 h-4" /> Torna al login
+              <ArrowLeft className="w-4 h-4" /> {t('Torna al login')}
             </Link>
           </>
         )}

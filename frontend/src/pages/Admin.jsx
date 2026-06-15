@@ -6,7 +6,7 @@ import {
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
   Sparkles, Settings, UserPlus, RotateCcw,
   AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image,
-  CreditCard, Mail, Calendar, Power
+  CreditCard, Mail, Calendar, Power, Globe
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -21,6 +21,7 @@ import {
 } from '../services/api';
 import Logo from '../components/Logo';
 import AdminPaymentsSection from '../components/admin/AdminPaymentsSection';
+import AdminLanguagesSection from '../components/admin/AdminLanguagesSection';
 
 const PERMISSION_LABELS = {
   train: 'Addestra Modello',
@@ -651,7 +652,8 @@ const Admin = () => {
     { id: 'settings', label: 'Impostazioni', icon: Settings },
     { id: 'templates', label: 'Template Export', icon: FileText },
     { id: 'api-keys', label: 'API Keys', icon: Key },
-    { id: 'payments', label: 'Pagamenti PagoPA', icon: CreditCard }
+    { id: 'payments', label: 'Pagamenti PagoPA', icon: CreditCard },
+    { id: 'languages', label: 'Lingue', icon: Globe }
   ];
 
   return (
@@ -1923,6 +1925,9 @@ const Admin = () => {
             {/* ===================== TAB PAGAMENTI PAGOPA ===================== */}
             {activeTab === 'payments' && (
               <AdminPaymentsSection />
+            )}
+            {activeTab === 'languages' && (
+              <AdminLanguagesSection />
             )}
           </>
         )}

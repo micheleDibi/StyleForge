@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 import { resendVerification } from '../services/api';
 import { ArrowRight, Eye, EyeOff, Loader } from 'lucide-react';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 const Login = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -33,7 +36,7 @@ const Login = () => {
     setResent(false);
 
     if (!formData.username || !formData.password) {
-      setError('Inserisci username e password');
+      setError(t('Inserisci username e password'));
       setIsShaking(true);
       setTimeout(() => setIsShaking(false), 500);
       return;
@@ -56,7 +59,7 @@ const Login = () => {
       }
     } catch (err) {
       setIsLoading(false);
-      setError('Errore durante il login. Riprova.');
+      setError(t('Errore durante il login. Riprova.'));
       setIsShaking(true);
       setTimeout(() => setIsShaking(false), 500);
       console.error('Login error:', err);
@@ -65,7 +68,7 @@ const Login = () => {
 
   const handleResend = async () => {
     if (!formData.username.includes('@')) {
-      setError('Per reinviare la verifica, inserisci la tua email nel campo qui sopra.');
+      setError(t('Per reinviare la verifica, inserisci la tua email nel campo qui sopra.'));
       return;
     }
     setResending(true);
@@ -81,6 +84,9 @@ const Login = () => {
 
   return (
     <div className="min-h-screen flex relative overflow-hidden">
+      <div className="absolute top-4 right-4 z-20">
+        <LanguageSwitcher />
+      </div>
       {/* Lato sinistro — pannello decorativo */}
       <div className="hidden lg:flex lg:w-1/2 relative items-center justify-center bg-gradient-to-br from-orange-500 via-orange-600 to-red-500">
         {/* Pattern geometrico */}
@@ -96,11 +102,11 @@ const Login = () => {
             Style<span className="text-orange-200">Forge</span>
           </h2>
           <p className="text-xl text-orange-100 font-medium mb-6">
-            Genera contenuti con il tuo stile unico
+            {t('Genera contenuti con il tuo stile unico')}
           </p>
           <div className="flex items-center justify-center gap-3 text-orange-200/80 text-sm">
             <span className="w-8 h-px bg-orange-200/40"></span>
-            Addestramento AI &middot; Generazione &middot; Umanizzazione &middot; Testi
+            {t('Addestramento AI · Generazione · Umanizzazione · Testi')}
             <span className="w-8 h-px bg-orange-200/40"></span>
           </div>
         </div>
@@ -121,10 +127,10 @@ const Login = () => {
               Style<span className="gradient-text">Forge</span>
             </h1>
             <h2 className="text-2xl font-bold text-slate-900 hidden lg:block mb-1">
-              Bentornato
+              {t('Bentornato')}
             </h2>
             <p className="text-slate-500">
-              Accedi al tuo account per continuare
+              {t('Accedi al tuo account per continuare')}
             </p>
           </div>
 
@@ -133,7 +139,7 @@ const Login = () => {
             {/* Username */}
             <div>
               <label htmlFor="username" className="block text-sm font-semibold text-slate-700 mb-2">
-                Username o Email
+                {t('Username o Email')}
               </label>
               <input
                 id="username"
@@ -153,7 +159,7 @@ const Login = () => {
             {/* Password */}
             <div>
               <label htmlFor="password" className="block text-sm font-semibold text-slate-700 mb-2">
-                Password
+                {t('Password')}
               </label>
               <div className="relative">
                 <input
@@ -165,7 +171,7 @@ const Login = () => {
                   className={`w-full px-4 py-3 pr-12 rounded-xl border bg-slate-50 text-slate-900 placeholder-slate-400 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:bg-white ${
                     error ? 'border-red-300' : 'border-slate-200 focus:border-orange-400'
                   }`}
-                  placeholder="La tua password"
+                  placeholder={t('La tua password')}
                   autoComplete="current-password"
                 />
                 <button
@@ -178,7 +184,7 @@ const Login = () => {
               </div>
               <div className="mt-2 text-right">
                 <Link to="/forgot-password" className="text-sm font-medium text-orange-600 hover:text-orange-700 transition-colors">
-                  Password dimenticata?
+                  {t('Password dimenticata?')}
                 </Link>
               </div>
             </div>
@@ -194,7 +200,7 @@ const Login = () => {
             {needsVerification && (
               resent ? (
                 <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700 font-medium">
-                  Email di verifica reinviata. Controlla la tua casella.
+                  {t('Email di verifica reinviata. Controlla la tua casella.')}
                 </div>
               ) : (
                 <button
@@ -204,7 +210,7 @@ const Login = () => {
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100 transition-colors disabled:opacity-60"
                 >
                   {resending ? <Loader className="w-4 h-4 animate-spin" /> : null}
-                  Reinvia email di verifica
+                  {t('Reinvia email di verifica')}
                 </button>
               )
             )}
@@ -218,11 +224,11 @@ const Login = () => {
               {isLoading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>Accesso in corso...</span>
+                  <span>{t('Accesso in corso...')}</span>
                 </>
               ) : (
                 <>
-                  <span>Accedi</span>
+                  <span>{t('Accedi')}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -231,12 +237,12 @@ const Login = () => {
 
           {/* Register */}
           <p className="mt-8 text-center text-sm text-slate-500">
-            Non hai un account?{' '}
+            {t('Non hai un account?')}{' '}
             <Link
               to="/register"
               className="font-semibold text-orange-600 hover:text-orange-700 transition-colors"
             >
-              Registrati ora
+              {t('Registrati ora')}
             </Link>
           </p>
         </div>
