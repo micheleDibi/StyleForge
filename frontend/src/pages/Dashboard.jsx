@@ -6,7 +6,7 @@ import {
   Layers, Brain, BookOpen, Calendar, Download,
   ChevronDown, Eye, Play, Coins, Shield, Pencil, Search,
   ArrowUpRight, ScanSearch, FileDown, BarChart3, Film,
-  BookMarked, Store
+  BookMarked, Store, KeyRound
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSessions, deleteSession, renameSession, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, downloadCompilatioReport } from '../services/api';
@@ -30,6 +30,7 @@ const Dashboard = () => {
   const [editSessionValue, setEditSessionValue] = useState('');
   const editSessionRef = useRef(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [menuOpen, setMenuOpen] = useState(false);
   const hasActiveWorkRef = useRef(false);
   const templatesLoadedRef = useRef(false);
 
@@ -206,18 +207,43 @@ const Dashboard = () => {
                   </button>
                 )}
               </div>
-              {/* User */}
-              <div className="hidden md:flex items-center gap-2 px-3 py-2 bg-white/70 rounded-xl border border-gray-200/50">
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold ${isAdmin ? 'bg-gradient-to-br from-orange-400 to-orange-600' : 'bg-gradient-to-br from-blue-400 to-blue-600'}`}>
-                  {(user?.username || 'U')[0].toUpperCase()}
-                </div>
-                <span className="text-sm font-medium text-gray-700">{user?.username}</span>
-                {isAdmin && <span className="badge badge-warning text-[10px]">ADMIN</span>}
+              {/* User menu (desktop) */}
+              <div className="hidden md:block relative">
+                <button
+                  onClick={() => setMenuOpen((o) => !o)}
+                  className="flex items-center gap-2 px-3 py-2 bg-white/70 rounded-xl border border-gray-200/50 hover:bg-white transition-colors"
+                >
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold ${isAdmin ? 'bg-gradient-to-br from-orange-400 to-orange-600' : 'bg-gradient-to-br from-blue-400 to-blue-600'}`}>
+                    {(user?.username || 'U')[0].toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">{user?.username}</span>
+                  {isAdmin && <span className="badge badge-warning text-[10px]">ADMIN</span>}
+                  <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {menuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl border border-gray-200 shadow-lg z-20 py-1">
+                      <button
+                        onClick={() => { setMenuOpen(false); navigate('/change-password'); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                      >
+                        <KeyRound className="w-4 h-4 text-gray-400" /> Cambia password
+                      </button>
+                      <button
+                        onClick={() => { setMenuOpen(false); handleLogout(); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 text-left"
+                      >
+                        <LogOut className="w-4 h-4" /> Esci
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
               {isDistributor && <button onClick={() => navigate('/distributor')} className="btn btn-ghost" title="Dashboard distributore"><Store className="w-[18px] h-[18px]" /></button>}
               {isAdmin && <button onClick={() => navigate('/admin')} className="btn btn-ghost" title="Admin"><Settings className="w-[18px] h-[18px]" /></button>}
               <button onClick={handleRefresh} disabled={refreshing} className="btn btn-ghost"><RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} /></button>
-              <button onClick={handleLogout} className="btn btn-ghost text-red-500 hover:text-red-600 hover:bg-red-50"><LogOut className="w-[18px] h-[18px]" /></button>
+              <button onClick={handleLogout} className="btn btn-ghost md:hidden text-red-500 hover:text-red-600 hover:bg-red-50"><LogOut className="w-[18px] h-[18px]" /></button>
             </div>
           </div>
         </div>

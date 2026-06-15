@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Sparkles, Mail, User, Lock, ArrowRight, Eye, EyeOff, ArrowLeft, CheckCircle } from 'lucide-react';
+import { resendVerification } from '../services/api';
+import { UserPlus, Sparkles, Mail, User, Lock, ArrowRight, Eye, EyeOff, ArrowLeft, CheckCircle, MailCheck, Loader } from 'lucide-react';
 
 const Register = () => {
-  const navigate = useNavigate();
   const { register } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -18,6 +18,9 @@ const Register = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isShaking, setIsShaking] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChange = (e) => {
@@ -77,11 +80,24 @@ const Register = () => {
     setIsLoading(false);
 
     if (result.success) {
-      navigate('/');
+      // Niente auto-login: l'utente deve verificare l'email.
+      setSubmitted(true);
     } else {
       setError(result.error);
       setIsShaking(true);
       setTimeout(() => setIsShaking(false), 500);
+    }
+  };
+
+  const handleResend = async () => {
+    setResending(true);
+    try {
+      await resendVerification(formData.email);
+    } catch {
+      // risposta sempre generica
+    } finally {
+      setResending(false);
+      setResent(true);
     }
   };
 
@@ -104,6 +120,30 @@ const Register = () => {
   };
 
   const passwordStrength = getPasswordStrength();
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-orange-50">
+        <div className="w-full max-w-md glass rounded-3xl p-8 shadow-2xl text-center">
+          <div className="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center mx-auto mb-4">
+            <MailCheck className="w-8 h-8 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Controlla la tua email</h1>
+          <p className="text-slate-600 mb-6">
+            Ti abbiamo inviato un'email a <strong>{formData.email}</strong>. Clicca il link per confermare l'indirizzo e attivare l'accesso.
+          </p>
+          {resent && (
+            <div className="p-3 mb-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700">Email reinviata.</div>
+          )}
+          <button onClick={handleResend} disabled={resending} className="btn btn-secondary w-full mb-3 gap-2">
+            {resending ? <Loader className="w-4 h-4 animate-spin" /> : null}
+            Reinvia email
+          </button>
+          <Link to="/login" className="btn btn-primary w-full">Vai al login</Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">

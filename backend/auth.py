@@ -59,6 +59,7 @@ class UserResponse(BaseModel):
     full_name: Optional[str]
     is_active: bool
     is_admin: bool
+    email_verified: bool = False
     role: Optional[str] = None
     credits: int = 0
     permissions: list = []
@@ -85,6 +86,33 @@ class UserUpdate(BaseModel):
 class PasswordChange(BaseModel):
     """Schema per cambio password."""
     current_password: str
+    new_password: str
+
+
+class VerifyEmailRequest(BaseModel):
+    """Conferma email tramite token ricevuto via email."""
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    """Richiesta di reinvio dell'email di verifica."""
+    email: EmailStr
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Richiesta di reset password (invia link via email)."""
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset password tramite token ricevuto via email."""
+    token: str
+    new_password: str
+
+
+class SetPasswordRequest(BaseModel):
+    """Impostazione password iniziale (invito admin) tramite token."""
+    token: str
     new_password: str
 
 
@@ -184,6 +212,9 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Use
         user = get_user_by_email(db, username)
     if not user:
         return None
+    # Utente invitato dall'admin che non ha ancora impostato la password.
+    if not user.hashed_password:
+        return None
     if not verify_password(password, user.hashed_password):
         return None
     return user
@@ -269,6 +300,7 @@ def build_user_response(user: User, db: Session) -> UserResponse:
         full_name=user.full_name,
         is_active=user.is_active,
         is_admin=user.is_admin,
+        email_verified=bool(getattr(user, 'email_verified', False)),
         role=role_name,
         credits=user.credits if not (user.is_admin or (user.role and user.role.name == 'admin')) else -1,  # -1 = infiniti
         permissions=permissions,

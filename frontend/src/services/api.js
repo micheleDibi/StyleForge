@@ -222,6 +222,32 @@ export const deleteAccount = async (password) => {
   return response.data;
 };
 
+// --- Verifica email / reset password (pubblici, no auth) ---
+export const verifyEmail = async (token) => {
+  const response = await api.post('/auth/verify-email', { token });
+  return response.data;
+};
+
+export const resendVerification = async (email) => {
+  const response = await api.post('/auth/resend-verification', { email });
+  return response.data;
+};
+
+export const forgotPassword = async (email) => {
+  const response = await api.post('/auth/forgot-password', { email });
+  return response.data;
+};
+
+export const resetPassword = async (token, newPassword) => {
+  const response = await api.post('/auth/reset-password', { token, new_password: newPassword });
+  return response.data;
+};
+
+export const setPassword = async (token, newPassword) => {
+  const response = await api.post('/auth/set-password', { token, new_password: newPassword });
+  return response.data;
+};
+
 // ============================================================================
 // SESSIONS
 // ============================================================================
@@ -804,6 +830,11 @@ export const getAdminStats = async () => {
 
 export const adminCreateUser = async (userData) => {
   const response = await api.post('/admin/users', userData);
+  return response.data;
+};
+
+export const adminResendInvite = async (userId) => {
+  const response = await api.post(`/admin/users/${userId}/resend-invite`);
   return response.data;
 };
 

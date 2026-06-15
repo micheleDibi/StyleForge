@@ -52,7 +52,13 @@ export const AuthProvider = ({ children }) => {
       return { success: true };
     } catch (err) {
       console.error('AuthContext login error:', err);
-      const errorMessage = err.response?.data?.detail || err.message || 'Errore durante il login';
+      const detail = err.response?.data?.detail;
+      // Email non verificata: il backend ritorna detail = { code, message }
+      if (detail && typeof detail === 'object' && detail.code === 'email_not_verified') {
+        setError(detail.message);
+        return { success: false, error: detail.message, code: 'email_not_verified' };
+      }
+      const errorMessage = (typeof detail === 'string' ? detail : null) || err.message || 'Errore durante il login';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -62,10 +68,11 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     try {
       await apiRegister(email, username, password, fullName);
-      // Auto-login dopo la registrazione
-      return await login(username, password);
+      // NIENTE auto-login: l'utente deve prima verificare l'email.
+      return { success: true, pendingVerification: true };
     } catch (err) {
-      const errorMessage = err.response?.data?.detail || 'Errore durante la registrazione';
+      const detail = err.response?.data?.detail;
+      const errorMessage = (typeof detail === 'string' ? detail : null) || 'Errore durante la registrazione';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }

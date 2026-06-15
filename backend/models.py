@@ -695,6 +695,7 @@ class AdminUserResponse(BaseModel):
     full_name: Optional[str] = None
     is_active: bool
     is_admin: bool
+    email_verified: bool = False
     role_id: Optional[int] = None
     role_name: Optional[str] = None
     credits: int
@@ -809,10 +810,11 @@ class AdminStatsResponse(BaseModel):
 # ============================================================================
 
 class AdminCreateUserRequest(BaseModel):
-    """Request per creare un utente dal pannello admin."""
+    """Request per creare un utente dal pannello admin.
+    La password NON viene impostata qui: l'utente la sceglie via email di invito."""
     email: str = Field(..., description="Email dell'utente")
     username: str = Field(..., min_length=3, max_length=50, description="Username")
-    password: str = Field(..., min_length=6, description="Password")
+    password: Optional[str] = Field(None, min_length=6, description="(Deprecato) non usato: l'utente imposta la password via invito email")
     full_name: Optional[str] = Field(None, description="Nome completo")
     role_id: Optional[int] = Field(None, description="ID ruolo (default: ruolo 'user')")
     credits: int = Field(0, ge=0, description="Crediti iniziali")

@@ -4,7 +4,7 @@ import {
   ArrowLeft, Users, Shield, BarChart3, Search, RefreshCw,
   ChevronDown, ChevronUp, Edit3, Save, X, Plus, Minus,
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
-  Sparkles, Settings, Eye, EyeOff, UserPlus, RotateCcw,
+  Sparkles, Settings, UserPlus, RotateCcw,
   AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image,
   CreditCard, Mail, Calendar, Power
 } from 'lucide-react';
@@ -13,7 +13,7 @@ import {
   getAdminUsers, updateAdminUser, updateUserRole,
   updateUserPermissions, adjustUserCredits, getUserTransactions,
   getAdminRoles, updateRolePermissions, getAdminStats,
-  adminCreateUser, getAdminCreditCosts, updateAdminCreditCosts,
+  adminCreateUser, adminResendInvite, getAdminCreditCosts, updateAdminCreditCosts,
   resetAdminCreditCosts, getAdminEurPerCredit, updateAdminEurPerCredit,
   getAdminTemplates, updateAdminTemplates,
   deleteAdminTemplate, uploadTemplateBackground, deleteTemplateBackground,
@@ -83,9 +83,9 @@ const Admin = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [resendingUser, setResendingUser] = useState(null);
   const [newUser, setNewUser] = useState({
-    email: '', username: '', password: '', full_name: '',
+    email: '', username: '', full_name: '',
     role_id: '', credits: 0, is_active: true
   });
 
@@ -235,6 +235,17 @@ const Admin = () => {
     }
   };
 
+  const handleResendInvite = async (userId) => {
+    setResendingUser(userId);
+    try {
+      await adminResendInvite(userId);
+    } catch (error) {
+      console.error('Errore reinvio invito:', error);
+    } finally {
+      setResendingUser(null);
+    }
+  };
+
   const handleDistributorChange = async (userId, distributorId) => {
     try {
       // '' = azzera il distributore di riferimento
@@ -297,8 +308,8 @@ const Admin = () => {
 
   const handleCreateUser = async () => {
     setCreateError('');
-    if (!newUser.email || !newUser.username || !newUser.password) {
-      setCreateError('Email, username e password sono obbligatori.');
+    if (!newUser.email || !newUser.username) {
+      setCreateError('Email e username sono obbligatori.');
       return;
     }
 
@@ -312,7 +323,7 @@ const Admin = () => {
       await adminCreateUser(userData);
 
       // Reset form e aggiorna lista
-      setNewUser({ email: '', username: '', password: '', full_name: '', role_id: '', credits: 0, is_active: true });
+      setNewUser({ email: '', username: '', full_name: '', role_id: '', credits: 0, is_active: true });
       setShowCreateForm(false);
       const data = await getAdminUsers(searchTerm || null);
       setUsers(data.users);
@@ -784,23 +795,10 @@ const Admin = () => {
                           onChange={(e) => setNewUser(prev => ({ ...prev, username: e.target.value }))}
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                        <div className="relative">
-                          <input
-                            type={showPassword ? 'text' : 'password'}
-                            className="input w-full pr-10"
-                            placeholder="Minimo 6 caratteri"
-                            value={newUser.password}
-                            onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                          >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
+                      <div className="md:col-span-2">
+                        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-700">
+                          <Mail className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>L'utente riceverà un'email per impostare la propria password e verificare l'indirizzo.</span>
                         </div>
                       </div>
                       <div>
@@ -915,6 +913,19 @@ const Admin = () => {
                               )}
                               {!u.is_active && (
                                 <span className="badge badge-error">Disabilitato</span>
+                              )}
+                              {!u.email_verified && (
+                                <>
+                                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Email non verificata</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleResendInvite(u.id); }}
+                                    disabled={resendingUser === u.id}
+                                    className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-60"
+                                  >
+                                    {resendingUser === u.id ? 'Invio…' : 'Reinvia'}
+                                  </button>
+                                </>
                               )}
                             </div>
                             {u.email !== (u.full_name || u.username) && (

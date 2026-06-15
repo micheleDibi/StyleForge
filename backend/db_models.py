@@ -52,9 +52,13 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(255), nullable=False)
+    # Nullable: gli utenti creati dall'admin impostano la password via invito email.
+    hashed_password = Column(String(255), nullable=True)
     full_name = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
+    # Verifica email: l'utente deve confermare l'email prima di poter accedere.
+    email_verified = Column(Boolean, default=False, nullable=False)
+    email_verified_at = Column(DateTime, nullable=True)
     is_admin = Column(Boolean, default=False)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
     credits = Column(Integer, default=0, nullable=False)
@@ -164,6 +168,26 @@ class RefreshToken(Base):
 
     def __repr__(self):
         return f"<RefreshToken(id={self.id}, user_id={self.user_id}, revoked={self.revoked})>"
+
+
+class EmailToken(Base):
+    """Token monouso per email: verifica registrazione, reset password, invito (set password).
+    Si memorizza solo lo SHA-256 del token grezzo (il raw viene inviato nel link)."""
+    __tablename__ = "email_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(64), nullable=False, index=True)
+    purpose = Column(String(20), nullable=False)  # 'verify' | 'reset' | 'set_password'
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relazioni
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<EmailToken(user_id={self.user_id}, purpose={self.purpose}, used={self.used_at is not None})>"
 
 
 # ============================================================================

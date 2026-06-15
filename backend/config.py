@@ -105,6 +105,23 @@ PROMPT_ADDESTRAMENTO_PATH = Path(os.getenv("PROMPT_ADDESTRAMENTO_PATH", "prompt_
 # CORS
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
 
+# ============================================================================
+# EMAIL / SMTP (verifica registrazione, reset password, invito)
+# ============================================================================
+# OVH: host ssl0.ovh.net, porta 587 STARTTLS (la porta 465 NON è utilizzabile).
+# Se SMTP_HOST è vuoto le email non vengono inviate: il link viene loggato
+# (utile in sviluppo/test prima di configurare le credenziali).
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").lower() == "true"  # default STARTTLS (587)
+MAIL_FROM = os.getenv("MAIL_FROM", "noreply@styleforge.ersaf.it")
+MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "StyleForge")
+
+# Base URL del frontend per i link nelle email (verifica/reset/invito)
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "https://styleforge.ersaf.it")
+
 # Email di contatto per il "polite pool" delle API accademiche (OpenAlex, Crossref)
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "")
 

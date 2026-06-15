@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { resendVerification } from '../services/api';
+import { ArrowRight, Eye, EyeOff, Loader } from 'lucide-react';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -15,6 +16,9 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isShaking, setIsShaking] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -25,6 +29,8 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setNeedsVerification(false);
+    setResent(false);
 
     if (!formData.username || !formData.password) {
       setError('Inserisci username e password');
@@ -43,6 +49,7 @@ const Login = () => {
         navigate('/');
       } else {
         setError(result.error);
+        if (result.code === 'email_not_verified') setNeedsVerification(true);
         setIsShaking(true);
         setTimeout(() => setIsShaking(false), 500);
         setFormData(prev => ({ ...prev, password: '' }));
@@ -53,6 +60,22 @@ const Login = () => {
       setIsShaking(true);
       setTimeout(() => setIsShaking(false), 500);
       console.error('Login error:', err);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!formData.username.includes('@')) {
+      setError('Per reinviare la verifica, inserisci la tua email nel campo qui sopra.');
+      return;
+    }
+    setResending(true);
+    try {
+      await resendVerification(formData.username);
+    } catch {
+      // risposta sempre generica
+    } finally {
+      setResending(false);
+      setResent(true);
     }
   };
 
@@ -153,6 +176,11 @@ const Login = () => {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              <div className="mt-2 text-right">
+                <Link to="/forgot-password" className="text-sm font-medium text-orange-600 hover:text-orange-700 transition-colors">
+                  Password dimenticata?
+                </Link>
+              </div>
             </div>
 
             {/* Error */}
@@ -160,6 +188,25 @@ const Login = () => {
               <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 font-medium">
                 {error}
               </div>
+            )}
+
+            {/* Email non verificata: offri il reinvio */}
+            {needsVerification && (
+              resent ? (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-700 font-medium">
+                  Email di verifica reinviata. Controlla la tua casella.
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resending}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 hover:bg-orange-100 transition-colors disabled:opacity-60"
+                >
+                  {resending ? <Loader className="w-4 h-4 animate-spin" /> : null}
+                  Reinvia email di verifica
+                </button>
+              )
             )}
 
             {/* Submit */}

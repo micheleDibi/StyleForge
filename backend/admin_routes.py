@@ -7,13 +7,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
 from database import get_db
-from auth import get_current_admin_user, get_effective_permissions, get_password_hash
+from auth import get_current_admin_user, get_effective_permissions
 from db_models import (
     User, Role, RolePermission, UserPermission, CreditTransaction, SystemSetting, APIKey,
     CreditPackage, PaymentOrder, PagoPAEvent
@@ -74,6 +74,7 @@ def build_admin_user_response(user: User, db: Session) -> AdminUserResponse:
         credits=user.credits,
         permissions=permissions,
         user_overrides=user_overrides,
+        email_verified=bool(getattr(user, 'email_verified', False)),
         entity_type=getattr(user, 'entity_type', None) or 'privato',
         distributor_id=str(user.distributor_id) if getattr(user, 'distributor_id', None) else None,
         codice_fiscale=getattr(user, 'codice_fiscale', None),
@@ -502,10 +503,12 @@ async def get_admin_stats(
 @router.post("/users", response_model=AdminUserResponse)
 async def create_user(
     request: AdminCreateUserRequest,
+    background_tasks: BackgroundTasks,
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
-    """Crea un nuovo utente dal pannello admin."""
+    """Crea un nuovo utente dal pannello admin.
+    L'utente NON ha password: riceve un'email di invito per impostarla (e verificare l'email)."""
     # Verifica email duplicata
     existing_email = db.query(User).filter(User.email == request.email).first()
     if existing_email:
@@ -535,17 +538,18 @@ async def create_user(
         role_id = default_role.id if default_role else None
         is_admin = False
 
-    # Crea utente
-    hashed_password = get_password_hash(request.password)
+    # Crea utente SENZA password ed email NON verificata: l'invito imposterà
+    # la password e verificherà/attiverà l'account.
     new_user = User(
         email=request.email,
         username=request.username,
-        hashed_password=hashed_password,
+        hashed_password=None,
         full_name=request.full_name,
         role_id=role_id,
         is_admin=is_admin,
         credits=request.credits,
-        is_active=request.is_active
+        is_active=request.is_active,
+        email_verified=False,
     )
     db.add(new_user)
     db.commit()
@@ -563,7 +567,39 @@ async def create_user(
             admin_user=admin_user
         )
 
+    # Invia l'email di invito (imposta password + verifica) in background.
+    from email_service import create_email_token, build_link, send_invite_email
+    raw = create_email_token(db, new_user.id, 'set_password')
+    link = build_link('set_password', raw)
+    background_tasks.add_task(send_invite_email, new_user.email, new_user.full_name or new_user.username, link)
+
     return build_admin_user_response(new_user, db)
+
+
+@router.post("/users/{user_id}/resend-invite")
+async def resend_invite(
+    user_id: str,
+    background_tasks: BackgroundTasks,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Reinvia l'email di invito/verifica a un utente non ancora verificato."""
+    user = db.query(User).filter(User.id == UUID(user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    if user.email_verified:
+        raise HTTPException(status_code=400, detail="L'utente ha già verificato l'email")
+
+    from email_service import create_email_token, build_link, send_invite_email, send_verification_email
+    if not user.hashed_password:
+        # Utente invitato che non ha ancora impostato la password.
+        raw = create_email_token(db, user.id, 'set_password')
+        background_tasks.add_task(send_invite_email, user.email, user.full_name or user.username, build_link('set_password', raw))
+    else:
+        # Utente registrato che non ha ancora confermato l'email.
+        raw = create_email_token(db, user.id, 'verify')
+        background_tasks.add_task(send_verification_email, user.email, user.full_name or user.username, build_link('verify', raw))
+    return {"message": "Email reinviata"}
 
 
 # ============================================================================
