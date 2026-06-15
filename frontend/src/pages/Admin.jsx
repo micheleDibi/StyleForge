@@ -6,7 +6,7 @@ import {
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
   Sparkles, Settings, Eye, EyeOff, UserPlus, RotateCcw,
   AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image,
-  CreditCard
+  CreditCard, Mail, Calendar, Power
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -33,6 +33,12 @@ const PERMISSION_LABELS = {
 };
 
 const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'compilatio_scan_thesis'];
+
+const ENTITY_TYPE_LABELS = {
+  distributore: 'Distributore',
+  rivenditore: 'Rivenditore',
+  privato: 'Privato',
+};
 
 // Labels per le operazioni dei costi crediti
 const COST_OPERATION_LABELS = {
@@ -875,16 +881,23 @@ const Admin = () => {
                           </div>
 
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-gray-900">{u.username}</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-gray-900 truncate">{u.full_name || u.username}</span>
                               <span className={`badge ${u.role_name === 'admin' ? 'badge-warning' : 'badge-info'}`}>
                                 {u.role_name || 'Nessun ruolo'}
                               </span>
+                              {u.role_name !== 'admin' && u.entity_type && (
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+                                  {ENTITY_TYPE_LABELS[u.entity_type] || u.entity_type}
+                                </span>
+                              )}
                               {!u.is_active && (
                                 <span className="badge badge-error">Disabilitato</span>
                               )}
                             </div>
-                            <div className="text-sm text-gray-500">{u.email}</div>
+                            {u.email !== (u.full_name || u.username) && (
+                              <div className="text-sm text-gray-500 truncate">{u.email}</div>
+                            )}
                           </div>
 
                           <div className="hidden md:flex items-center gap-6 text-sm">
@@ -910,128 +923,144 @@ const Admin = () => {
 
                       {/* Expanded user details */}
                       {expandedUser === u.id && (
-                        <div className="border-t border-gray-200 p-4 bg-gray-50/50 space-y-4">
-                          {/* Info */}
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            <div className="bg-white rounded-xl p-3">
-                              <p className="text-xs text-gray-500">Nome completo</p>
-                              <p className="font-medium text-gray-900">{u.full_name || '-'}</p>
-                            </div>
-                            <div className="bg-white rounded-xl p-3">
-                              <p className="text-xs text-gray-500">Creato il</p>
-                              <p className="font-medium text-gray-900 text-sm">{formatDate(u.created_at)}</p>
-                            </div>
-                            <div className="bg-white rounded-xl p-3">
-                              <p className="text-xs text-gray-500">Ultimo aggiornamento</p>
-                              <p className="font-medium text-gray-900 text-sm">{formatDate(u.updated_at)}</p>
-                            </div>
-                            <div className="bg-white rounded-xl p-3">
-                              <p className="text-xs text-gray-500">Ultimo login</p>
-                              <p className="font-medium text-gray-900 text-sm">{formatDate(u.last_login)}</p>
-                            </div>
-                          </div>
-
-                          {/* Ruolo & Stato */}
-                          <div className="flex flex-wrap gap-3">
-                            <div className="bg-white rounded-xl p-3 flex items-center gap-3">
-                              <label className="text-sm font-medium text-gray-600">Ruolo:</label>
-                              <select
-                                className="input py-1 px-2 text-sm"
-                                value={u.role_id || ''}
-                                onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                              >
-                                {roles.length > 0 ? roles.map(r => (
-                                  <option key={r.id} value={r.id}>{r.name}</option>
-                                )) : (
-                                  <>
-                                    <option value="1">admin</option>
-                                    <option value="2">user</option>
-                                  </>
-                                )}
-                              </select>
-                            </div>
-
-                            <div className="bg-white rounded-xl p-3 flex items-center gap-3">
-                              <label className="text-sm font-medium text-gray-600">Attivo:</label>
-                              <button
-                                onClick={() => handleToggleActive(u.id, u.is_active)}
-                                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                                  u.is_active
-                                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                    : 'bg-red-100 text-red-700 hover:bg-red-200'
-                                }`}
-                              >
-                                {u.is_active ? 'Si' : 'No'}
-                              </button>
-                            </div>
-
-                            {u.role_name !== 'admin' && (
-                              <div className="bg-white rounded-xl p-3 flex items-center gap-3 flex-wrap">
-                                <label className="text-sm font-medium text-gray-600">Tipo utente:</label>
-                                <select
-                                  className="input py-1 px-2 text-sm"
-                                  value={u.entity_type || 'privato'}
-                                  onChange={(e) => handleEntityTypeChange(u.id, e.target.value)}
-                                  title="Determina i pacchetti crediti acquistabili"
-                                >
-                                  <option value="distributore">Distributore</option>
-                                  <option value="rivenditore">Rivenditore</option>
-                                  <option value="privato">Privato</option>
-                                </select>
-                                {u.entity_type === 'rivenditore' && (
-                                  <>
-                                    <label className="text-sm font-medium text-gray-600">Distributore:</label>
+                        <div className="border-t border-gray-200 p-4 sm:p-5 bg-gray-50/60 space-y-4">
+                          {/* Riga 1: impostazioni account + dettagli */}
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {/* Impostazioni account */}
+                            <div className="bg-white rounded-xl border border-gray-100 p-4">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-3 flex items-center gap-2">
+                                <Settings className="w-3.5 h-3.5" /> Impostazioni account
+                              </h4>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">Ruolo</label>
+                                  <select
+                                    className="input w-full py-1.5 text-sm"
+                                    value={u.role_id || ''}
+                                    onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                                  >
+                                    {roles.length > 0 ? roles.map(r => (
+                                      <option key={r.id} value={r.id}>{r.name}</option>
+                                    )) : (
+                                      <>
+                                        <option value="1">admin</option>
+                                        <option value="2">user</option>
+                                      </>
+                                    )}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">Stato</label>
+                                  <button
+                                    onClick={() => handleToggleActive(u.id, u.is_active)}
+                                    className={`w-full inline-flex items-center justify-center gap-2 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                                      u.is_active
+                                        ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                                        : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                    }`}
+                                  >
+                                    <Power className="w-4 h-4" />
+                                    {u.is_active ? 'Attivo' : 'Disattivato'}
+                                  </button>
+                                </div>
+                                {u.role_name !== 'admin' && (
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Tipo utente</label>
                                     <select
-                                      className="input py-1 px-2 text-sm"
+                                      className="input w-full py-1.5 text-sm"
+                                      value={u.entity_type || 'privato'}
+                                      onChange={(e) => handleEntityTypeChange(u.id, e.target.value)}
+                                      title="Determina i pacchetti crediti acquistabili"
+                                    >
+                                      <option value="distributore">Distributore</option>
+                                      <option value="rivenditore">Rivenditore</option>
+                                      <option value="privato">Privato</option>
+                                    </select>
+                                  </div>
+                                )}
+                                {u.role_name !== 'admin' && u.entity_type === 'rivenditore' && (
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Distributore di riferimento</label>
+                                    <select
+                                      className="input w-full py-1.5 text-sm"
                                       value={u.distributor_id || ''}
                                       onChange={(e) => handleDistributorChange(u.id, e.target.value)}
                                       title="Distributore di riferimento del rivenditore"
                                     >
                                       <option value="">— nessuno —</option>
                                       {distributori.map((d) => (
-                                        <option key={d.id} value={d.id}>
-                                          {d.full_name || d.username}
-                                        </option>
+                                        <option key={d.id} value={d.id}>{d.full_name || d.username}</option>
                                       ))}
                                     </select>
-                                  </>
+                                  </div>
                                 )}
                               </div>
-                            )}
+                            </div>
+
+                            {/* Dettagli */}
+                            <div className="bg-white rounded-xl border border-gray-100 p-4">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-3 flex items-center gap-2">
+                                <UserIcon className="w-3.5 h-3.5" /> Dettagli
+                              </h4>
+                              <dl className="text-sm divide-y divide-gray-100">
+                                <div className="flex items-center justify-between gap-3 py-1.5">
+                                  <dt className="text-gray-500">Nome completo</dt>
+                                  <dd className="font-medium text-gray-900 text-right truncate">{u.full_name || '—'}</dd>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 py-1.5">
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email</dt>
+                                  <dd className="font-medium text-gray-900 text-right truncate">{u.email}</dd>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 py-1.5">
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Creato il</dt>
+                                  <dd className="font-medium text-gray-900 text-right">{formatDate(u.created_at)}</dd>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 py-1.5">
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5" /> Aggiornato</dt>
+                                  <dd className="font-medium text-gray-900 text-right">{formatDate(u.updated_at)}</dd>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 py-1.5">
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Ultimo login</dt>
+                                  <dd className="font-medium text-gray-900 text-right">{formatDate(u.last_login)}</dd>
+                                </div>
+                              </dl>
+                            </div>
                           </div>
 
                           {/* Permessi */}
-                          <div className="bg-white rounded-xl p-4">
-                            <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                              <Shield className="w-4 h-4" />
-                              Permessi (click per ciclare: Eredita &rarr; Forza Si &rarr; Forza No)
-                            </h4>
-                            <div className="flex flex-wrap gap-2">
+                          <div className="bg-white rounded-xl border border-gray-100 p-4">
+                            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 flex items-center gap-2">
+                                <Shield className="w-3.5 h-3.5" /> Permessi
+                              </h4>
+                              <p className="text-xs text-gray-400">Click per ciclare: Eredita &rarr; Forza Sì &rarr; Forza No</p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                               {ALL_PERMISSIONS.map(perm => {
                                 const override = u.user_overrides[perm];
                                 const hasFromRole = u.permissions.includes(perm);
-                                let bgClass, label;
-
+                                const allowed = override === true || (override == null && hasFromRole);
+                                let stateText, stateCls, chipCls, Icon;
                                 if (override === true) {
-                                  bgClass = 'bg-green-100 text-green-800 border-green-300';
-                                  label = `${PERMISSION_LABELS[perm]} [Forzato SI]`;
+                                  stateText = 'Forza Sì'; stateCls = 'bg-green-200 text-green-900'; chipCls = 'bg-green-50 border-green-300'; Icon = Check;
                                 } else if (override === false) {
-                                  bgClass = 'bg-red-100 text-red-800 border-red-300';
-                                  label = `${PERMISSION_LABELS[perm]} [Forzato NO]`;
+                                  stateText = 'Forza No'; stateCls = 'bg-red-200 text-red-900'; chipCls = 'bg-red-50 border-red-300'; Icon = X;
+                                } else if (hasFromRole) {
+                                  stateText = 'Eredita'; stateCls = 'bg-blue-100 text-blue-700'; chipCls = 'bg-white border-blue-200'; Icon = Check;
                                 } else {
-                                  bgClass = hasFromRole
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                    : 'bg-gray-100 text-gray-500 border-gray-200';
-                                  label = `${PERMISSION_LABELS[perm]} [Ruolo: ${hasFromRole ? 'Si' : 'No'}]`;
+                                  stateText = 'Eredita'; stateCls = 'bg-gray-100 text-gray-500'; chipCls = 'bg-white border-gray-200'; Icon = Minus;
                                 }
-
                                 return (
                                   <button
                                     key={perm}
                                     onClick={() => handlePermissionToggle(u.id, perm, u.user_overrides)}
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all hover:shadow-sm ${bgClass}`}
+                                    className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all hover:shadow-sm ${chipCls}`}
                                   >
-                                    {label}
+                                    <span className="flex items-center gap-2 min-w-0">
+                                      <Icon className={`w-4 h-4 flex-shrink-0 ${allowed ? 'text-green-600' : 'text-gray-400'}`} />
+                                      <span className="text-gray-700 truncate">{PERMISSION_LABELS[perm]}</span>
+                                    </span>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${stateCls}`}>{stateText}</span>
                                   </button>
                                 );
                               })}
@@ -1039,16 +1068,20 @@ const Admin = () => {
                           </div>
 
                           {/* Crediti */}
-                          <div className="bg-white rounded-xl p-4">
-                            <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                              <Coins className="w-4 h-4" />
-                              Gestione Crediti (Saldo attuale: <span className="text-orange-600">{u.credits === -1 ? 'Infinito' : u.credits}</span>)
-                            </h4>
-                            <div className="flex gap-2">
+                          <div className="bg-white rounded-xl border border-gray-100 p-4">
+                            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 flex items-center gap-2">
+                                <Coins className="w-3.5 h-3.5" /> Gestione crediti
+                              </h4>
+                              <span className="text-sm text-gray-500">
+                                Saldo attuale: <span className="font-bold text-orange-600">{u.credits === -1 ? '∞' : u.credits}</span>
+                              </span>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-2">
                               <input
                                 type="number"
-                                placeholder="Quantita (es. 100 o -50)"
-                                className="input flex-1"
+                                placeholder="Quantità (es. 100 o -50)"
+                                className="input sm:w-44"
                                 value={creditAmount}
                                 onChange={(e) => setCreditAmount(e.target.value)}
                               />
@@ -1062,7 +1095,7 @@ const Admin = () => {
                               <button
                                 onClick={() => handleAdjustCredits(u.id)}
                                 disabled={!creditAmount || !creditDescription || creditLoading}
-                                className="btn btn-primary"
+                                className="btn btn-primary whitespace-nowrap"
                               >
                                 {creditLoading ? (
                                   <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1076,9 +1109,9 @@ const Admin = () => {
 
                           {/* Storico transazioni */}
                           {transactions[u.id] && transactions[u.id].length > 0 && (
-                            <div className="bg-white rounded-xl p-4">
-                              <h4 className="text-sm font-bold text-gray-700 mb-3">
-                                Ultime Transazioni
+                            <div className="bg-white rounded-xl border border-gray-100 p-4">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-3 flex items-center gap-2">
+                                <Clock className="w-3.5 h-3.5" /> Ultime transazioni
                               </h4>
                               <div className="space-y-2 max-h-60 overflow-y-auto">
                                 {transactions[u.id].slice(0, 10).map((tx, i) => (
