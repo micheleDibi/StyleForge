@@ -9,7 +9,7 @@ import {
   BookMarked, Store
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, downloadCompilatioReport } from '../services/api';
+import { getSessions, deleteSession, renameSession, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, downloadCompilatioReport } from '../services/api';
 import JobCard from '../components/JobCard';
 import Logo from '../components/Logo';
 
@@ -19,7 +19,6 @@ const Dashboard = () => {
   const [sessions, setSessions] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [theses, setTheses] = useState([]);
-  const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedThesis, setExpandedThesis] = useState(null);
@@ -60,11 +59,11 @@ const Dashboard = () => {
 
   const loadData = async () => {
     try {
-      const [sessionsData, healthData, jobsData, thesesData] = await Promise.all([
-        getSessions(), healthCheck(), getJobs(),
+      const [sessionsData, jobsData, thesesData] = await Promise.all([
+        getSessions(), getJobs(),
         getTheses().catch(() => ({ theses: [] }))
       ]);
-      setSessions(sessionsData.sessions); setHealth(healthData);
+      setSessions(sessionsData.sessions);
       setJobs(jobsData.jobs || []); setTheses(thesesData.theses || []);
     } catch (error) { console.error('Errore nel caricamento:', error); }
     finally { setLoading(false); setRefreshing(false); }
