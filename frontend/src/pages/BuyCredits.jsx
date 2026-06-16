@@ -217,6 +217,10 @@ const BuyCredits = () => {
                     <p className="font-medium text-slate-800 truncate">
                       {r.package_name} · <span className="text-orange-600 font-bold">{r.package_credits?.toLocaleString('it-IT')}</span> {t('crediti')}
                     </p>
+                    <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                      <Clock className="w-3 h-3" />
+                      {r.created_at ? new Date(r.created_at).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                    </p>
                   </div>
                   <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md font-medium ${st.cls}`}>
                     <StIcon className="w-3 h-3" /> {t(st.label)}

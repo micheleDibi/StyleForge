@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Loader, Inbox, Check, X, Coins, AlertTriangle } from 'lucide-react';
+import { Loader, Inbox, Check, X, Coins, AlertTriangle, Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const ENTITY_LABELS = {
@@ -7,6 +7,10 @@ const ENTITY_LABELS = {
   rivenditore: 'Rivenditore',
   privato: 'Privato',
 };
+
+const formatDateTime = (iso) => (iso
+  ? new Date(iso).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' })
+  : '—');
 
 // Inbox condivisa delle richieste crediti.
 // Props:
@@ -86,10 +90,13 @@ const RequestsInbox = ({ fetchFn, approveFn, rejectFn, availableCredits = -1, on
                   )}
                 </div>
                 <p className="text-xs text-slate-500 truncate">{r.requester_email}</p>
-                <div className="mt-1 flex items-center gap-2 text-sm">
+                <div className="mt-1 flex items-center gap-2 text-sm flex-wrap">
                   <span className="font-medium text-slate-700">{r.package_name}</span>
                   <span className="inline-flex items-center gap-1 text-orange-600 font-bold">
                     <Coins className="w-3.5 h-3.5" /> {r.package_credits?.toLocaleString('it-IT')}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                    <Clock className="w-3 h-3" /> {formatDateTime(r.created_at)}
                   </span>
                 </div>
                 {insufficient && (
