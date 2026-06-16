@@ -403,6 +403,37 @@ class ParentMoveInvitation(Base):
         return f"<ParentMoveInvitation(privato={self.privato_id}, to={self.to_parent_id}, status={self.status})>"
 
 
+class Notification(Base):
+    """Notifica in-app per un utente (centro notifiche / campanella)."""
+    __tablename__ = "notifications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # es. 'request_received' | 'request_approved' | 'request_rejected' | 'credits_assigned'
+    type = Column(String(40), nullable=False)
+    title = Column(String(160), nullable=False)
+    message = Column(Text, nullable=True)
+    link = Column(String(255), nullable=True)   # rotta frontend opzionale (es. /credits/buy)
+    is_read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    read_at = Column(DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"<Notification(user={self.user_id}, type={self.type}, read={self.is_read})>"
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "type": self.type,
+            "title": self.title,
+            "message": self.message,
+            "link": self.link,
+            "is_read": bool(self.is_read),
+            "created_at": self.created_at,
+            "read_at": self.read_at,
+        }
+
+
 # ============================================================================
 # LOOKUP TABLES per Thesis Generation
 # ============================================================================

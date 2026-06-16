@@ -939,6 +939,30 @@ class MoveTokenRequest(BaseModel):
 
 
 # ============================================================================
+# NOTIFICHE IN-APP
+# ============================================================================
+
+class NotificationItem(BaseModel):
+    id: str
+    type: str
+    title: str
+    message: Optional[str] = None
+    link: Optional[str] = None
+    is_read: bool = False
+    created_at: datetime
+    read_at: Optional[datetime] = None
+
+
+class NotificationListResponse(BaseModel):
+    notifications: List[NotificationItem]
+    unread_count: int
+
+
+class UnreadCountResponse(BaseModel):
+    unread_count: int
+
+
+# ============================================================================
 # ADMIN - CONFIGURAZIONE COSTI CREDITI
 # ============================================================================
 

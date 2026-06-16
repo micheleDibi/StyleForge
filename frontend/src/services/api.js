@@ -1291,4 +1291,28 @@ export const adminRejectCreditRequest = async (requestId, note) => {
   return response.data;
 };
 
+// ============================================================================
+// NOTIFICHE IN-APP
+// ============================================================================
+
+export const getNotifications = async (limit = 20) => {
+  const response = await api.get('/api/notifications', { params: { limit } });
+  return response.data;
+};
+
+export const getUnreadCount = async () => {
+  const response = await api.get('/api/notifications/unread-count');
+  return response.data;
+};
+
+export const markNotificationRead = async (id) => {
+  const response = await api.post(`/api/notifications/${id}/read`);
+  return response.data;
+};
+
+export const markAllNotificationsRead = async () => {
+  const response = await api.post('/api/notifications/read-all');
+  return response.data;
+};
+
 export default api;

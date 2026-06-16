@@ -35,6 +35,7 @@ from models import (
     CreditRequestItem, CreditRequestListResponse, ResolveRequestRequest,
 )
 import config
+from notifications import notify
 from template_service import (
     get_export_templates, save_export_templates, delete_template,
     TEMPLATE_PARAM_HELP, generate_template_id
@@ -359,6 +360,12 @@ async def adjust_user_credits(
     )
 
     db.refresh(user)
+    if request.amount > 0:
+        notify(db, user.id, 'credits_assigned', "Crediti ricevuti",
+               f"L'amministratore ti ha accreditato {request.amount} crediti.", link='/')
+    elif request.amount < 0:
+        notify(db, user.id, 'credits_removed', "Crediti rimossi",
+               f"L'amministratore ha rimosso {abs(request.amount)} crediti dal tuo saldo.", link='/')
     return build_admin_user_response(user, db)
 
 
@@ -1124,6 +1131,12 @@ async def admin_approve_credit_request(
         admin_user=admin_user,
     )
     db.refresh(cr)
+    notify(
+        db, cr.requester_id, 'request_approved',
+        "Richiesta approvata",
+        f"Sono stati accreditati {cr.package_credits} crediti ({cr.package_name}).",
+        link='/credits/buy',
+    )
     return _admin_req_item(cr, db)
 
 
@@ -1149,5 +1162,11 @@ async def admin_reject_credit_request(
     cr.note = body.note
     db.commit()
     db.refresh(cr)
+    notify(
+        db, cr.requester_id, 'request_rejected',
+        "Richiesta rifiutata",
+        f"La richiesta di {cr.package_credits} crediti ({cr.package_name}) è stata rifiutata.",
+        link='/credits/buy',
+    )
     return _admin_req_item(cr, db)
 

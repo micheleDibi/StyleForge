@@ -22,6 +22,7 @@ from database import get_db
 from auth import get_current_manager, get_current_active_user
 from db_models import User, Role, CreditPackage, CreditRequest, ParentMoveInvitation
 from credits import transfer_credits, is_admin_user
+from notifications import notify, notify_admins
 import hierarchy
 from models import (
     HierarchyCreateUserRequest, HierarchyUserItem, HierarchyChildrenResponse,
@@ -157,6 +158,12 @@ def assign_credits(
         description=request.description or "Assegnazione crediti",
     )
     db.refresh(target)
+    notify(
+        db, target.id, 'credits_assigned',
+        "Crediti ricevuti",
+        f"Hai ricevuto {request.amount} crediti da {current_user.username}.",
+        link='/',
+    )
     return _to_item(target)
 
 
@@ -231,6 +238,15 @@ def create_request(
     db.add(cr)
     db.commit()
     db.refresh(cr)
+
+    # Notifica al referente.
+    _title = "Nuova richiesta crediti"
+    _msg = f"{current_user.username} richiede {pkg.credits} crediti ({pkg.name})"
+    if approver_is_admin:
+        notify_admins(db, 'request_received', _title, _msg, link='/admin')
+    elif approver is not None:
+        _link = '/distributor' if (approver.entity_type or '') == 'distributore' else '/reseller'
+        notify(db, approver.id, 'request_received', _title, _msg, link=_link)
     return _req_item(cr, db)
 
 
@@ -351,6 +367,12 @@ def approve_request(
         db.rollback()
         raise
     db.refresh(cr)
+    notify(
+        db, cr.requester_id, 'request_approved',
+        "Richiesta approvata",
+        f"Sono stati accreditati {cr.package_credits} crediti ({cr.package_name}).",
+        link='/credits/buy',
+    )
     return _req_item(cr, db)
 
 
@@ -378,6 +400,12 @@ def reject_request(
     cr.note = body.note
     db.commit()
     db.refresh(cr)
+    notify(
+        db, cr.requester_id, 'request_rejected',
+        "Richiesta rifiutata",
+        f"La richiesta di {cr.package_credits} crediti ({cr.package_name}) è stata rifiutata.",
+        link='/credits/buy',
+    )
     return _req_item(cr, db)
 
 

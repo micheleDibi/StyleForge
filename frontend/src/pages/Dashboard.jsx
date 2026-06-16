@@ -14,6 +14,8 @@ import { useTranslation } from 'react-i18next';
 import JobCard from '../components/JobCard';
 import Logo from '../components/Logo';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import NotificationBell from '../components/NotificationBell';
+import DashboardRequestsCard from '../components/DashboardRequestsCard';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -244,6 +246,7 @@ const Dashboard = () => {
                   </>
                 )}
               </div>
+              <NotificationBell />
               {isDistributor && <button onClick={() => navigate('/distributor')} className="btn btn-ghost" title={t('Dashboard distributore')}><Store className="w-[18px] h-[18px]" /></button>}
               {isReseller && <button onClick={() => navigate('/reseller')} className="btn btn-ghost" title={t('Dashboard rivenditore')}><Building2 className="w-[18px] h-[18px]" /></button>}
               {isAdmin && <button onClick={() => navigate('/admin')} className="btn btn-ghost" title={t('Admin')}><Settings className="w-[18px] h-[18px]" /></button>}
@@ -282,6 +285,9 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* ═══ RICHIESTE CREDITI ═══ */}
+        <DashboardRequestsCard />
 
         {/* ═══ QUICK ACTIONS ═══ */}
         <section>
