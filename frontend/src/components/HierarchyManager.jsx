@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import {
   getMyChildren, createSubUser, assignCreditsToChild,
-  getRequestsInbox, approveCreditRequest, rejectCreditRequest, invitePrivato,
+  getRequestsInbox, getRequestsHistory, approveCreditRequest, rejectCreditRequest, invitePrivato,
 } from '../services/api';
 import RequestsInbox from './RequestsInbox';
 
@@ -120,6 +120,7 @@ const HierarchyManager = ({ title, subtitle, allowedChildTypes }) => {
         {tab === 'richieste' ? (
           <RequestsInbox
             fetchFn={getRequestsInbox}
+            historyFn={getRequestsHistory}
             approveFn={approveCreditRequest}
             rejectFn={rejectCreditRequest}
             availableCredits={credits}

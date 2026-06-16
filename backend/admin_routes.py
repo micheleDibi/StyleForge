@@ -1074,6 +1074,21 @@ async def admin_list_credit_requests(
     return CreditRequestListResponse(requests=[_admin_req_item(r, db) for r in rows], total=len(rows))
 
 
+@router.get("/credit-requests/history", response_model=CreditRequestListResponse)
+async def admin_credit_requests_history(
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Storico delle richieste admin gestite (approvate/rifiutate/annullate)."""
+    rows = (
+        db.query(CreditRequest)
+        .filter(CreditRequest.approver_is_admin == True, CreditRequest.status != 'pending')  # noqa: E712
+        .order_by(CreditRequest.resolved_at.desc(), CreditRequest.created_at.desc())
+        .all()
+    )
+    return CreditRequestListResponse(requests=[_admin_req_item(r, db) for r in rows], total=len(rows))
+
+
 @router.post("/credit-requests/{request_id}/approve", response_model=CreditRequestItem)
 async def admin_approve_credit_request(
     request_id: str,

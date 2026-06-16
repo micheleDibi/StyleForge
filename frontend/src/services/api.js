@@ -1215,6 +1215,11 @@ export const getRequestsInbox = async () => {
   return response.data;
 };
 
+export const getRequestsHistory = async () => {
+  const response = await api.get('/api/hierarchy/requests/history');
+  return response.data;
+};
+
 export const approveCreditRequest = async (requestId, note) => {
   const response = await api.post(`/api/hierarchy/requests/${requestId}/approve`, { note });
   return response.data;
@@ -1268,6 +1273,11 @@ export const adminDeleteCreditPackage = async (packageId) => {
 // Richieste crediti — inbox admin (richieste dei distributori)
 export const getAdminCreditRequests = async () => {
   const response = await api.get('/admin/credit-requests');
+  return response.data;
+};
+
+export const getAdminCreditRequestsHistory = async () => {
+  const response = await api.get('/admin/credit-requests/history');
   return response.data;
 };
 

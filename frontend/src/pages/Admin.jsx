@@ -19,7 +19,7 @@ import {
   getAdminTemplates, updateAdminTemplates,
   deleteAdminTemplate, uploadTemplateBackground, deleteTemplateBackground,
   createApiKey, getApiKeys, revokeApiKey,
-  getAdminCreditRequests, adminApproveCreditRequest, adminRejectCreditRequest
+  getAdminCreditRequests, getAdminCreditRequestsHistory, adminApproveCreditRequest, adminRejectCreditRequest
 } from '../services/api';
 import Logo from '../components/Logo';
 import AdminLanguagesSection from '../components/admin/AdminLanguagesSection';
@@ -1897,6 +1897,7 @@ const Admin = () => {
                 </div>
                 <RequestsInbox
                   fetchFn={getAdminCreditRequests}
+                  historyFn={getAdminCreditRequestsHistory}
                   approveFn={adminApproveCreditRequest}
                   rejectFn={adminRejectCreditRequest}
                   availableCredits={-1}

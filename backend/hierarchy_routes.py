@@ -290,6 +290,24 @@ def requests_inbox(
     return CreditRequestListResponse(requests=[_req_item(r, db) for r in rows], total=len(rows))
 
 
+@router.get("/requests/history", response_model=CreditRequestListResponse)
+def requests_history(
+    current_user: User = Depends(get_current_manager),
+    db: Session = Depends(get_db),
+):
+    """Storico delle richieste gestite dal manager corrente (approvate/rifiutate/annullate)."""
+    rows = (
+        db.query(CreditRequest)
+        .filter(
+            CreditRequest.approver_id == current_user.id,
+            CreditRequest.status != 'pending',
+        )
+        .order_by(CreditRequest.resolved_at.desc(), CreditRequest.created_at.desc())
+        .all()
+    )
+    return CreditRequestListResponse(requests=[_req_item(r, db) for r in rows], total=len(rows))
+
+
 @router.post("/requests/{request_id}/approve", response_model=CreditRequestItem)
 def approve_request(
     request_id: str,
