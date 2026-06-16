@@ -7,7 +7,7 @@ import {
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
   Settings, UserPlus, RotateCcw,
   AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image,
-  Mail, Calendar, Power, Globe, BookOpen, Brain, Wand2
+  Mail, Calendar, Power, Globe, BookOpen, Brain, Wand2, Inbox
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -18,11 +18,13 @@ import {
   resetAdminCreditCosts,
   getAdminTemplates, updateAdminTemplates,
   deleteAdminTemplate, uploadTemplateBackground, deleteTemplateBackground,
-  createApiKey, getApiKeys, revokeApiKey
+  createApiKey, getApiKeys, revokeApiKey,
+  getAdminCreditRequests, adminApproveCreditRequest, adminRejectCreditRequest
 } from '../services/api';
 import Logo from '../components/Logo';
 import AdminLanguagesSection from '../components/admin/AdminLanguagesSection';
 import AdminListiniSection from '../components/admin/AdminListiniSection';
+import RequestsInbox from '../components/RequestsInbox';
 
 const PERMISSION_LABELS = {
   train: 'Addestra Modello',
@@ -655,6 +657,7 @@ const Admin = () => {
     { id: 'roles', label: t('Ruoli'), icon: Shield },
     { id: 'settings', label: t('Parametri'), icon: Settings },
     { id: 'listini', label: t('Listini'), icon: Tag },
+    { id: 'requests', label: t('Richieste'), icon: Inbox },
     { id: 'templates', label: t('Template Export'), icon: FileText },
     { id: 'api-keys', label: t('API Keys'), icon: Key },
     { id: 'languages', label: t('Lingue'), icon: Globe }
@@ -1827,6 +1830,27 @@ const Admin = () => {
             {/* ===================== TAB LISTINI ===================== */}
             {activeTab === 'listini' && (
               <AdminListiniSection />
+            )}
+
+            {/* ===================== TAB RICHIESTE ===================== */}
+            {activeTab === 'requests' && (
+              <div className="space-y-4">
+                <div className="glass rounded-2xl p-6">
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <Inbox className="w-6 h-6 text-orange-500" />
+                    {t('Richieste crediti')}
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {t('Richieste dei distributori. Approvandole accrediti i crediti (hai saldo illimitato).')}
+                  </p>
+                </div>
+                <RequestsInbox
+                  fetchFn={getAdminCreditRequests}
+                  approveFn={adminApproveCreditRequest}
+                  rejectFn={adminRejectCreditRequest}
+                  availableCredits={-1}
+                />
+              </div>
             )}
 
             {activeTab === 'languages' && (

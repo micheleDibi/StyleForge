@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Users, Loader, Coins, Store, Plus, UserPlus, X, Check, AlertTriangle,
+  ArrowLeft, Users, Loader, Coins, Store, Plus, UserPlus, X, Check, AlertTriangle, Inbox,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { getMyChildren, createSubUser, assignCreditsToChild } from '../services/api';
+import {
+  getMyChildren, createSubUser, assignCreditsToChild,
+  getRequestsInbox, approveCreditRequest, rejectCreditRequest,
+} from '../services/api';
+import RequestsInbox from './RequestsInbox';
 
 const ENTITY_LABELS = {
   distributore: 'Distributore',
@@ -27,20 +31,26 @@ const HierarchyManager = ({ title, subtitle, allowedChildTypes }) => {
   const [createOpen, setCreateOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState(null);
   const [feedback, setFeedback] = useState('');
+  const [tab, setTab] = useState('utenti');
+  const [inboxCount, setInboxCount] = useState(0);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await getMyChildren();
-      setChildren(res.children || []);
+      const [childrenRes, inboxRes] = await Promise.all([
+        getMyChildren(),
+        getRequestsInbox().catch(() => ({ total: 0 })),
+      ]);
+      setChildren(childrenRes.children || []);
+      setInboxCount(inboxRes.total || 0);
     } catch {
       setError(t('Errore nel caricamento degli utenti'));
     } finally {
       setLoading(false);
     }
-  };
-  useEffect(() => { load(); }, []);
+  }, [t]);
+  useEffect(() => { load(); }, [load]);
 
   const flash = (msg) => { setFeedback(msg); setTimeout(() => setFeedback(''), 3500); };
 
@@ -83,6 +93,39 @@ const HierarchyManager = ({ title, subtitle, allowedChildTypes }) => {
           </div>
         )}
 
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setTab('utenti')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium transition-all ${
+              tab === 'utenti' ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow' : 'bg-white/70 text-gray-600 hover:bg-white'
+            }`}
+          >
+            <Users className="w-4 h-4" /> {t('Utenti')}
+          </button>
+          <button
+            onClick={() => setTab('richieste')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium transition-all ${
+              tab === 'richieste' ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow' : 'bg-white/70 text-gray-600 hover:bg-white'
+            }`}
+          >
+            <Inbox className="w-4 h-4" /> {t('Richieste')}
+            {inboxCount > 0 && (
+              <span className="ml-1 text-[11px] px-2 py-0.5 rounded-full bg-red-500 text-white font-bold">{inboxCount}</span>
+            )}
+          </button>
+        </div>
+
+        {tab === 'richieste' ? (
+          <RequestsInbox
+            fetchFn={getRequestsInbox}
+            approveFn={approveCreditRequest}
+            rejectFn={rejectCreditRequest}
+            availableCredits={credits}
+            onResolved={() => afterMutation()}
+          />
+        ) : (
+        <>
         <div className="flex justify-end mb-4">
           <button onClick={() => setCreateOpen(true)} className="btn btn-primary gap-2">
             <UserPlus className="w-4 h-4" /> {t('Crea utente')}
@@ -131,6 +174,8 @@ const HierarchyManager = ({ title, subtitle, allowedChildTypes }) => {
               </div>
             ))}
           </div>
+        )}
+        </>
         )}
       </div>
 

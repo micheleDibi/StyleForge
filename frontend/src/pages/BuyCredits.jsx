@@ -1,19 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Coins, Loader, Package, Sparkles, Info, ArrowLeft, Mail,
+  Coins, Loader, Package, Sparkles, Info, ArrowLeft, Send, Clock, CheckCircle2, XCircle, Ban,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { listCreditPackages } from '../services/api';
+import {
+  listCreditPackages, createCreditRequest, getMyCreditRequests, cancelCreditRequest,
+} from '../services/api';
 
 const formatEur = (cents) => {
   if (typeof cents !== 'number') return '—';
   return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 };
 
-// Listino crediti in sola lettura: mostra i pacchetti disponibili. L'acquisto
-// avviene tramite l'amministratore (nessun pagamento online integrato).
+const STATUS = {
+  pending: { label: 'In attesa', cls: 'bg-amber-100 text-amber-800', icon: Clock },
+  approved: { label: 'Approvata', cls: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
+  rejected: { label: 'Rifiutata', cls: 'bg-red-100 text-red-800', icon: XCircle },
+  canceled: { label: 'Annullata', cls: 'bg-slate-100 text-slate-600', icon: Ban },
+};
+
+// "Acquista crediti" = richiesta di un pacchetto al proprio referente (o all'admin
+// per i distributori). Mostra i pacchetti del proprio profilo + le proprie richieste.
 const BuyCredits = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -23,29 +32,70 @@ const BuyCredits = () => {
   const [loadingPackages, setLoadingPackages] = useState(true);
   const [errorPackages, setErrorPackages] = useState(null);
 
+  const [requests, setRequests] = useState([]);
+  const [submitting, setSubmitting] = useState(null); // package id in volo
+  const [toast, setToast] = useState('');
+  const [toastErr, setToastErr] = useState('');
+
+  const loadRequests = async () => {
+    try {
+      const res = await getMyCreditRequests();
+      setRequests(res.requests || []);
+    } catch { /* ignora */ }
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await listCreditPackages();
-        if (cancelled) return;
-        setPackages(res.packages || []);
-      } catch (err) {
+        if (!cancelled) setPackages(res.packages || []);
+      } catch {
         if (!cancelled) setErrorPackages(t('Errore caricamento pacchetti.'));
       } finally {
         if (!cancelled) setLoadingPackages(false);
       }
     })();
+    loadRequests();
     return () => { cancelled = true; };
   }, []);
 
-  // Admin escluso: crediti illimitati
   useEffect(() => {
     if (isAdmin) {
       const timer = setTimeout(() => navigate('/'), 100);
       return () => clearTimeout(timer);
     }
   }, [isAdmin, navigate]);
+
+  const hasPending = requests.some((r) => r.status === 'pending');
+
+  const flash = (msg, isErr = false) => {
+    if (isErr) { setToastErr(msg); setTimeout(() => setToastErr(''), 4000); }
+    else { setToast(msg); setTimeout(() => setToast(''), 4000); }
+  };
+
+  const request = async (pkg) => {
+    setSubmitting(pkg.id);
+    try {
+      await createCreditRequest(pkg.id);
+      await loadRequests();
+      flash(t('Richiesta inviata al tuo referente.'));
+    } catch (e) {
+      flash(e?.response?.data?.detail || t('Errore nell\'invio della richiesta'), true);
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const cancel = async (id) => {
+    try {
+      await cancelCreditRequest(id);
+      await loadRequests();
+      flash(t('Richiesta annullata.'));
+    } catch (e) {
+      flash(e?.response?.data?.detail || t('Errore'), true);
+    }
+  };
 
   if (isAdmin) {
     return (
@@ -68,9 +118,9 @@ const BuyCredits = () => {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">{t('Acquista Crediti')}</h1>
+          <h1 className="text-3xl font-bold text-slate-900">{t('Richiedi Crediti')}</h1>
           <p className="text-slate-600 mt-1">
-            {t('Consulta i pacchetti disponibili. Per acquistare crediti contatta l\'amministratore.')}
+            {t('Scegli un pacchetto e invia la richiesta al tuo referente, che potrà approvarla.')}
           </p>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 rounded-xl border border-orange-200">
@@ -80,13 +130,16 @@ const BuyCredits = () => {
         </div>
       </div>
 
-      {/* Come acquistare */}
-      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm">
-        <Mail className="w-5 h-5 flex-shrink-0 mt-0.5" />
-        <span>
-          {t('L\'acquisto dei crediti è gestito dall\'amministratore: contattalo indicando il pacchetto desiderato e i crediti verranno accreditati sul tuo account.')}
-        </span>
-      </div>
+      {toast && (
+        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> {toast}
+        </div>
+      )}
+      {toastErr && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center gap-2">
+          <XCircle className="w-4 h-4 flex-shrink-0" /> {toastErr}
+        </div>
+      )}
 
       {/* Pacchetti */}
       <div className="space-y-3">
@@ -94,6 +147,11 @@ const BuyCredits = () => {
           <Package className="w-5 h-5 text-orange-500" />
           {t('Pacchetti disponibili')}
         </h2>
+        {hasPending && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
+            {t('Hai una richiesta in attesa: gestiscila o annullala prima di inviarne un\'altra.')}
+          </div>
+        )}
 
         {loadingPackages ? (
           <div className="glass rounded-2xl p-8 flex items-center justify-center gap-2 text-slate-500">
@@ -112,7 +170,7 @@ const BuyCredits = () => {
               return (
                 <div
                   key={pkg.id}
-                  className={`relative text-left p-5 rounded-2xl border-2 ${
+                  className={`relative text-left p-5 rounded-2xl border-2 flex flex-col ${
                     isFeatured ? 'border-orange-300 bg-orange-50' : 'border-slate-200 bg-white'
                   }`}
                 >
@@ -130,6 +188,14 @@ const BuyCredits = () => {
                   {pkg.description && (
                     <p className="mt-2 text-xs text-slate-500">{pkg.description}</p>
                   )}
+                  <button
+                    onClick={() => request(pkg)}
+                    disabled={hasPending || submitting === pkg.id}
+                    className="btn btn-primary w-full mt-4 gap-2 disabled:opacity-50"
+                  >
+                    {submitting === pkg.id ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {t('Richiedi crediti')}
+                  </button>
                 </div>
               );
             })}
@@ -137,10 +203,40 @@ const BuyCredits = () => {
         )}
       </div>
 
+      {/* Le mie richieste */}
+      {requests.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="font-semibold text-slate-900">{t('Le mie richieste')}</h2>
+          <div className="space-y-2">
+            {requests.map((r) => {
+              const st = STATUS[r.status] || STATUS.pending;
+              const StIcon = st.icon;
+              return (
+                <div key={r.id} className="glass rounded-xl p-3 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-800 truncate">
+                      {r.package_name} · <span className="text-orange-600 font-bold">{r.package_credits?.toLocaleString('it-IT')}</span> {t('crediti')}
+                    </p>
+                  </div>
+                  <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md font-medium ${st.cls}`}>
+                    <StIcon className="w-3 h-3" /> {t(st.label)}
+                  </span>
+                  {r.status === 'pending' && (
+                    <button onClick={() => cancel(r.id)} className="btn btn-ghost text-xs text-slate-500 hover:bg-slate-100">
+                      {t('Annulla')}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Footer info */}
       <div className="text-center text-xs text-slate-400 flex items-center justify-center gap-1">
         <Info className="w-3 h-3" />
-        {t('I prezzi sono indicativi. L\'accredito dei crediti è effettuato dall\'amministratore.')}
+        {t('I crediti vengono accreditati dal referente al momento dell\'approvazione.')}
       </div>
     </div>
   );

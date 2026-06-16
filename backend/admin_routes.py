@@ -16,7 +16,7 @@ from database import get_db
 from auth import get_current_admin_user, get_effective_permissions
 from db_models import (
     User, Role, RolePermission, UserPermission, CreditTransaction, SystemSetting, APIKey,
-    CreditPackage
+    CreditPackage, CreditRequest
 )
 from credits import (
     add_credits, get_user_transactions, PERMISSION_CODES,
@@ -32,6 +32,7 @@ from models import (
     AdminCreateUserRequest, CreditCostsResponse, CreditCostsUpdateRequest,
     ExportTemplateListResponse, ExportTemplateUpdateRequest,
     CreditPackageResponse, CreditPackageListResponse, AdminCreditPackageRequest,
+    CreditRequestItem, CreditRequestListResponse, ResolveRequestRequest,
 )
 import config
 from template_service import (
@@ -1030,4 +1031,108 @@ async def admin_delete_package(
     db.delete(pkg)
     db.commit()
     return {"message": "Pacchetto eliminato", "id": package_id}
+
+
+# ============================================================================
+# RICHIESTE CREDITI — inbox admin (richieste dei distributori)
+# ============================================================================
+
+def _admin_req_item(cr: CreditRequest, db: Session) -> CreditRequestItem:
+    requester = cr.requester or db.query(User).filter(User.id == cr.requester_id).first()
+    return CreditRequestItem(
+        id=str(cr.id),
+        requester_id=str(cr.requester_id),
+        requester_username=requester.username if requester else None,
+        requester_email=requester.email if requester else None,
+        requester_entity_type=(requester.entity_type if requester else None),
+        approver_id=str(cr.approver_id) if cr.approver_id else None,
+        approver_is_admin=bool(cr.approver_is_admin),
+        package_id=cr.package_id,
+        package_name=cr.package_name,
+        package_credits=cr.package_credits,
+        package_price_cents=cr.package_price_cents,
+        package_price_eur=round(cr.package_price_cents / 100.0, 2),
+        status=cr.status,
+        note=cr.note,
+        created_at=cr.created_at,
+        resolved_at=cr.resolved_at,
+    )
+
+
+@router.get("/credit-requests", response_model=CreditRequestListResponse)
+async def admin_list_credit_requests(
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Richieste crediti pending indirizzate al pool admin (dei distributori)."""
+    rows = (
+        db.query(CreditRequest)
+        .filter(CreditRequest.approver_is_admin == True, CreditRequest.status == 'pending')  # noqa: E712
+        .order_by(CreditRequest.created_at.asc())
+        .all()
+    )
+    return CreditRequestListResponse(requests=[_admin_req_item(r, db) for r in rows], total=len(rows))
+
+
+@router.post("/credit-requests/{request_id}/approve", response_model=CreditRequestItem)
+async def admin_approve_credit_request(
+    request_id: str,
+    body: ResolveRequestRequest = ResolveRequestRequest(),
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Approva una richiesta admin: accredita i crediti (admin = crediti infiniti)."""
+    try:
+        cr = db.query(CreditRequest).filter(
+            CreditRequest.id == UUID(request_id),
+            CreditRequest.status == 'pending',
+        ).with_for_update().one_or_none()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="ID richiesta non valido")
+    if not cr or not cr.approver_is_admin:
+        raise HTTPException(status_code=409, detail="Richiesta non trovata o già gestita")
+
+    requester = db.query(User).filter(User.id == cr.requester_id).first()
+    if not requester:
+        raise HTTPException(status_code=404, detail="Richiedente non trovato")
+
+    cr.status = 'approved'
+    cr.resolver_id = admin_user.id
+    cr.resolved_at = datetime.utcnow()
+    cr.note = body.note
+    add_credits(
+        user=requester,
+        amount=cr.package_credits,
+        description=f"Approvazione richiesta crediti ({cr.package_name})",
+        db=db,
+        transaction_type='admin_adjustment',
+        admin_user=admin_user,
+    )
+    db.refresh(cr)
+    return _admin_req_item(cr, db)
+
+
+@router.post("/credit-requests/{request_id}/reject", response_model=CreditRequestItem)
+async def admin_reject_credit_request(
+    request_id: str,
+    body: ResolveRequestRequest = ResolveRequestRequest(),
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        cr = db.query(CreditRequest).filter(
+            CreditRequest.id == UUID(request_id),
+            CreditRequest.status == 'pending',
+        ).with_for_update().one_or_none()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="ID richiesta non valido")
+    if not cr or not cr.approver_is_admin:
+        raise HTTPException(status_code=409, detail="Richiesta non trovata o già gestita")
+    cr.status = 'rejected'
+    cr.resolver_id = admin_user.id
+    cr.resolved_at = datetime.utcnow()
+    cr.note = body.note
+    db.commit()
+    db.refresh(cr)
+    return _admin_req_item(cr, db)
 

@@ -1193,6 +1193,38 @@ export const assignCreditsToChild = async (userId, amount, description) => {
   return response.data;
 };
 
+// Richieste crediti — richiedente
+export const createCreditRequest = async (packageId) => {
+  const response = await api.post('/api/hierarchy/requests', { package_id: packageId });
+  return response.data;
+};
+
+export const getMyCreditRequests = async () => {
+  const response = await api.get('/api/hierarchy/requests/mine');
+  return response.data;
+};
+
+export const cancelCreditRequest = async (requestId) => {
+  const response = await api.post(`/api/hierarchy/requests/${requestId}/cancel`);
+  return response.data;
+};
+
+// Richieste crediti — referente (manager)
+export const getRequestsInbox = async () => {
+  const response = await api.get('/api/hierarchy/requests/inbox');
+  return response.data;
+};
+
+export const approveCreditRequest = async (requestId, note) => {
+  const response = await api.post(`/api/hierarchy/requests/${requestId}/approve`, { note });
+  return response.data;
+};
+
+export const rejectCreditRequest = async (requestId, note) => {
+  const response = await api.post(`/api/hierarchy/requests/${requestId}/reject`, { note });
+  return response.data;
+};
+
 // ============================================================================
 // PACCHETTI CREDITI — admin (CRUD listino)
 // ============================================================================
@@ -1214,6 +1246,22 @@ export const adminUpdateCreditPackage = async (packageId, payload) => {
 
 export const adminDeleteCreditPackage = async (packageId) => {
   const response = await api.delete(`/admin/credit-packages/${packageId}`);
+  return response.data;
+};
+
+// Richieste crediti — inbox admin (richieste dei distributori)
+export const getAdminCreditRequests = async () => {
+  const response = await api.get('/admin/credit-requests');
+  return response.data;
+};
+
+export const adminApproveCreditRequest = async (requestId, note) => {
+  const response = await api.post(`/admin/credit-requests/${requestId}/approve`, { note });
+  return response.data;
+};
+
+export const adminRejectCreditRequest = async (requestId, note) => {
+  const response = await api.post(`/admin/credit-requests/${requestId}/reject`, { note });
   return response.data;
 };
 
