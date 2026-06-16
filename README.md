@@ -222,8 +222,8 @@ npm run start                    # build + preview su :3000 (consigliato)
 | `SMTP_PORT` | Porta SMTP (587 = STARTTLS; OVH non usa la 465) | `587` |
 | `SMTP_USER` / `SMTP_PASSWORD` | Credenziali SMTP | `""` |
 | `SMTP_USE_SSL` | SSL diretto invece di STARTTLS | `false` |
-| `MAIL_FROM` / `MAIL_FROM_NAME` | Mittente delle email | `noreply@styleforge.ersaf.it` / `StyleForge` |
-| `FRONTEND_BASE_URL` | URL base del frontend per i link nelle email | `https://styleforge.ersaf.it` |
+| `MAIL_FROM` / `MAIL_FROM_NAME` | Mittente delle email | `noreply@styleforge.us` / `StyleForge` |
+| `FRONTEND_BASE_URL` | URL base del frontend per i link nelle email | `https://app.styleforge.us` |
 
 ### Variabili LLM Wiki (Knowledge Base per tesi)
 
