@@ -174,47 +174,6 @@ USD_TO_EUR_RATE = 0.88               # Tasso di cambio approssimativo
 OPENAI_O3_INPUT_PRICE_USD = 10.0     # $ per 1M input tokens
 OPENAI_O3_OUTPUT_PRICE_USD = 40.0    # $ per 1M output tokens
 
-# ============================================================================
-# PAGOPA / SOLUTIONPA — integrazione pagamenti per acquisto crediti
-# ============================================================================
-# Ente creditore = ERSAF, Partner Tecnologico = SolutionPA (Intesa Sanpaolo).
-# Test env (collaudo): https://solutionpa-coll.intesasanpaolo.com/...
-# Production:          https://solutionpa.intesasanpaolo.com/... (URL da confermare con SolutionPA)
-
-PAGOPA_TEST_MODE = os.getenv("PAGOPA_TEST_MODE", "true").lower() == "true"
-
-# WSDL del DataProvider (operazioni VERSO SolutionPA: pdpCaricaPagamentoInAttesa,
-# pdpAttivaRPT, pdpModificaPosizioneDebitoria, pdpEsitRT). Default = ambiente test.
-PAGOPA_WSDL_URL = os.getenv(
-    "PAGOPA_WSDL_URL",
-    "https://solutionpa-coll.intesasanpaolo.com/IntermediarioPAWebService/WEBSDataProviderInterface?wsdl",
-)
-
-# Credenziali Basic Auth verso SolutionPA (forniti da SolutionPA per ogni Ente)
-PAGOPA_USERNAME = os.getenv("PAGOPA_USERNAME", "")
-PAGOPA_PASSWORD = os.getenv("PAGOPA_PASSWORD", "")
-
-# Identificativi dell'Ente Creditore configurati in SolutionPA
-PAGOPA_DOMINIO = os.getenv("PAGOPA_DOMINIO", "")        # es. 80005570561 (codice fiscale ERSAF)
-PAGOPA_UB = os.getenv("PAGOPA_UB", "")                  # es. ERSAFQUOTATST (Unita' Beneficiaria)
-PAGOPA_COD_TRIBUTO = os.getenv("PAGOPA_COD_TRIBUTO", "") # es. ERSAFINCATST (codice servizio/tributo)
-
-# URL pubblico del frontend a cui pagoPA Checkout reindirizza l'utente al termine
-# del pagamento. Viene passato come callbackURL in pdpAttivaRPT.
-PAGOPA_RETURN_URL_BASE = os.getenv("PAGOPA_RETURN_URL_BASE", "https://styleforge.ersaf.it/payments/return")
-
-# Credenziali Basic Auth che SolutionPA usa per chiamare i nostri webhook
-# (esito push). Sono distinti dalle credenziali outbound.
-PAGOPA_NOTIFY_AUTH_USER = os.getenv("PAGOPA_NOTIFY_AUTH_USER", "")
-PAGOPA_NOTIFY_AUTH_PASS = os.getenv("PAGOPA_NOTIFY_AUTH_PASS", "")
-
-# TTL della posizione caricata (giorni). Lo standard PagoPA ammette tipicamente
-# fino a 90; impostiamo 60 per ridurre il numero di IUV scaduti che restano in DB.
-PAGOPA_POSITION_TTL_DAYS = int(os.getenv("PAGOPA_POSITION_TTL_DAYS", "60"))
-
-# Timeout HTTP (secondi) per le chiamate SOAP outbound.
-PAGOPA_SOAP_TIMEOUT = int(os.getenv("PAGOPA_SOAP_TIMEOUT", "30"))
-
 # Versione API
 API_VERSION = "1.0.0"
 API_TITLE = "StyleForge API"

@@ -1152,11 +1152,11 @@ export const revokeApiKey = async (keyId) => {
 };
 
 // ============================================================================
-// PAGOPA — UTENTE: pacchetti, avvio pagamento, storico
+// PACCHETTI CREDITI — listino utente (vetrina)
 // ============================================================================
 
 export const listCreditPackages = async () => {
-  const response = await api.get('/api/payments/packages');
+  const response = await api.get('/api/packages');
   return response.data;
 };
 
@@ -1169,56 +1169,9 @@ export const getMyResellers = async () => {
   return response.data;
 };
 
-export const getResellerPayments = async (resellerId, limit = 50, offset = 0) => {
-  const response = await api.get(`/api/distributor/resellers/${resellerId}/payments`, {
-    params: { limit, offset }
-  });
-  return response.data;
-};
-
-export const initiatePayment = async (payload) => {
-  const response = await api.post('/api/payments/initiate', payload);
-  return response.data;
-};
-
-export const getPayment = async (orderId) => {
-  const response = await api.get(`/api/payments/${orderId}`);
-  return response.data;
-};
-
-export const getUserPaymentHistory = async (limit = 50, offset = 0) => {
-  const response = await api.get('/api/payments/history', { params: { limit, offset } });
-  return response.data;
-};
-
 // ============================================================================
-// PAGOPA — ADMIN: ordini, pacchetti, configurazione, riconciliazione
+// PACCHETTI CREDITI — admin (CRUD listino)
 // ============================================================================
-
-export const adminListPayments = async (filters = {}) => {
-  const response = await api.get('/admin/payments', { params: filters });
-  return response.data;
-};
-
-export const adminPaymentStats = async () => {
-  const response = await api.get('/admin/payments/stats');
-  return response.data;
-};
-
-export const adminGetPayment = async (orderId) => {
-  const response = await api.get(`/admin/payments/${orderId}`);
-  return response.data;
-};
-
-export const adminCancelPayment = async (orderId) => {
-  const response = await api.post(`/admin/payments/${orderId}/cancel`);
-  return response.data;
-};
-
-export const adminRefundCredits = async (orderId, description) => {
-  const response = await api.post(`/admin/payments/${orderId}/refund-credits`, { description });
-  return response.data;
-};
 
 export const adminListCreditPackages = async () => {
   const response = await api.get('/admin/credit-packages');
@@ -1237,26 +1190,6 @@ export const adminUpdateCreditPackage = async (packageId, payload) => {
 
 export const adminDeleteCreditPackage = async (packageId) => {
   const response = await api.delete(`/admin/credit-packages/${packageId}`);
-  return response.data;
-};
-
-export const adminGetPagopaConfig = async () => {
-  const response = await api.get('/admin/pagopa/config');
-  return response.data;
-};
-
-export const adminUpdatePagopaConfig = async (payload) => {
-  const response = await api.put('/admin/pagopa/config', payload);
-  return response.data;
-};
-
-export const adminUploadEstrcc = async (file) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await api.post('/admin/pagopa/reconcile/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 60000,
-  });
   return response.data;
 };
 

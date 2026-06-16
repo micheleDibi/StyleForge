@@ -7,7 +7,7 @@ import {
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
   Settings, UserPlus, RotateCcw,
   AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image,
-  CreditCard, Mail, Calendar, Power, Globe, BookOpen, Brain, Wand2
+  Mail, Calendar, Power, Globe, BookOpen, Brain, Wand2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -21,7 +21,6 @@ import {
   createApiKey, getApiKeys, revokeApiKey
 } from '../services/api';
 import Logo from '../components/Logo';
-import AdminPaymentsSection from '../components/admin/AdminPaymentsSection';
 import AdminLanguagesSection from '../components/admin/AdminLanguagesSection';
 import AdminListiniSection from '../components/admin/AdminListiniSection';
 
@@ -658,7 +657,6 @@ const Admin = () => {
     { id: 'listini', label: t('Listini'), icon: Tag },
     { id: 'templates', label: t('Template Export'), icon: FileText },
     { id: 'api-keys', label: t('API Keys'), icon: Key },
-    { id: 'payments', label: t('Pagamenti PagoPA'), icon: CreditCard },
     { id: 'languages', label: t('Lingue'), icon: Globe }
   ];
 
@@ -1831,10 +1829,6 @@ const Admin = () => {
               <AdminListiniSection />
             )}
 
-            {/* ===================== TAB PAGAMENTI PAGOPA ===================== */}
-            {activeTab === 'payments' && (
-              <AdminPaymentsSection />
-            )}
             {activeTab === 'languages' && (
               <AdminLanguagesSection />
             )}

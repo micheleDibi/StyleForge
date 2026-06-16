@@ -1087,7 +1087,7 @@ class ExternalJobStatusResponse(BaseModel):
 
 
 # ============================================================================
-# PAGOPA / SOLUTIONPA — pagamenti per acquisto crediti
+# PACCHETTI CREDITI — listino (CRUD admin) + dashboard distributore
 # ============================================================================
 
 class CreditPackageResponse(BaseModel):
@@ -1120,59 +1120,6 @@ class AdminCreditPackageRequest(BaseModel):
     entity_type: str = Field('privato', description="Sottotipo destinatario: distributore|rivenditore|privato")
 
 
-class InitiatePaymentRequest(BaseModel):
-    """Avvio pagamento PagoPA: l'utente sceglie un pacchetto e fornisce i dati pagatore."""
-    package_id: int = Field(..., description="ID del pacchetto crediti scelto")
-    codice_fiscale: str = Field(..., min_length=11, max_length=16, description="CF persona fisica (16) o P.IVA (11)")
-    partita_iva: Optional[str] = Field(None, max_length=11)
-    ragione_sociale: Optional[str] = Field(None, max_length=255)
-    payer_email: Optional[str] = Field(None, description="Email pagatore (default: email utente)")
-    save_to_profile: bool = Field(False, description="Salva i dati anagrafici sul profilo per i prossimi acquisti")
-
-
-class InitiatePaymentResponse(BaseModel):
-    """Esito avvio pagamento: include URL Checkout dove redirigere il browser."""
-    order_id: str
-    iuv: str
-    checkout_url: str
-    amount_cents: int
-    credits: int
-    expires_at: datetime
-
-
-class PaymentOrderResponse(BaseModel):
-    """Dettaglio ordine di pagamento."""
-    id: str
-    user_id: str
-    package_id: Optional[int] = None
-    credits: int
-    amount_cents: int
-    amount_eur: float
-    causale: str
-    iuv: Optional[str] = None
-    context_id: Optional[str] = None
-    checkout_url: Optional[str] = None
-    payer_codice_fiscale: str
-    payer_partita_iva: Optional[str] = None
-    payer_ragione_sociale: Optional[str] = None
-    payer_email: Optional[str] = None
-    status: str
-    notify_received_at: Optional[datetime] = None
-    amount_paid_cents: Optional[int] = None
-    amount_paid_eur: Optional[float] = None
-    paid_at: Optional[datetime] = None
-    reconciliation_id: Optional[str] = None
-    identificativo_flusso: Optional[str] = None
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-    expires_at: datetime
-    credits_granted_at: Optional[datetime] = None
-
-
-class PaymentOrderListResponse(BaseModel):
-    orders: List[PaymentOrderResponse]
-    total: int
-
 
 class DistributorResellerItem(BaseModel):
     """Riga riepilogo di un rivenditore nella dashboard distributore (sola lettura)."""
@@ -1181,91 +1128,11 @@ class DistributorResellerItem(BaseModel):
     full_name: Optional[str] = None
     email: str
     credits: int
-    total_spent_eur: float
-    purchase_count: int
 
 
 class DistributorResellerListResponse(BaseModel):
     resellers: List[DistributorResellerItem]
     total: int
-
-
-class AdminPaymentListItem(BaseModel):
-    """Ordine sintetico per la tabella admin (con username/email del pagatore)."""
-    id: str
-    user_id: str
-    user_email: Optional[str] = None
-    user_username: Optional[str] = None
-    package_id: Optional[int] = None
-    credits: int
-    amount_cents: int
-    amount_eur: float
-    iuv: Optional[str] = None
-    payer_codice_fiscale: str
-    payer_ragione_sociale: Optional[str] = None
-    status: str
-    paid_at: Optional[datetime] = None
-    created_at: datetime
-    expires_at: datetime
-
-
-class AdminPaymentListResponse(BaseModel):
-    orders: List[AdminPaymentListItem]
-    total: int
-
-
-class AdminPaymentDailyPoint(BaseModel):
-    date: str           # YYYY-MM-DD
-    revenue_cents: int
-    count: int
-
-
-class AdminPaymentStatsResponse(BaseModel):
-    """KPI cruscotto pagamenti."""
-    revenue_cents_total: int
-    revenue_cents_month: int
-    count_total: int
-    count_month: int
-    count_by_status: Dict[str, int]
-    success_rate: float  # 0..1
-    daily: List[AdminPaymentDailyPoint]
-
-
-class AdminCancelPaymentResponse(BaseModel):
-    order_id: str
-    status: str
-    message: str
-
-
-class AdminRefundCreditsRequest(BaseModel):
-    description: str = Field(..., min_length=1, description="Motivazione del rimborso interno")
-
-
-class AdminPagopaConfigResponse(BaseModel):
-    """Configurazione PagoPA visibile all'admin (credenziali mascherate)."""
-    test_mode: bool
-    wsdl_url: str
-    dominio: str
-    ub: str
-    cod_tributo: str
-    username_masked: Optional[str] = None
-    password_set: bool
-    return_url_base: Optional[str] = None
-    notify_username_set: bool
-    notify_password_set: bool
-
-
-class AdminPagopaConfigUpdateRequest(BaseModel):
-    """Patch della configurazione PagoPA. Solo i campi specificati vengono aggiornati."""
-    test_mode: Optional[bool] = None
-
-
-class AdminEstrccUploadResponse(BaseModel):
-    parsed: int
-    matched: int
-    unmatched: int
-    discrepancies: int
-    items: List[Dict[str, Any]]
 
 
 # ============================================================================

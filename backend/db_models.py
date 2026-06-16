@@ -82,7 +82,6 @@ class User(Base):
     user_permissions = relationship("UserPermission", back_populates="user", cascade="all, delete-orphan")
     credit_transactions = relationship("CreditTransaction", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
-    payment_orders = relationship("PaymentOrder", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"
@@ -827,11 +826,11 @@ class SystemSetting(Base):
 
 
 # ============================================================================
-# PAGOPA / SOLUTIONPA: pacchetti, ordini, audit log
+# PACCHETTI CREDITI (listino, editabile dall'admin)
 # ============================================================================
 
 class CreditPackage(Base):
-    """Pacchetto di crediti acquistabile via PagoPA. Editabile dall'admin."""
+    """Pacchetto di crediti del listino. Editabile dall'admin."""
     __tablename__ = "credit_packages"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -862,127 +861,6 @@ class CreditPackage(Base):
             "entity_type": self.entity_type,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-        }
-
-
-class PaymentOrder(Base):
-    """Ordine di pagamento PagoPA. Tracciato dalla creazione al completamento (o cancel/expired)."""
-    __tablename__ = "payment_orders"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    package_id = Column(Integer, ForeignKey("credit_packages.id", ondelete="SET NULL"), nullable=True)
-
-    # Snapshot del taglio scelto (immutabile dopo creazione ordine)
-    credits = Column(Integer, nullable=False)
-    amount_cents = Column(Integer, nullable=False)
-    causale = Column(String(140), nullable=False)
-
-    # Identificativi PagoPA
-    iuv = Column(String(35), unique=True, nullable=True)
-    context_id = Column(String(35), nullable=True)
-    checkout_url = Column(Text, nullable=True)
-
-    # Snapshot dati pagatore
-    payer_codice_fiscale = Column(String(16), nullable=False)
-    payer_partita_iva = Column(String(11), nullable=True)
-    payer_ragione_sociale = Column(String(255), nullable=True)
-    payer_email = Column(String(255), nullable=True)
-
-    # Stato workflow: PENDING | AWAITING_PAYMENT | PAID | FAILED | CANCELED | EXPIRED | REFUNDED
-    status = Column(String(30), default='PENDING', nullable=False)
-
-    # Notifica esito (push)
-    notify_received_at = Column(DateTime, nullable=True)
-    notify_payload = Column(JSONB, nullable=True)
-    amount_paid_cents = Column(Integer, nullable=True)
-    paid_at = Column(DateTime, nullable=True)
-
-    # Riconciliazione
-    reconciliation_id = Column(String(100), nullable=True)
-    identificativo_flusso = Column(String(100), nullable=True)
-
-    # Audit
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=False)
-
-    # Tracciamento accredito crediti
-    credits_granted_at = Column(DateTime, nullable=True)
-    credits_transaction_id = Column(UUID(as_uuid=True), ForeignKey("credit_transactions.id", ondelete="SET NULL"), nullable=True)
-
-    # Relazioni
-    user = relationship("User", back_populates="payment_orders")
-    package = relationship("CreditPackage")
-    credits_transaction = relationship("CreditTransaction", foreign_keys=[credits_transaction_id])
-
-    def __repr__(self):
-        return f"<PaymentOrder(id={self.id}, status={self.status}, iuv={self.iuv}, amount={self.amount_cents}c)>"
-
-    def to_dict(self) -> dict:
-        return {
-            "id": str(self.id),
-            "user_id": str(self.user_id),
-            "package_id": self.package_id,
-            "credits": self.credits,
-            "amount_cents": self.amount_cents,
-            "amount_eur": round(self.amount_cents / 100.0, 2),
-            "causale": self.causale,
-            "iuv": self.iuv,
-            "context_id": self.context_id,
-            "checkout_url": self.checkout_url,
-            "payer_codice_fiscale": self.payer_codice_fiscale,
-            "payer_partita_iva": self.payer_partita_iva,
-            "payer_ragione_sociale": self.payer_ragione_sociale,
-            "payer_email": self.payer_email,
-            "status": self.status,
-            "notify_received_at": self.notify_received_at,
-            "amount_paid_cents": self.amount_paid_cents,
-            "amount_paid_eur": round(self.amount_paid_cents / 100.0, 2) if self.amount_paid_cents else None,
-            "paid_at": self.paid_at,
-            "reconciliation_id": self.reconciliation_id,
-            "identificativo_flusso": self.identificativo_flusso,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-            "expires_at": self.expires_at,
-            "credits_granted_at": self.credits_granted_at,
-            "credits_transaction_id": str(self.credits_transaction_id) if self.credits_transaction_id else None,
-        }
-
-
-class PagoPAEvent(Base):
-    """Audit log degli eventi PagoPA: push esito, RPT, riconciliazioni."""
-    __tablename__ = "pagopa_events"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    order_id = Column(UUID(as_uuid=True), ForeignKey("payment_orders.id", ondelete="SET NULL"), nullable=True)
-    iuv = Column(String(35), nullable=True)
-
-    # ESITO_PUSH | RECONCILIATION_FILE | RPT_ACTIVATED | POSITION_LOADED | POSITION_CANCELED
-    event_type = Column(String(30), nullable=False)
-    # soap | rest | sftp | manual | system
-    source = Column(String(20), nullable=False)
-
-    payload = Column(JSONB, nullable=False)
-    processed = Column(Boolean, default=False, nullable=False)
-    error = Column(Text, nullable=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    def __repr__(self):
-        return f"<PagoPAEvent(type={self.event_type}, iuv={self.iuv}, source={self.source})>"
-
-    def to_dict(self) -> dict:
-        return {
-            "id": str(self.id),
-            "order_id": str(self.order_id) if self.order_id else None,
-            "iuv": self.iuv,
-            "event_type": self.event_type,
-            "source": self.source,
-            "payload": self.payload,
-            "processed": bool(self.processed),
-            "error": self.error,
-            "created_at": self.created_at,
         }
 
 

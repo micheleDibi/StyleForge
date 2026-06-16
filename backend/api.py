@@ -42,8 +42,7 @@ from admin_routes import router as admin_router
 from external_api_routes import router as external_api_router
 from video_routes import router as video_router
 from research_routes import router as research_router
-from pagopa_routes import router as pagopa_router
-from pagopa_webhooks import router as pagopa_webhook_router
+from packages_routes import router as packages_router
 from distributor_routes import router as distributor_router
 from i18n_routes import public_router as i18n_public_router, admin_router as i18n_admin_router
 from db_models import User
@@ -102,9 +101,8 @@ app.include_router(video_router)
 # Registra router ricerca accademica
 app.include_router(research_router)
 
-# Registra router PagoPA (acquisto crediti utente + webhook esito da SolutionPA)
-app.include_router(pagopa_router)
-app.include_router(pagopa_webhook_router)
+# Registra router listino pacchetti crediti (vetrina utente)
+app.include_router(packages_router)
 
 # Registra router dashboard distributore (sola lettura sui propri rivenditori)
 app.include_router(distributor_router)

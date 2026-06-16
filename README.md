@@ -42,14 +42,13 @@ Assistente AI integrato sempre disponibile in ogni pagina. Conosce tutte le funz
 - Parametro EUR/credito
 - Template di esportazione PDF (header/footer/copertina personalizzabili)
 - API key management
-- **Pagamenti PagoPA** — dashboard completa: KPI revenue, ordini con filtri, CRUD pacchetti crediti, configurazione SolutionPA, riconciliazione estrcc
-- Statistiche di utilizzo
+- **Listini** — gestione dei pacchetti crediti (CRUD) e del tasso EUR/credito
 
 ### Sistema crediti
 Ogni operazione ha un costo configurabile. Stima crediti in tempo reale prima dell'azione, costo API in EUR (solo admin), storico transazioni completo. Le tesi si pagano **per step** del wizard (capitoli, sezioni, generazione contenuto, più l'eventuale analisi documenti/paper della Knowledge Base): ogni step ha una **quota fissa + uno scaling** sulla dimensione (caratteri degli allegati, numero di capitoli/sezioni, parole target). Si paga solo per gli step effettivamente eseguiti e gli step falliti o annullati vengono rimborsati automaticamente. Anche la ricerca accademica (ricerca, riassunto, suggerimento keyword) è misurata. Tutti i valori sono modificabili dall'admin a runtime.
 
-### Acquisto crediti via PagoPA
-Integrazione con SolutionPA (Intesa Sanpaolo) come Partner Tecnologico per ERSAF. Modello 1 (Checkout online): pacchetti predefiniti, redirect a Checkout pagoPA, webhook idempotente per accreditare i crediti all'esito EXECUTED.
+### Acquisto crediti
+I pacchetti crediti sono mostrati agli utenti come **listino** (pagina "Acquista Crediti", sola lettura). Non è integrato un pagamento online: l'accredito dei crediti viene effettuato manualmente dall'amministratore. Pacchetti e tasso EUR/credito si gestiscono dalla scheda admin **Listini**.
 
 ---
 
@@ -61,7 +60,6 @@ Integrazione con SolutionPA (Intesa Sanpaolo) come Partner Tecnologico per ERSAF
 | **AI** | Anthropic Claude Opus 4.8 (training, generate, humanize e **tesi di default**; provider OpenAI o3 selezionabile per le tesi via `THESIS_AI_PROVIDER=openai`), Claude Haiku 4.5 (Calcifer) |
 | **Frontend** | React 19, Vite 7, Tailwind CSS 4, React Router 7, Axios |
 | **Auth** | JWT (access 30min + refresh 7gg), ruoli e permessi |
-| **Pagamenti** | PagoPA via SolutionPA (zeep SOAP + webhook REST/SOAP) |
 | **NLP** | spaCy (`it_core_news_sm`) per algoritmo anti-AI |
 | **PDF** | PyMuPDF per export e report Detector AI |
 
@@ -100,10 +98,8 @@ StyleForge/
 │   ├── compilatio_service.py         Detector AI (Compilatio) + report PDF custom
 │   ├── video_routes.py / minimax_service.py   Image-to-video (MiniMax, admin)
 │   ├── template_service.py          CRUD template export + applicazione a PDF/DOCX
-│   ├── pagopa_client.py              SOAP client SolutionPA (zeep)
-│   ├── pagopa_routes.py              Endpoint utente /api/payments/*
-│   ├── pagopa_webhooks.py            Push esito (REST registerPayment)
-│   ├── admin_routes.py               Pannello admin (utenti, costi, pagamenti...)
+│   ├── packages_routes.py           Listino pacchetti crediti (vetrina utente)
+│   ├── admin_routes.py               Pannello admin (utenti, costi, listini...)
 │   ├── distributor_routes.py         Dashboard distributore (sola lettura)
 │   ├── i18n_routes.py               Multi-lingua (i18n), traduzioni AI admin-only
 │   ├── session_manager.py            Sessioni Claude isolate, thread-safe
@@ -135,19 +131,6 @@ Client → POST /train|/generate|/humanize
    → background task → ClaudeClient → Anthropic API
    → polling GET /jobs/{job_id} fino a status=completed
    → GET /results/{job_id} per scaricare il risultato
-```
-
-### Flusso PagoPA
-
-```
-Utente → /credits/buy → POST /api/payments/initiate
-   → pdpCaricaPagamentoInAttesa (SOAP) → IUV
-   → pdpAttivaRPT (SOAP) → checkout_url
-   → redirect Checkout pagoPA → utente paga
-   → SolutionPA push: POST /api/pagopa/esito (Basic Auth, idempotente)
-       → SELECT FOR UPDATE su payment_orders
-       → status=PAID, add_credits(transaction_type='pagopa_purchase')
-   → /payments/return polling → UI mostra "+N crediti accreditati"
 ```
 
 ---
@@ -250,21 +233,6 @@ npm run start                    # build + preview su :3000 (consigliato)
 | `WIKI_MAX_SOURCES` | Max fonti raw per tesi (limita il costo dell'ingest) | `15` |
 | `WIKI_INGEST_TIMEOUT_SEC` | Timeout duro del job di ingest (oltre → `failed`) | `900` |
 | `WIKI_INGEST_BATCH_SIZE` | Fonti per turno dell'SDK durante l'ingest | `5` |
-
-### Variabili PagoPA / SolutionPA
-
-| Variabile | Descrizione |
-|---|---|
-| `PAGOPA_TEST_MODE` | `true` per ambiente di collaudo |
-| `PAGOPA_WSDL_URL` | URL WSDL DataProvider |
-| `PAGOPA_USERNAME` / `PAGOPA_PASSWORD` | Credenziali SOAP outbound (verso SolutionPA) |
-| `PAGOPA_DOMINIO` | Codice fiscale ente (es. `80005570561` per ERSAF) |
-| `PAGOPA_UB` | Unità Business (es. `ERSAFQUOTATST`) |
-| `PAGOPA_COD_TRIBUTO` | Codice tributo (es. `ERSAFINCATST`) |
-| `PAGOPA_RETURN_URL_BASE` | URL base per redirect post-checkout |
-| `PAGOPA_NOTIFY_AUTH_USER` / `PAGOPA_NOTIFY_AUTH_PASS` | Basic Auth inbound (SolutionPA → nostro webhook) |
-| `PAGOPA_POSITION_TTL_DAYS` | TTL posizioni di pagamento (default 60) |
-| `PAGOPA_SOAP_TIMEOUT` | Timeout SOAP secondi (default 30) |
 
 ### Variabili frontend (`.env`)
 
@@ -536,10 +504,9 @@ La parafrasi ricorsiva aggiunge ~2 chiamate AI per sezione (è il motivo per cui
 
 - **JWT** con access token (30 min) + refresh token (7 gg)
 - **Verifica email obbligatoria**: registrazione con token monouso (hash SHA-256 in `email_tokens`); login e refresh sono bloccati finché l'email non è confermata
-- **Ruoli e permessi granulari** (admin/utente/custom): `train`, `generate`, `humanize`, `thesis`, `manage_templates`, `compilatio_scan`, `compilatio_scan_thesis`, `pagopa_admin`
+- **Ruoli e permessi granulari** (admin/utente/custom): `train`, `generate`, `humanize`, `thesis`, `manage_templates`, `compilatio_scan`, `compilatio_scan_thesis`
 - **Calcifer anti prompt injection**: sanitizzazione input, system prompt blindato, conversazioni isolate per utente
 - **API key SHA-256**: la chiave completa non viene mai salvata, solo l'hash
-- **Webhook PagoPA**: Basic Auth dedicata (`PAGOPA_NOTIFY_AUTH_*`), idempotente con `SELECT FOR UPDATE` per race-safety
 - **Rate limiting** per utente/chiave
 - **CORS** configurabile per ambiente
 - **Validazione input** Pydantic + sanitizzazione path file
@@ -571,15 +538,6 @@ sudo systemctl restart styleforge-backend
 ```bash
 lsof -ti:8000 | xargs kill -9
 ```
-
-### Migration PagoPA fallisce con `null value in column "is_active"`
-La tabella `credit_packages` esisteva da un tentativo precedente senza i `DEFAULT`. La migration `20_pagopa_payments.sql` è ora self-healing: rieseguila e correggerà i default mancanti automaticamente.
-
-### Webhook PagoPA non accredita i crediti
-1. Verifica nei log che SolutionPA stia chiamando `POST /api/pagopa/esito` (cerca `Basic Auth` 401 in nginx access log)
-2. Coordinati con SolutionPA per le credenziali Basic Auth (`PAGOPA_NOTIFY_AUTH_*`)
-3. Controlla `pagopa_events` table: ogni push lascia traccia anche se l'ordine non è trovato
-4. Test idempotenza: re-delivery dello stesso IUV non deve doppiare l'accredito
 
 ### Detector AI rileva colori invertiti
 Risolto nel commit `fd2db70`: Compilatio invia `types: [...]` (array) per i POI, il parser ora controlla `types` / `type` / `category` / `kind` con priorità AI > similarity > quotation.
