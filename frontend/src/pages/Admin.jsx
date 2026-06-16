@@ -104,7 +104,8 @@ const Admin = () => {
   const [resendingUser, setResendingUser] = useState(null);
   const [newUser, setNewUser] = useState({
     email: '', username: '', full_name: '',
-    role_id: '', credits: 0, is_active: true
+    role_id: '', credits: 0, is_active: true,
+    entity_type: 'privato', parent_id: ''
   });
 
   // Settings state
@@ -115,8 +116,10 @@ const Admin = () => {
   const [costsError, setCostsError] = useState('');
   const [costsSuccess, setCostsSuccess] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  // Elenco distributori (per assegnare il distributore di riferimento ai rivenditori)
+  // Elenchi per il selettore del referente (genitore nell'albero):
+  // i rivenditori scelgono tra i distributori; i privati tra rivenditori + distributori.
   const [distributori, setDistributori] = useState([]);
+  const [rivenditori, setRivenditori] = useState([]);
 
   // Template state
   const [templates, setTemplates] = useState([]);
@@ -151,12 +154,16 @@ const Admin = () => {
     }
   }, []);
 
-  // Elenco distributori per il selettore "Distributore di riferimento".
-  // Va ricaricato ogni volta che un utente viene promosso/declassato a distributore.
-  const loadDistributori = async () => {
+  // Elenchi per i selettori del referente. Vanno ricaricati ogni volta che un
+  // utente viene promosso/declassato (cambia chi è selezionabile come genitore).
+  const loadParentOptions = async () => {
     try {
-      const d = await getAdminUsers(null, null, null, 'distributore');
+      const [d, r] = await Promise.all([
+        getAdminUsers(null, null, null, 'distributore'),
+        getAdminUsers(null, null, null, 'rivenditore'),
+      ]);
       setDistributori(d.users || []);
+      setRivenditori(r.users || []);
     } catch {
       /* ignora: il selettore mostrerà solo "— nessuno —" */
     }
@@ -168,7 +175,7 @@ const Admin = () => {
       if (activeTab === 'users') {
         const data = await getAdminUsers(searchTerm || null);
         setUsers(data.users);
-        loadDistributori();
+        loadParentOptions();
       } else if (activeTab === 'roles') {
         const data = await getAdminRoles();
         setRoles(data.roles);
@@ -227,19 +234,19 @@ const Admin = () => {
     // Aggiornamento ottimistico: il campo "Distributore di riferimento" compare
     // subito quando si sceglie "rivenditore", senza attendere il round-trip.
     setUsers(prev => prev.map(u => u.id === userId
-      ? { ...u, entity_type: entityType, distributor_id: entityType === 'rivenditore' ? u.distributor_id : null }
+      ? { ...u, entity_type: entityType, parent_id: entityType === 'distributore' ? null : u.parent_id }
       : u));
     try {
       const updated = await updateAdminUser(userId, { entity_type: entityType });
       setUsers(prev => prev.map(u => u.id === userId ? updated : u));
       // Promuovere/declassare un distributore cambia l'elenco selezionabile.
-      loadDistributori();
+      loadParentOptions();
     } catch (error) {
       console.error('Errore cambio tipo ente:', error);
       // Rollback dallo stato server in caso di errore.
       const data = await getAdminUsers(searchTerm || null).catch(() => null);
       if (data) setUsers(data.users);
-      loadDistributori();
+      loadParentOptions();
     }
   };
 
@@ -254,13 +261,14 @@ const Admin = () => {
     }
   };
 
-  const handleDistributorChange = async (userId, distributorId) => {
+  const handleParentChange = async (userId, parentId) => {
     try {
-      // '' = azzera il distributore di riferimento
-      const updated = await updateAdminUser(userId, { distributor_id: distributorId });
+      // '' = azzera il referente
+      const updated = await updateAdminUser(userId, { parent_id: parentId });
       setUsers(prev => prev.map(u => u.id === userId ? updated : u));
     } catch (error) {
-      console.error('Errore assegnazione distributore:', error);
+      console.error('Errore assegnazione referente:', error);
+      alert(error?.response?.data?.detail || 'Errore assegnazione referente');
     }
   };
 
@@ -331,8 +339,9 @@ const Admin = () => {
       await adminCreateUser(userData);
 
       // Reset form e aggiorna lista
-      setNewUser({ email: '', username: '', full_name: '', role_id: '', credits: 0, is_active: true });
+      setNewUser({ email: '', username: '', full_name: '', role_id: '', credits: 0, is_active: true, entity_type: 'privato', parent_id: '' });
       setShowCreateForm(false);
+      loadParentOptions();
       const data = await getAdminUsers(searchTerm || null);
       setUsers(data.users);
     } catch (error) {
@@ -756,7 +765,7 @@ const Admin = () => {
                       {t('Cerca')}
                     </button>
                     <button
-                      onClick={() => { setShowCreateForm(!showCreateForm); setCreateError(''); }}
+                      onClick={() => { setShowCreateForm(!showCreateForm); setCreateError(''); loadParentOptions(); }}
                       className={`btn ${showCreateForm ? 'btn-ghost' : 'btn-primary'}`}
                     >
                       {showCreateForm ? (
@@ -845,6 +854,41 @@ const Admin = () => {
                       </div>
                     </div>
 
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Tipo utente')}</label>
+                        <select
+                          className="input w-full"
+                          value={newUser.entity_type}
+                          onChange={(e) => setNewUser(prev => ({ ...prev, entity_type: e.target.value, parent_id: '' }))}
+                        >
+                          <option value="distributore">{t('Distributore')}</option>
+                          <option value="rivenditore">{t('Rivenditore')}</option>
+                          <option value="privato">{t('Privato')}</option>
+                        </select>
+                      </div>
+                      {(newUser.entity_type === 'rivenditore' || newUser.entity_type === 'privato') && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            {newUser.entity_type === 'rivenditore' ? t('Distributore di riferimento') : t('Referente (rivenditore o distributore)')}
+                          </label>
+                          <select
+                            className="input w-full"
+                            value={newUser.parent_id}
+                            onChange={(e) => setNewUser(prev => ({ ...prev, parent_id: e.target.value }))}
+                          >
+                            <option value="">{t('— nessuno —')}</option>
+                            {(newUser.entity_type === 'rivenditore' ? distributori : [...distributori, ...rivenditori]).map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {(p.full_name || p.username)}
+                                {p.entity_type ? ` · ${ENTITY_TYPE_LABELS[p.entity_type] ? t(ENTITY_TYPE_LABELS[p.entity_type]) : p.entity_type}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="flex items-center gap-4 mt-4">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -892,7 +936,7 @@ const Admin = () => {
                           if (willExpand) {
                             if (!transactions[u.id]) handleLoadTransactions(u.id);
                             // Lista distributori sempre fresca quando si apre una card
-                            loadDistributori();
+                            loadParentOptions();
                           }
                         }}
                       >
@@ -1020,19 +1064,26 @@ const Admin = () => {
                                     </select>
                                   </div>
                                 )}
-                                {u.role_name !== 'admin' && u.entity_type === 'rivenditore' && (
+                                {u.role_name !== 'admin' && (u.entity_type === 'rivenditore' || u.entity_type === 'privato') && (
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('Distributore di riferimento')}</label>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                                      {u.entity_type === 'rivenditore' ? t('Distributore di riferimento') : t('Referente (rivenditore o distributore)')}
+                                    </label>
                                     <select
                                       className="input w-full py-1.5 text-sm"
-                                      value={u.distributor_id || ''}
-                                      onChange={(e) => handleDistributorChange(u.id, e.target.value)}
-                                      title={t('Distributore di riferimento del rivenditore')}
+                                      value={u.parent_id || ''}
+                                      onChange={(e) => handleParentChange(u.id, e.target.value)}
+                                      title={t('Referente del quale fa parte questo utente')}
                                     >
                                       <option value="">{t('— nessuno —')}</option>
-                                      {distributori.map((d) => (
-                                        <option key={d.id} value={d.id}>{d.full_name || d.username}</option>
-                                      ))}
+                                      {(u.entity_type === 'rivenditore' ? distributori : [...distributori, ...rivenditori])
+                                        .filter((p) => p.id !== u.id)
+                                        .map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {(p.full_name || p.username)}
+                                            {p.entity_type ? ` · ${ENTITY_TYPE_LABELS[p.entity_type] ? t(ENTITY_TYPE_LABELS[p.entity_type]) : p.entity_type}` : ''}
+                                          </option>
+                                        ))}
                                     </select>
                                   </div>
                                 )}
