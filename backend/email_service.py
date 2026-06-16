@@ -32,6 +32,7 @@ PURPOSE_TTL = {
     "verify": timedelta(hours=24),
     "set_password": timedelta(hours=72),
     "reset": timedelta(hours=1),
+    "move_invite": timedelta(hours=72),
 }
 
 # Path frontend per ogni scopo (per costruire il link)
@@ -39,7 +40,13 @@ PURPOSE_PATH = {
     "verify": "/verify-email",
     "set_password": "/set-password",
     "reset": "/reset-password",
+    "move_invite": "/move-invite",
 }
+
+
+def hash_token(raw: str) -> str:
+    """Hash SHA-256 di un token grezzo (riusabile da altri moduli, es. inviti spostamento)."""
+    return _hash_token(raw)
 
 
 # ============================================================================
@@ -208,3 +215,18 @@ def send_reset_email(to_addr: str, full_name: str, link: str) -> None:
         footer="Il link è valido per 1 ora. Se non hai richiesto tu il reset, ignora questa email: la password non verrà cambiata.",
     )
     _send_email(to_addr, "Reimposta la tua password — StyleForge", text, html)
+
+
+def send_move_invite_email(to_addr: str, full_name: str, inviter_name: str, link: str) -> None:
+    """Invito a spostarsi sotto un nuovo referente (rivenditore/distributore)."""
+    name = full_name or "ciao"
+    inviter = inviter_name or "un referente"
+    text, html = _layout(
+        title="Invito ad associarti a un nuovo referente",
+        intro=f"{name}, {inviter} ti ha invitato ad associare il tuo account StyleForge "
+              "sotto la propria gestione. Apri la pagina per accettare o rifiutare l'invito.",
+        button_label="Gestisci invito",
+        link=link,
+        footer="Il link è valido per 72 ore. Se non ti aspettavi questo invito, ignora questa email: nulla verrà modificato.",
+    )
+    _send_email(to_addr, "Hai ricevuto un invito su StyleForge", text, html)

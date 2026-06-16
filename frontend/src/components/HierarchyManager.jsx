@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Users, Loader, Coins, Store, Plus, UserPlus, X, Check, AlertTriangle, Inbox,
+  ArrowLeft, Users, Loader, Coins, Store, Plus, UserPlus, X, Check, AlertTriangle, Inbox, Mail,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import {
   getMyChildren, createSubUser, assignCreditsToChild,
-  getRequestsInbox, approveCreditRequest, rejectCreditRequest,
+  getRequestsInbox, approveCreditRequest, rejectCreditRequest, invitePrivato,
 } from '../services/api';
 import RequestsInbox from './RequestsInbox';
 
@@ -29,6 +29,7 @@ const HierarchyManager = ({ title, subtitle, allowedChildTypes }) => {
   const [error, setError] = useState(null);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState(null);
   const [feedback, setFeedback] = useState('');
   const [tab, setTab] = useState('utenti');
@@ -126,7 +127,10 @@ const HierarchyManager = ({ title, subtitle, allowedChildTypes }) => {
           />
         ) : (
         <>
-        <div className="flex justify-end mb-4">
+        <div className="flex justify-end gap-2 mb-4">
+          <button onClick={() => setInviteOpen(true)} className="btn btn-secondary gap-2">
+            <Mail className="w-4 h-4" /> {t('Invita privato')}
+          </button>
           <button onClick={() => setCreateOpen(true)} className="btn btn-primary gap-2">
             <UserPlus className="w-4 h-4" /> {t('Crea utente')}
           </button>
@@ -184,6 +188,12 @@ const HierarchyManager = ({ title, subtitle, allowedChildTypes }) => {
           allowedChildTypes={allowedChildTypes}
           onClose={() => setCreateOpen(false)}
           onCreated={() => { setCreateOpen(false); afterMutation(t('Utente creato. Invito email inviato.')); }}
+        />
+      )}
+      {inviteOpen && (
+        <InvitePrivatoDialog
+          onClose={() => setInviteOpen(false)}
+          onDone={(msg) => { setInviteOpen(false); afterMutation(msg); }}
         />
       )}
       {assignTarget && (
@@ -334,6 +344,63 @@ const AssignCreditsDialog = ({ target, maxCredits, onClose, onAssigned }) => {
           <button onClick={onClose} className="btn btn-secondary">{t('Annulla')}</button>
           <button onClick={submit} disabled={submitting} className="btn btn-primary inline-flex gap-2 disabled:opacity-50">
             {submitting ? <Loader className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {t('Assegna')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const InvitePrivatoDialog = ({ onClose, onDone }) => {
+  const { t } = useTranslation();
+  const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async () => {
+    setErr('');
+    if (!email.trim()) { setErr(t('Inserisci un\'email.')); return; }
+    setSubmitting(true);
+    try {
+      const res = await invitePrivato({ email: email.trim(), full_name: fullName.trim() || null });
+      onDone(res?.message || t('Invito gestito.'));
+    } catch (e) {
+      setErr(e?.response?.data?.detail || t('Errore nell\'invito'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-lg text-slate-900">{t('Invita privato')}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+        </div>
+        <p className="text-sm text-slate-500">
+          {t('Se l\'email non ha un account, viene creato un nuovo privato sotto di te. Se è un privato esistente, riceverà un invito ad associarsi a te (deve accettare).')}
+        </p>
+        {err && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" /> <span>{err}</span>
+          </div>
+        )}
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-slate-600 font-medium">{t('Email')}</label>
+            <input type="email" className="input w-full" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-slate-600 font-medium">{t('Nome completo (opzionale)')}</label>
+            <input className="input w-full" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex gap-3 justify-end">
+          <button onClick={onClose} className="btn btn-secondary">{t('Annulla')}</button>
+          <button onClick={submit} disabled={submitting} className="btn btn-primary inline-flex gap-2 disabled:opacity-50">
+            {submitting ? <Loader className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} {t('Invia invito')}
           </button>
         </div>
       </div>

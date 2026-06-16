@@ -1225,6 +1225,22 @@ export const rejectCreditRequest = async (requestId, note) => {
   return response.data;
 };
 
+// Invito privato (crea-o-sposta) + accetta/rifiuta spostamento
+export const invitePrivato = async (payload) => {
+  const response = await api.post('/api/hierarchy/invite-privato', payload);
+  return response.data;
+};
+
+export const acceptMoveInvite = async (token) => {
+  const response = await api.post('/api/hierarchy/move/accept', { token });
+  return response.data;
+};
+
+export const rejectMoveInvite = async (token) => {
+  const response = await api.post('/api/hierarchy/move/reject', { token });
+  return response.data;
+};
+
 // ============================================================================
 // PACCHETTI CREDITI — admin (CRUD listino)
 // ============================================================================

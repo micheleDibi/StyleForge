@@ -9,21 +9,25 @@ L'autorizzazione sul singolo target è verificata con hierarchy.can_manage.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import re
+import secrets
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
 from auth import get_current_manager, get_current_active_user
-from db_models import User, Role, CreditPackage, CreditRequest
+from db_models import User, Role, CreditPackage, CreditRequest, ParentMoveInvitation
 from credits import transfer_credits, is_admin_user
 import hierarchy
 from models import (
     HierarchyCreateUserRequest, HierarchyUserItem, HierarchyChildrenResponse,
     AssignCreditsRequest, CreditRequestCreate, CreditRequestItem,
     CreditRequestListResponse, ResolveRequestRequest,
+    InvitePrivatoRequest, MoveTokenRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -357,3 +361,158 @@ def reject_request(
     db.commit()
     db.refresh(cr)
     return _req_item(cr, db)
+
+
+# ============================================================================
+# Invito privato (crea-o-sposta) + accetta/rifiuta spostamento (token email)
+# ============================================================================
+
+def _unique_username(db: Session, email: str) -> str:
+    base = re.sub(r'[^a-z0-9._-]', '', (email.split('@')[0] or 'utente').lower()) or 'utente'
+    if len(base) < 3:
+        base = (base + 'user')[:20]
+    candidate = base[:40]
+    i = 1
+    while db.query(User).filter(User.username == candidate).first():
+        i += 1
+        candidate = f"{base[:36]}-{i}"
+    return candidate
+
+
+def _norm_expires(dt) -> datetime:
+    if dt is None:
+        return datetime.now(timezone.utc)
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+
+@router.post("/invite-privato")
+def invite_privato(
+    request: InvitePrivatoRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_manager),
+    db: Session = Depends(get_db),
+):
+    """
+    Invita un privato via email (crea-o-sposta):
+      - email senza account -> crea un nuovo privato sotto di me + invito set_password;
+      - privato esistente di un altro genitore -> invito di spostamento (accetta/rifiuta);
+      - già mio -> no-op; account non-privato -> errore.
+    """
+    email = (request.email or '').strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email obbligatoria")
+
+    existing = db.query(User).filter(func.lower(User.email) == email.lower()).first()
+
+    # --- Nessun account: crea un nuovo privato sotto di me ---
+    if not existing:
+        username = (request.username or '').strip() or _unique_username(db, email)
+        if db.query(User).filter(User.username == username).first():
+            username = _unique_username(db, email)
+        default_role = db.query(Role).filter(Role.is_default == True).first()  # noqa: E712
+        new_user = User(
+            email=email,
+            username=username,
+            hashed_password=None,
+            full_name=(request.full_name or None),
+            role_id=default_role.id if default_role else None,
+            is_admin=False,
+            credits=0,
+            is_active=True,
+            email_verified=False,
+            entity_type='privato',
+            parent_id=current_user.id,
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        from email_service import create_email_token, build_link, send_invite_email
+        raw = create_email_token(db, new_user.id, 'set_password')
+        link = build_link('set_password', raw)
+        background_tasks.add_task(send_invite_email, new_user.email, new_user.full_name or new_user.username, link)
+        return {"status": "created", "message": "Nuovo privato creato e invitato via email."}
+
+    # --- Account esistente ---
+    if (existing.entity_type or 'privato').strip().lower() != 'privato':
+        raise HTTPException(status_code=400, detail="L'utente esiste ma non è un privato e non può essere spostato.")
+    if existing.parent_id == current_user.id:
+        return {"status": "already", "message": "Questo privato è già associato a te."}
+
+    # Annulla eventuali inviti pendenti precedenti per lo stesso privato.
+    db.query(ParentMoveInvitation).filter(
+        ParentMoveInvitation.privato_id == existing.id,
+        ParentMoveInvitation.status == 'pending',
+    ).update({"status": "canceled", "resolved_at": datetime.utcnow()}, synchronize_session=False)
+
+    from email_service import build_link, send_move_invite_email, hash_token
+    raw = secrets.token_urlsafe(32)
+    inv = ParentMoveInvitation(
+        privato_id=existing.id,
+        from_parent_id=existing.parent_id,
+        to_parent_id=current_user.id,
+        token_hash=hash_token(raw),
+        status='pending',
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=72),
+    )
+    db.add(inv)
+    db.commit()
+    link = build_link('move_invite', raw)
+    background_tasks.add_task(
+        send_move_invite_email, existing.email, existing.full_name or existing.username,
+        current_user.full_name or current_user.username, link,
+    )
+    return {"status": "move_invited", "message": "Invito di spostamento inviato al privato."}
+
+
+@router.post("/move/accept")
+def move_accept(body: MoveTokenRequest, db: Session = Depends(get_db)):
+    """Il privato accetta lo spostamento (pubblico, via token email)."""
+    from email_service import hash_token
+    inv = (
+        db.query(ParentMoveInvitation)
+        .filter(ParentMoveInvitation.token_hash == hash_token(body.token), ParentMoveInvitation.status == 'pending')
+        .with_for_update()
+        .one_or_none()
+    )
+    if not inv:
+        raise HTTPException(status_code=410, detail="Invito non valido o già gestito")
+    if _norm_expires(inv.expires_at) < datetime.now(timezone.utc):
+        inv.status = 'expired'
+        inv.resolved_at = datetime.utcnow()
+        db.commit()
+        raise HTTPException(status_code=410, detail="Invito scaduto")
+
+    privato = db.query(User).filter(User.id == inv.privato_id).first()
+    to_parent = db.query(User).filter(User.id == inv.to_parent_id).first()
+    if not privato or not to_parent:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    if (privato.entity_type or 'privato').strip().lower() != 'privato':
+        raise HTTPException(status_code=400, detail="L'account non è (più) un privato.")
+    if (to_parent.entity_type or '').strip().lower() not in ('rivenditore', 'distributore'):
+        raise HTTPException(status_code=400, detail="Il referente non è più valido.")
+    hierarchy.assert_no_cycle(privato, to_parent, db)
+
+    privato.parent_id = to_parent.id
+    privato.distributor_id = None
+    inv.status = 'accepted'
+    inv.resolved_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Spostamento completato: sei stato associato al nuovo referente."}
+
+
+@router.post("/move/reject")
+def move_reject(body: MoveTokenRequest, db: Session = Depends(get_db)):
+    """Il privato rifiuta lo spostamento (pubblico, via token email)."""
+    from email_service import hash_token
+    inv = (
+        db.query(ParentMoveInvitation)
+        .filter(ParentMoveInvitation.token_hash == hash_token(body.token), ParentMoveInvitation.status == 'pending')
+        .with_for_update()
+        .one_or_none()
+    )
+    if not inv:
+        raise HTTPException(status_code=410, detail="Invito non valido o già gestito")
+    inv.status = 'rejected'
+    inv.resolved_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Invito rifiutato. Nessuna modifica effettuata."}
