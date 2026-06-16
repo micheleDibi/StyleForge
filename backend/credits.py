@@ -524,6 +524,72 @@ def add_credits(
     return transaction
 
 
+def transfer_credits(
+    giver: User,
+    receiver: User,
+    amount: int,
+    db: Session,
+    description: str,
+):
+    """
+    Trasferisce `amount` crediti da `giver` a `receiver` in modo atomico.
+
+    Scala i crediti dal donatore (che deve averne a sufficienza) e li accredita al
+    ricevente, registrando DUE CreditTransaction ('transfer': out sul donatore, in
+    sul ricevente). Le righe vengono bloccate con SELECT FOR UPDATE (ordinate per id
+    per evitare deadlock) così assegnazioni/approvazioni concorrenti non causano
+    scoperti.
+
+    Per i grant dell'admin (crediti infiniti) usare add_credits, NON questa funzione.
+
+    Raises:
+        HTTPException 400 se amount<=0 o giver==receiver
+        HTTPException 402 se il donatore non ha crediti sufficienti
+    """
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="L'importo da trasferire deve essere positivo.")
+    if giver.id == receiver.id:
+        raise HTTPException(status_code=400, detail="Donatore e ricevente coincidono.")
+
+    # Lock di entrambe le righe in ordine di id (deadlock-safe).
+    locked = (
+        db.query(User)
+        .filter(User.id.in_([giver.id, receiver.id]))
+        .order_by(User.id)
+        .with_for_update()
+        .all()
+    )
+    by_id = {u.id: u for u in locked}
+    g = by_id.get(giver.id)
+    r = by_id.get(receiver.id)
+    if g is None or r is None:
+        raise HTTPException(status_code=404, detail="Utente non trovato per il trasferimento.")
+
+    if g.credits < amount:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Crediti insufficienti per il trasferimento ({g.credits} < {amount}).",
+        )
+
+    g.credits -= amount
+    r.credits += amount
+
+    tx_out = CreditTransaction(
+        user_id=g.id, amount=-amount, balance_after=g.credits,
+        transaction_type='transfer', operation_type='transfer_out',
+        description=f"{description} (a {r.username})",
+    )
+    tx_in = CreditTransaction(
+        user_id=r.id, amount=amount, balance_after=r.credits,
+        transaction_type='transfer', operation_type='transfer_in',
+        description=f"{description} (da {g.username})",
+    )
+    db.add(tx_out)
+    db.add(tx_in)
+    db.commit()
+    return tx_out, tx_in
+
+
 def get_user_transactions(
     user_id,
     db: Session,

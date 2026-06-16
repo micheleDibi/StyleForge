@@ -64,6 +64,7 @@ class UserResponse(BaseModel):
     credits: int = 0
     permissions: list = []
     entity_type: Optional[str] = 'privato'
+    parent_id: Optional[str] = None
     distributor_id: Optional[str] = None
     codice_fiscale: Optional[str] = None
     partita_iva: Optional[str] = None
@@ -305,6 +306,7 @@ def build_user_response(user: User, db: Session) -> UserResponse:
         credits=user.credits if not (user.is_admin or (user.role and user.role.name == 'admin')) else -1,  # -1 = infiniti
         permissions=permissions,
         entity_type=getattr(user, 'entity_type', None) or 'privato',
+        parent_id=str(user.parent_id) if getattr(user, 'parent_id', None) else None,
         distributor_id=str(user.distributor_id) if getattr(user, 'distributor_id', None) else None,
         codice_fiscale=getattr(user, 'codice_fiscale', None),
         partita_iva=getattr(user, 'partita_iva', None),
@@ -557,6 +559,34 @@ async def get_current_distributor(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Accesso riservato ai distributori"
+        )
+    return current_user
+
+
+async def get_current_reseller(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """Consente l'accesso solo agli utenti con entity_type='rivenditore'."""
+    if (getattr(current_user, 'entity_type', None) or '') != 'rivenditore':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accesso riservato ai rivenditori"
+        )
+    return current_user
+
+
+async def get_current_manager(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """
+    Consente l'accesso a distributori E rivenditori (i "manager" che gestiscono un
+    sottoalbero). L'autorizzazione sul singolo target va comunque verificata in
+    handler con hierarchy.can_manage(actor, target, db).
+    """
+    if (getattr(current_user, 'entity_type', None) or '') not in ('distributore', 'rivenditore'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accesso riservato a distributori e rivenditori"
         )
     return current_user
 

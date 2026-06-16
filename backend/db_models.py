@@ -65,7 +65,11 @@ class User(Base):
     # Sottotipo dell'utente normale: 'distributore' | 'rivenditore' | 'privato'
     # (default). Determina i pacchetti crediti acquistabili. Asse indipendente dal Role.
     entity_type = Column(String(20), default='privato', nullable=False)
-    # Distributore di riferimento (solo per i rivenditori). FK self, assegnata dall'admin.
+    # Genitore nell'albero di distribuzione (1:1): per un rivenditore è il suo
+    # distributore, per un privato il suo rivenditore o distributore. È il link
+    # canonico "appartiene a". I distributori hanno parent_id NULL (sotto l'admin).
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    # DEPRECATO: sostituito da parent_id (mantenuto per compatibilità, droppato in migration 33).
     distributor_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     # Dati anagrafici per pagamenti PagoPA (opzionali, salvati al primo acquisto se l'utente sceglie di memorizzarli).
     codice_fiscale = Column(String(16), nullable=True)
@@ -82,6 +86,10 @@ class User(Base):
     user_permissions = relationship("UserPermission", back_populates="user", cascade="all, delete-orphan")
     credit_transactions = relationship("CreditTransaction", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
+    # Albero di distribuzione (self-referential su parent_id).
+    parent = relationship(
+        "User", remote_side=[id], foreign_keys=[parent_id], backref="children"
+    )
 
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"
@@ -298,7 +306,7 @@ class CreditTransaction(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     amount = Column(Integer, nullable=False)  # positivo=aggiunta, negativo=consumo
     balance_after = Column(Integer, nullable=False)
-    transaction_type = Column(String(50), nullable=False)  # 'purchase', 'consumption', 'admin_adjustment', 'refund'
+    transaction_type = Column(String(50), nullable=False)  # 'consumption', 'admin_adjustment', 'refund', 'transfer'
     description = Column(Text, nullable=True)
     related_job_id = Column(String(50), nullable=True)
     operation_type = Column(String(50), nullable=True)  # 'train', 'generate', 'humanize', 'thesis_chapters', etc.
@@ -322,6 +330,77 @@ class CreditTransaction(Base):
             "operation_type": self.operation_type,
             "created_at": self.created_at
         }
+
+
+class CreditRequest(Base):
+    """
+    Richiesta di crediti: un utente "acquista" scegliendo un pacchetto del listino
+    e la richiesta viene inoltrata al referente (genitore) o all'admin.
+    L'approvazione esegue l'accredito (trasferimento dal referente, o add_credits
+    se l'approvatore è admin).
+    """
+    __tablename__ = "credit_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    requester_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Approvatore specifico (genitore). NULL per le richieste verso l'admin pool.
+    approver_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    approver_is_admin = Column(Boolean, default=False, nullable=False)
+    # Pacchetto richiesto + snapshot (il listino può cambiare/disattivarsi dopo).
+    package_id = Column(Integer, ForeignKey("credit_packages.id", ondelete="SET NULL"), nullable=True)
+    package_name = Column(String(100), nullable=False)
+    package_credits = Column(Integer, nullable=False)
+    package_price_cents = Column(Integer, nullable=False)
+    status = Column(String(20), default='pending', nullable=False)  # pending|approved|rejected|canceled
+    note = Column(Text, nullable=True)
+    resolver_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
+
+    requester = relationship("User", foreign_keys=[requester_id])
+    approver = relationship("User", foreign_keys=[approver_id])
+
+    def __repr__(self):
+        return f"<CreditRequest(id={self.id}, requester={self.requester_id}, status={self.status}, credits={self.package_credits})>"
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "requester_id": str(self.requester_id),
+            "approver_id": str(self.approver_id) if self.approver_id else None,
+            "approver_is_admin": bool(self.approver_is_admin),
+            "package_id": self.package_id,
+            "package_name": self.package_name,
+            "package_credits": self.package_credits,
+            "package_price_cents": self.package_price_cents,
+            "package_price_eur": round(self.package_price_cents / 100.0, 2),
+            "status": self.status,
+            "note": self.note,
+            "resolver_id": str(self.resolver_id) if self.resolver_id else None,
+            "created_at": self.created_at,
+            "resolved_at": self.resolved_at,
+        }
+
+
+class ParentMoveInvitation(Base):
+    """
+    Invito di spostamento di un privato esistente da un genitore all'altro.
+    Il privato accetta/rifiuta via link email (token monouso, hash SHA-256).
+    """
+    __tablename__ = "parent_move_invitations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    privato_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    from_parent_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    to_parent_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)  # l'invitante
+    token_hash = Column(String(64), nullable=False, index=True)
+    status = Column(String(20), default='pending', nullable=False)  # pending|accepted|rejected|expired|canceled
+    expires_at = Column(DateTime, nullable=False)
+    resolved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<ParentMoveInvitation(privato={self.privato_id}, to={self.to_parent_id}, status={self.status})>"
 
 
 # ============================================================================
