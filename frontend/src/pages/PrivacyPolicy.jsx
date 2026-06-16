@@ -14,7 +14,7 @@ const PrivacyPolicy = () => {
         </button>
 
         <h1 className="text-3xl font-bold text-slate-900 mb-2">{t('Informativa sulla Privacy')}</h1>
-        <p className="text-sm text-slate-500 mb-8">{t('Ultimo aggiornamento: Aprile 2026')}</p>
+        <p className="text-sm text-slate-500 mb-8">{t('Ultimo aggiornamento: Giugno 2026')}</p>
 
         <div className="prose prose-slate max-w-none space-y-6 text-sm leading-relaxed text-slate-700">
           <section>
@@ -37,16 +37,16 @@ const PrivacyPolicy = () => {
             <h2 className="text-lg font-semibold text-slate-900">{t('3. Finalita del Trattamento')}</h2>
             <p>{t('I dati vengono trattati per:')}</p>
             <ul className="list-disc pl-5 space-y-1">
-              <li>{t('Fornire i servizi della piattaforma (addestramento AI, generazione contenuti, tesi)')}</li>
+              <li>{t('Fornire i servizi della piattaforma (addestramento AI, generazione contenuti, tesi, ricerca accademica, rilevamento AI)')}</li>
               <li>{t('Gestire l\'autenticazione e la sicurezza dell\'account')}</li>
-              <li>{t('Gestire il sistema crediti e la fatturazione')}</li>
+              <li>{t('Gestire il sistema crediti')}</li>
               <li>{t('Migliorare la qualita del servizio')}</li>
             </ul>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-slate-900">{t('4. Condivisione con Terze Parti')}</h2>
-            <p>{t('I contenuti dei documenti caricati e i testi inseriti vengono inviati ai servizi AI di Anthropic (Claude) e OpenAI per l\'elaborazione. Questi servizi operano come responsabili del trattamento e sono soggetti alle rispettive politiche sulla privacy.')}</p>
+            <p>{t('I contenuti dei documenti caricati e i testi inseriti vengono inviati ai servizi AI di Anthropic (Claude) e, se attivato, OpenAI per l\'elaborazione. La funzione di rilevamento AI/plagio invia il testo da analizzare al servizio Compilatio. Questi servizi operano come responsabili del trattamento e sono soggetti alle rispettive politiche sulla privacy.')}</p>
             <p>{t('Non vendiamo ne condividiamo i dati personali con altre terze parti per scopi di marketing.')}</p>
           </section>
 

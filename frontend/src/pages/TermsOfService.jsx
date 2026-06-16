@@ -14,7 +14,7 @@ const TermsOfService = () => {
         </button>
 
         <h1 className="text-3xl font-bold text-slate-900 mb-2">{t('Termini di Servizio')}</h1>
-        <p className="text-sm text-slate-500 mb-8">{t('Ultimo aggiornamento: Aprile 2026')}</p>
+        <p className="text-sm text-slate-500 mb-8">{t('Ultimo aggiornamento: Giugno 2026')}</p>
 
         <div className="prose prose-slate max-w-none space-y-6 text-sm leading-relaxed text-slate-700">
           <section>
@@ -28,8 +28,10 @@ const TermsOfService = () => {
             <ul className="list-disc pl-5 space-y-1">
               <li>{t('Addestrare modelli AI su documenti per apprendere uno stile di scrittura')}</li>
               <li>{t('Generare contenuti originali basati sullo stile appreso')}</li>
-              <li>{t('Umanizzare testi generati da AI')}</li>
+              <li>{t('Umanizzare testi generati da AI e ridurne il rilevamento')}</li>
               <li>{t('Generare tesi e documenti accademici completi')}</li>
+              <li>{t('Cercare paper accademici e organizzarli in una knowledge base')}</li>
+              <li>{t('Verificare i testi con il rilevamento AI/plagio')}</li>
             </ul>
           </section>
 
@@ -40,7 +42,7 @@ const TermsOfService = () => {
 
           <section>
             <h2 className="text-lg font-semibold text-slate-900">{t('4. Sistema Crediti')}</h2>
-            <p>{t("Il servizio funziona con un sistema a crediti. Ogni operazione ha un costo in crediti visibile prima dell'esecuzione. I crediti consumati non sono rimborsabili salvo malfunzionamenti del servizio. L'amministratore si riserva il diritto di modificare i costi delle operazioni.")}</p>
+            <p>{t("Il servizio funziona con un sistema a crediti. Ogni operazione ha un costo in crediti visibile prima dell'esecuzione. Gli step di generazione falliti o annullati vengono riaccreditati automaticamente; al di fuori di questi casi i crediti consumati non sono rimborsabili. L'acquisto di crediti è gestito dall'amministratore, che si riserva il diritto di modificare i costi delle operazioni.")}</p>
           </section>
 
           <section>
