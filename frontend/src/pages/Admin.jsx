@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Users, Shield, BarChart3, Search, RefreshCw,
+  ArrowLeft, Users, Shield, Tag, Search, RefreshCw,
   ChevronDown, ChevronUp, Edit3, Save, X, Plus, Minus,
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
-  Sparkles, Settings, UserPlus, RotateCcw,
+  Settings, UserPlus, RotateCcw,
   AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image,
   CreditCard, Mail, Calendar, Power, Globe, BookOpen, Brain, Wand2
 } from 'lucide-react';
@@ -13,9 +13,9 @@ import { useAuth } from '../context/AuthContext';
 import {
   getAdminUsers, updateAdminUser, updateUserRole,
   updateUserPermissions, adjustUserCredits, getUserTransactions,
-  getAdminRoles, updateRolePermissions, getAdminStats,
+  getAdminRoles, updateRolePermissions,
   adminCreateUser, adminResendInvite, getAdminCreditCosts, updateAdminCreditCosts,
-  resetAdminCreditCosts, getAdminEurPerCredit, updateAdminEurPerCredit,
+  resetAdminCreditCosts,
   getAdminTemplates, updateAdminTemplates,
   deleteAdminTemplate, uploadTemplateBackground, deleteTemplateBackground,
   createApiKey, getApiKeys, revokeApiKey
@@ -23,6 +23,7 @@ import {
 import Logo from '../components/Logo';
 import AdminPaymentsSection from '../components/admin/AdminPaymentsSection';
 import AdminLanguagesSection from '../components/admin/AdminLanguagesSection';
+import AdminListiniSection from '../components/admin/AdminListiniSection';
 
 const PERMISSION_LABELS = {
   train: 'Addestra Modello',
@@ -87,9 +88,6 @@ const Admin = () => {
   // Roles state
   const [roles, setRoles] = useState([]);
 
-  // Stats state
-  const [stats, setStats] = useState(null);
-
   // Credit adjustment state
   const [creditAmount, setCreditAmount] = useState('');
   const [creditDescription, setCreditDescription] = useState('');
@@ -116,8 +114,6 @@ const Admin = () => {
   const [costsError, setCostsError] = useState('');
   const [costsSuccess, setCostsSuccess] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [eurPerCredit, setEurPerCredit] = useState(0.10);
-  const [eurPerCreditSaved, setEurPerCreditSaved] = useState(0.10);
   // Elenco distributori (per assegnare il distributore di riferimento ai rivenditori)
   const [distributori, setDistributori] = useState([]);
 
@@ -175,19 +171,11 @@ const Admin = () => {
       } else if (activeTab === 'roles') {
         const data = await getAdminRoles();
         setRoles(data.roles);
-      } else if (activeTab === 'stats') {
-        const data = await getAdminStats();
-        setStats(data);
       } else if (activeTab === 'settings') {
-        const [costsData, eurData] = await Promise.all([
-          getAdminCreditCosts(),
-          getAdminEurPerCredit().catch(() => ({ eur_per_credit: 0.10 }))
-        ]);
+        const costsData = await getAdminCreditCosts();
         setCreditCosts(costsData.costs);
         setEditedCosts(JSON.parse(JSON.stringify(costsData.costs)));
         setIsDefaultCosts(costsData.is_default);
-        setEurPerCredit(eurData.eur_per_credit);
-        setEurPerCreditSaved(eurData.eur_per_credit);
       } else if (activeTab === 'templates') {
         const data = await getAdminTemplates();
         setTemplates(data.templates || []);
@@ -666,8 +654,8 @@ const Admin = () => {
   const tabs = [
     { id: 'users', label: t('Utenti'), icon: Users },
     { id: 'roles', label: t('Ruoli'), icon: Shield },
-    { id: 'stats', label: t('Statistiche'), icon: BarChart3 },
-    { id: 'settings', label: t('Impostazioni'), icon: Settings },
+    { id: 'settings', label: t('Parametri'), icon: Settings },
+    { id: 'listini', label: t('Listini'), icon: Tag },
     { id: 'templates', label: t('Template Export'), icon: FileText },
     { id: 'api-keys', label: t('API Keys'), icon: Key },
     { id: 'payments', label: t('Pagamenti PagoPA'), icon: CreditCard },
@@ -1253,84 +1241,7 @@ const Admin = () => {
               </div>
             )}
 
-            {/* ===================== TAB STATISTICHE ===================== */}
-            {activeTab === 'stats' && stats && (
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center">
-                      <Users className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Utenti Totali')}</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.total_users}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center">
-                      <CheckCircle2 className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Utenti Attivi')}</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.active_users}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center">
-                      <Coins className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Crediti Distribuiti')}</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.total_credits_distributed?.toLocaleString()}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-red-400 to-red-600 rounded-xl flex items-center justify-center">
-                      <Minus className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Crediti Consumati')}</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.total_credits_consumed?.toLocaleString()}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-purple-400 to-purple-600 rounded-xl flex items-center justify-center">
-                      <Sparkles className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Operazioni Oggi')}</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.operations_today}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-teal-400 to-teal-600 rounded-xl flex items-center justify-center">
-                      <BarChart3 className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">{t('Operazioni Settimana')}</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.operations_this_week}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ===================== TAB IMPOSTAZIONI ===================== */}
+            {/* ===================== TAB PARAMETRI ===================== */}
             {activeTab === 'settings' && editedCosts && (
               <div className="space-y-6">
                 {/* Header */}
@@ -1372,48 +1283,6 @@ const Admin = () => {
                     {costsSuccess}
                   </div>
                 )}
-
-                {/* EUR per credito */}
-                <div className="glass rounded-2xl p-5">
-                  <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                    <CreditCard className="w-5 h-5 text-orange-500" />
-                    {t('Conversione EUR / Credito')}
-                  </h3>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 flex-1">
-                      <span className="text-sm text-gray-600">{t('1 credito =')}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="input w-28 text-center text-sm py-1.5"
-                        value={eurPerCredit}
-                        onChange={(e) => setEurPerCredit(parseFloat(e.target.value) || 0)}
-                      />
-                      <span className="text-sm text-gray-600">EUR</span>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        try {
-                          await updateAdminEurPerCredit(eurPerCredit);
-                          setEurPerCreditSaved(eurPerCredit);
-                          setCostsSuccess(t('Tasso EUR/credito aggiornato!'));
-                          setTimeout(() => setCostsSuccess(''), 3000);
-                        } catch (e) {
-                          setCostsError(t('Errore nel salvataggio del tasso EUR/credito'));
-                          setTimeout(() => setCostsError(''), 3000);
-                        }
-                      }}
-                      disabled={eurPerCredit === eurPerCreditSaved}
-                      className="btn btn-primary text-sm disabled:opacity-50"
-                    >
-                      {t('Salva')}
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-2">
-                    {t('Tasso di conversione per implementazioni future (pricing utenti, acquisto crediti).')}
-                  </p>
-                </div>
 
                 {/* Costi per area */}
                 {COST_GROUPS.map((group) => {
@@ -1955,6 +1824,11 @@ const Admin = () => {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ===================== TAB LISTINI ===================== */}
+            {activeTab === 'listini' && (
+              <AdminListiniSection />
             )}
 
             {/* ===================== TAB PAGAMENTI PAGOPA ===================== */}

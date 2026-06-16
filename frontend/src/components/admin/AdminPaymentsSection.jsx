@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  CreditCard, Package, Settings as SettingsIcon, BarChart3, Loader, Check, X, Plus, Edit2, Trash2,
+  CreditCard, Settings as SettingsIcon, BarChart3, Loader, Check, X, Plus, Edit2, Trash2,
   Upload, AlertTriangle, RefreshCw, Search, Filter, ChevronDown,
 } from 'lucide-react';
 import {
@@ -35,7 +35,6 @@ const STATUS_COLOR = {
 const SUB_TABS = [
   { id: 'dashboard', label: 'Cruscotto', icon: BarChart3 },
   { id: 'orders', label: 'Ordini', icon: CreditCard },
-  { id: 'packages', label: 'Pacchetti', icon: Package },
   { id: 'config', label: 'Configurazione', icon: SettingsIcon },
 ];
 
@@ -357,9 +356,9 @@ const OrdersSubtab = () => {
 };
 
 // ============================================================================
-// Sub-tab: Pacchetti
+// Sub-tab: Pacchetti (riutilizzato anche dalla scheda "Listini")
 // ============================================================================
-const PackagesSubtab = () => {
+export const PackagesSubtab = () => {
   const { t } = useTranslation();
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -707,7 +706,6 @@ const AdminPaymentsSection = () => {
       <div>
         {activeSub === 'dashboard' && <DashboardSubtab />}
         {activeSub === 'orders' && <OrdersSubtab />}
-        {activeSub === 'packages' && <PackagesSubtab />}
         {activeSub === 'config' && <ConfigSubtab />}
       </div>
     </div>
