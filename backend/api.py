@@ -44,6 +44,7 @@ from video_routes import router as video_router
 from research_routes import router as research_router
 from packages_routes import router as packages_router
 from distributor_routes import router as distributor_router
+from hierarchy_routes import router as hierarchy_router
 from i18n_routes import public_router as i18n_public_router, admin_router as i18n_admin_router
 from db_models import User
 from database import init_db, get_db
@@ -106,6 +107,9 @@ app.include_router(packages_router)
 
 # Registra router dashboard distributore (sola lettura sui propri rivenditori)
 app.include_router(distributor_router)
+
+# Registra router gerarchia distribuzione (manager: creazione + assegnazione crediti)
+app.include_router(hierarchy_router)
 
 # Registra router i18n (lingue + traduzioni: pubblico runtime + admin)
 app.include_router(i18n_public_router)

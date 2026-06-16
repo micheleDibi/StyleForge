@@ -17,6 +17,7 @@ import SessionDetail from './pages/SessionDetail';
 import ThesisGenerator from './pages/ThesisGenerator';
 import Admin from './pages/Admin';
 import Distributor from './pages/Distributor';
+import Reseller from './pages/Reseller';
 import DetectorAI from './pages/DetectorAI';
 import ImageToVideo from './pages/ImageToVideo';
 import ResearchSearch from './pages/ResearchSearch';
@@ -74,6 +75,13 @@ const DistributorRoute = ({ children }) => {
   if (isLoading) return <PageLoader />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return isDistributor ? children : <Navigate to="/" replace />;
+};
+
+const ResellerRoute = ({ children }) => {
+  const { isAuthenticated, isLoading, isReseller } = useAuth();
+  if (isLoading) return <PageLoader />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return isReseller ? children : <Navigate to="/" replace />;
 };
 
 // Helper visibile solo per utenti autenticati
@@ -191,6 +199,14 @@ const AppRoutes = () => {
           <DistributorRoute>
             <Distributor />
           </DistributorRoute>
+        }
+      />
+      <Route
+        path="/reseller"
+        element={
+          <ResellerRoute>
+            <Reseller />
+          </ResellerRoute>
         }
       />
       <Route

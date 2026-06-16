@@ -130,6 +130,16 @@ export const AuthProvider = ({ children }) => {
   const isDistributor = user?.entity_type === 'distributore' || false;
 
   /**
+   * Controlla se l'utente e' un rivenditore.
+   */
+  const isReseller = user?.entity_type === 'rivenditore' || false;
+
+  /**
+   * Manager = distributore o rivenditore (gestisce un sottoalbero di utenti).
+   */
+  const isManager = isDistributor || isReseller;
+
+  /**
    * Ottieni il saldo crediti. -1 = infiniti (admin).
    */
   const credits = user?.credits ?? 0;
@@ -149,6 +159,8 @@ export const AuthProvider = ({ children }) => {
       hasPermission,
       isAdmin,
       isDistributor,
+      isReseller,
+      isManager,
       credits
     }}>
       {children}

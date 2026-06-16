@@ -6,7 +6,7 @@ import {
   Layers, Brain, BookOpen, Calendar, Download,
   ChevronDown, Eye, Play, Coins, Shield, Pencil, Search,
   ArrowUpRight, ScanSearch, FileDown, BarChart3, Film,
-  BookMarked, Store, KeyRound
+  BookMarked, Store, KeyRound, Building2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getSessions, deleteSession, renameSession, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, downloadCompilatioReport } from '../services/api';
@@ -18,7 +18,7 @@ import LanguageSwitcher from '../components/LanguageSwitcher';
 const Dashboard = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { logout, user, hasPermission, isAdmin, isDistributor, credits } = useAuth();
+  const { logout, user, hasPermission, isAdmin, isDistributor, isReseller, credits } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [theses, setTheses] = useState([]);
@@ -245,6 +245,7 @@ const Dashboard = () => {
                 )}
               </div>
               {isDistributor && <button onClick={() => navigate('/distributor')} className="btn btn-ghost" title={t('Dashboard distributore')}><Store className="w-[18px] h-[18px]" /></button>}
+              {isReseller && <button onClick={() => navigate('/reseller')} className="btn btn-ghost" title={t('Dashboard rivenditore')}><Building2 className="w-[18px] h-[18px]" /></button>}
               {isAdmin && <button onClick={() => navigate('/admin')} className="btn btn-ghost" title={t('Admin')}><Settings className="w-[18px] h-[18px]" /></button>}
               <button onClick={handleRefresh} disabled={refreshing} className="btn btn-ghost"><RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} /></button>
               <button onClick={handleLogout} className="btn btn-ghost md:hidden text-red-500 hover:text-red-600 hover:bg-red-50"><LogOut className="w-[18px] h-[18px]" /></button>

@@ -731,7 +731,8 @@ class AdminUserResponse(BaseModel):
     permissions: List[str] = []
     user_overrides: Dict[str, bool] = {}  # {permission_code: granted}
     entity_type: Optional[str] = 'privato'
-    distributor_id: Optional[str] = None  # distributore di riferimento (solo rivenditori)
+    parent_id: Optional[str] = None  # genitore nell'albero di distribuzione
+    distributor_id: Optional[str] = None  # DEPRECATO: alias legacy di parent_id
     codice_fiscale: Optional[str] = None
     partita_iva: Optional[str] = None
     ragione_sociale: Optional[str] = None
@@ -755,9 +756,13 @@ class AdminUpdateUserRequest(BaseModel):
         None,
         description="Sottotipo utente: 'distributore', 'rivenditore' o 'privato'. Determina i pacchetti acquistabili.",
     )
+    parent_id: Optional[str] = Field(
+        None,
+        description="Genitore nell'albero (rivenditore->distributore, privato->rivenditore|distributore). None = non modificare; '' = azzera.",
+    )
     distributor_id: Optional[str] = Field(
         None,
-        description="Distributore di riferimento (solo per i rivenditori). None = non modificare; '' = azzera.",
+        description="DEPRECATO: alias legacy di parent_id (solo rivenditori).",
     )
     codice_fiscale: Optional[str] = Field(None, max_length=16)
     partita_iva: Optional[str] = Field(None, max_length=11)
@@ -848,6 +853,89 @@ class AdminCreateUserRequest(BaseModel):
     role_id: Optional[int] = Field(None, description="ID ruolo (default: ruolo 'user')")
     credits: int = Field(0, ge=0, description="Crediti iniziali")
     is_active: bool = Field(True, description="Utente attivo")
+    entity_type: Optional[str] = Field(None, description="Sottotipo: 'distributore'|'rivenditore'|'privato'")
+    parent_id: Optional[str] = Field(None, description="Genitore nell'albero di distribuzione")
+
+
+# ============================================================================
+# GERARCHIA DISTRIBUZIONE — creazione sotto-utenti, assegnazione, richieste, inviti
+# ============================================================================
+
+class HierarchyUserItem(BaseModel):
+    """Riga di un utente del sottoalbero."""
+    id: str
+    username: str
+    full_name: Optional[str] = None
+    email: str
+    entity_type: str
+    credits: int
+    parent_id: Optional[str] = None
+    is_active: bool = True
+    email_verified: bool = False
+
+
+class HierarchyChildrenResponse(BaseModel):
+    children: List[HierarchyUserItem]
+    total: int
+
+
+class HierarchyCreateUserRequest(BaseModel):
+    """Creazione di un sotto-utente da parte di un manager (distributore/rivenditore)."""
+    email: str = Field(..., description="Email del nuovo utente")
+    username: str = Field(..., min_length=3, max_length=50)
+    full_name: Optional[str] = None
+    entity_type: str = Field(..., description="'rivenditore' o 'privato' secondo i permessi dell'attore")
+    credits: int = Field(0, ge=0, description="Crediti iniziali (trasferiti dal creatore se >0)")
+
+
+class AssignCreditsRequest(BaseModel):
+    """Assegnazione di crediti a un sotto-utente (trasferimento dal proprio saldo)."""
+    amount: int = Field(..., gt=0, description="Crediti da trasferire")
+    description: Optional[str] = Field(None, max_length=255)
+
+
+class CreditRequestCreate(BaseModel):
+    """Richiesta crediti: scelta di un pacchetto del proprio listino."""
+    package_id: int = Field(..., description="ID del pacchetto richiesto")
+
+
+class CreditRequestItem(BaseModel):
+    id: str
+    requester_id: str
+    requester_username: Optional[str] = None
+    requester_email: Optional[str] = None
+    requester_entity_type: Optional[str] = None
+    approver_id: Optional[str] = None
+    approver_is_admin: bool = False
+    package_id: Optional[int] = None
+    package_name: str
+    package_credits: int
+    package_price_cents: int
+    package_price_eur: float
+    status: str
+    note: Optional[str] = None
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+
+class CreditRequestListResponse(BaseModel):
+    requests: List[CreditRequestItem]
+    total: int
+
+
+class ResolveRequestRequest(BaseModel):
+    note: Optional[str] = Field(None, max_length=255)
+
+
+class InvitePrivatoRequest(BaseModel):
+    """Invito di un privato via email (crea-o-sposta)."""
+    email: str = Field(..., description="Email del privato da invitare/spostare")
+    username: Optional[str] = Field(None, min_length=3, max_length=50, description="Username se va creato un nuovo account")
+    full_name: Optional[str] = None
+
+
+class MoveTokenRequest(BaseModel):
+    token: str
 
 
 # ============================================================================

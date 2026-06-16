@@ -1170,6 +1170,30 @@ export const getMyResellers = async () => {
 };
 
 // ============================================================================
+// GERARCHIA DISTRIBUZIONE — manager (distributore/rivenditore)
+// ============================================================================
+
+export const getMyChildren = async () => {
+  const response = await api.get('/api/hierarchy/children');
+  return response.data;
+};
+
+export const getMySubtree = async () => {
+  const response = await api.get('/api/hierarchy/subtree');
+  return response.data;
+};
+
+export const createSubUser = async (payload) => {
+  const response = await api.post('/api/hierarchy/users', payload);
+  return response.data;
+};
+
+export const assignCreditsToChild = async (userId, amount, description) => {
+  const response = await api.post(`/api/hierarchy/users/${userId}/assign-credits`, { amount, description });
+  return response.data;
+};
+
+// ============================================================================
 // PACCHETTI CREDITI — admin (CRUD listino)
 // ============================================================================
 

@@ -70,6 +70,7 @@ def build_admin_user_response(user: User, db: Session) -> AdminUserResponse:
         user_overrides=user_overrides,
         email_verified=bool(getattr(user, 'email_verified', False)),
         entity_type=getattr(user, 'entity_type', None) or 'privato',
+        parent_id=str(user.parent_id) if getattr(user, 'parent_id', None) else None,
         distributor_id=str(user.distributor_id) if getattr(user, 'distributor_id', None) else None,
         codice_fiscale=getattr(user, 'codice_fiscale', None),
         partita_iva=getattr(user, 'partita_iva', None),
@@ -79,6 +80,37 @@ def build_admin_user_response(user: User, db: Session) -> AdminUserResponse:
         updated_at=user.updated_at,
         last_login=user.last_login
     )
+
+
+def _set_user_parent(user: User, parent_value, db: Session) -> None:
+    """
+    Imposta/azzera il genitore (parent_id) di `user` con validazione di coerenza
+    entity_type + protezione anti-ciclo. `parent_value`: '' azzera, UUID stringa imposta.
+    Mantiene allineato il legacy distributor_id (per i rivenditori) finché esiste.
+    """
+    pv = (parent_value or "").strip()
+    if pv == "":
+        user.parent_id = None
+        user.distributor_id = None
+        return
+    child_et = (user.entity_type or 'privato').strip().lower()
+    if child_et == 'distributore':
+        raise HTTPException(status_code=400, detail="Un distributore non può avere un genitore.")
+    try:
+        parent = db.query(User).filter(User.id == UUID(pv)).first()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="parent_id non valido")
+    if not parent:
+        raise HTTPException(status_code=404, detail="Genitore non trovato")
+    parent_et = (parent.entity_type or 'privato').strip().lower()
+    if child_et == 'rivenditore' and parent_et != 'distributore':
+        raise HTTPException(status_code=400, detail="Il genitore di un rivenditore deve essere un distributore.")
+    if child_et == 'privato' and parent_et not in ('rivenditore', 'distributore'):
+        raise HTTPException(status_code=400, detail="Il genitore di un privato deve essere un rivenditore o un distributore.")
+    from hierarchy import assert_no_cycle
+    assert_no_cycle(user, parent, db)
+    user.parent_id = parent.id
+    user.distributor_id = parent.id if child_et == 'rivenditore' else None
 
 
 # ============================================================================
@@ -160,28 +192,15 @@ async def update_user(
                 detail="entity_type deve essere 'distributore', 'rivenditore' o 'privato'",
             )
         user.entity_type = et
-        # Il distributore di riferimento ha senso solo per i rivenditori.
-        if et != 'rivenditore':
+        # I distributori sono la radice dell'albero: nessun genitore.
+        if et == 'distributore':
+            user.parent_id = None
             user.distributor_id = None
-    # Assegnazione/azzeramento del distributore di riferimento (solo rivenditori).
-    if request.distributor_id is not None:
-        did = (request.distributor_id or "").strip()
-        if did == "":
-            user.distributor_id = None
-        else:
-            if (user.entity_type or 'privato') != 'rivenditore':
-                raise HTTPException(
-                    status_code=400,
-                    detail="Il distributore di riferimento si assegna solo ai rivenditori",
-                )
-            parent = db.query(User).filter(User.id == UUID(did)).first()
-            if not parent:
-                raise HTTPException(status_code=404, detail="Distributore non trovato")
-            if (parent.entity_type or '') != 'distributore':
-                raise HTTPException(status_code=400, detail="L'utente selezionato non è un distributore")
-            if parent.id == user.id:
-                raise HTTPException(status_code=400, detail="Un utente non può essere distributore di sé stesso")
-            user.distributor_id = parent.id
+    # Assegnazione/azzeramento del genitore nell'albero. Si accetta `parent_id`
+    # (canonico) oppure il legacy `distributor_id` come alias.
+    parent_value = request.parent_id if request.parent_id is not None else request.distributor_id
+    if parent_value is not None:
+        _set_user_parent(user, parent_value, db)
     if request.codice_fiscale is not None:
         user.codice_fiscale = (request.codice_fiscale or "").upper().strip() or None
     if request.partita_iva is not None:
@@ -534,6 +553,10 @@ async def create_user(
 
     # Crea utente SENZA password ed email NON verificata: l'invito imposterà
     # la password e verificherà/attiverà l'account.
+    entity_type = (request.entity_type or 'privato').strip().lower()
+    if entity_type not in ('distributore', 'rivenditore', 'privato'):
+        raise HTTPException(status_code=400, detail="entity_type non valido")
+
     new_user = User(
         email=request.email,
         username=request.username,
@@ -544,10 +567,17 @@ async def create_user(
         credits=request.credits,
         is_active=request.is_active,
         email_verified=False,
+        entity_type=entity_type,
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # Genitore opzionale nell'albero (l'admin può creare chiunque sotto chiunque).
+    if request.parent_id:
+        _set_user_parent(new_user, request.parent_id, db)
+        db.commit()
+        db.refresh(new_user)
 
     # Se crediti > 0, registra transazione
     if request.credits > 0:

@@ -6,7 +6,7 @@ Espone:
 
 Accesso riservato agli utenti con entity_type='distributore' (gate
 get_current_distributor). Un distributore vede solo i rivenditori a lui
-assegnati (User.distributor_id == distributore.id).
+assegnati (User.parent_id == distributore.id).
 
 Nota: dopo la rimozione di PagoPA non sono più disponibili gli aggregati di spesa
 (totale speso / numero acquisti) né lo storico ordini, che derivavano dagli
@@ -38,7 +38,7 @@ def list_my_resellers(
     """Rivenditori assegnati al distributore corrente, con i crediti attuali."""
     resellers = (
         db.query(User)
-        .filter(User.distributor_id == current_user.id)
+        .filter(User.parent_id == current_user.id)
         .order_by(User.username.asc())
         .all()
     )
