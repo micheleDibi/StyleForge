@@ -166,6 +166,15 @@ class HumanizeResponse(BaseModel):
     created_at: datetime
 
 
+class HumanizeDocumentResponse(BaseModel):
+    """Response dell'umanizzazione di un documento .docx (mantiene il template)."""
+    session_id: str
+    job_id: str
+    status: JobStatus
+    message: str
+    created_at: datetime
+
+
 class AntiAICorrectionRequest(BaseModel):
     """Request per la Correzione Anti-AI (senza sessione addestrata)."""
     testo: str = Field(..., min_length=50, description="Testo da correggere (micro-modifiche per ridurre AI detection)")

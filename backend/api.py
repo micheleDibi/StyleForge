@@ -20,7 +20,7 @@ import uvicorn
 from models import (
     TrainingRequest, TrainingResponse,
     GenerationRequest, GenerationResponse,
-    HumanizeRequest, HumanizeResponse,
+    HumanizeRequest, HumanizeResponse, HumanizeDocumentResponse,
     AntiAICorrectionRequest, AntiAICorrectionResponse,
     ExtractTextResponse,
     CompilatioScanRequest, CompilatioScanResponse, CompilatioScanResult, CompilatioScanListResponse,
@@ -639,6 +639,152 @@ async def humanize_content(
         status='pending',
         message=f"Umanizzazione avviata. Monitora lo stato con GET /jobs/{job_id}",
         created_at=datetime.now()
+    )
+
+
+def humanize_document_task(
+    session_id: str,
+    src_path: str,
+    profile: str = 'academic',
+    doc_job_id: str = None
+) -> str:
+    """
+    Task: umanizza un .docx mantenendo il template originale (sostituisce solo il
+    testo del corpo). Restituisce il path del .docx prodotto (salvato in job.result).
+    Elimina sempre l'upload sorgente.
+    """
+    from document_humanizer import humanize_docx_inplace
+    import config
+    client = session_manager.get_session(session_id)
+    progress_cb = _make_job_progress_cb(doc_job_id) if doc_job_id else None
+    dst = str(Path(config.RESULTS_DIR) / f"humanized_{doc_job_id or 'doc'}.docx")
+    try:
+        humanize_docx_inplace(src_path, dst, client, profile=profile, progress_cb=progress_cb)
+    finally:
+        try:
+            os.unlink(src_path)
+        except OSError:
+            pass
+    return dst
+
+
+@app.post("/humanize-document", response_model=HumanizeDocumentResponse, tags=["Humanize"])
+async def humanize_document(
+    file: UploadFile = File(...),
+    session_id: str = Form(...),
+    profile: str = Form('academic'),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: User = Depends(require_permission('humanize')),
+    db: Session = Depends(get_db)
+):
+    """
+    Umanizza un documento .docx MANTENENDO il template/formattazione originale:
+    riscrive solo il testo del corpo (salta frontespizio, titoli, indice, bibliografia,
+    note, tabelle). Richiede una sessione addestrata. Restituisce un job_id; il
+    risultato si scarica con GET /results/{job_id}/docx.
+    """
+    from attachment_processor import validate_file, extract_text
+    import config
+
+    user_id = str(current_user.id)
+    filename = file.filename or "documento.docx"
+    if Path(filename).suffix.lower() != '.docx':
+        raise HTTPException(status_code=400, detail="Formato non supportato: carica un file .docx")
+    if profile not in ('informal', 'academic'):
+        profile = 'academic'
+
+    # Sessione esiste e addestrata
+    if not session_manager.session_exists(session_id, user_id):
+        raise HTTPException(status_code=404, detail=f"Sessione {session_id} non trovata")
+    client = session_manager.get_session(session_id, user_id)
+    if not client.is_trained:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sessione {session_id} non ancora addestrata. Esegui prima il training."
+        )
+
+    # Leggi e valida il file
+    if file.size is not None:
+        ok, err = validate_file(filename, file.size)
+        if not ok:
+            raise HTTPException(status_code=400, detail=err)
+    content = await file.read()
+    ok, err = validate_file(filename, len(content))
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+
+    # Persisti l'upload (servirà al task in background)
+    job_id = f"job_{uuid_module.uuid4().hex[:12]}"
+    docs_dir = Path(config.UPLOAD_DIR) / "humanize_docs"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    src_path = docs_dir / f"{job_id}.docx"
+    with open(src_path, "wb") as fh:
+        fh.write(content)
+
+    # Stima crediti sul testo estratto
+    try:
+        extracted = extract_text(src_path)
+    except Exception:
+        extracted = ""
+    text_len = len(extracted or "")
+    if text_len < 50:
+        try:
+            os.unlink(src_path)
+        except OSError:
+            pass
+        raise HTTPException(status_code=422, detail="Nessun testo estraibile dal documento (minimo 50 caratteri).")
+
+    credit_estimate = estimate_credits('humanize', {'text_length': text_len}, db=db)
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate['credits_needed'],
+        operation_type='humanize',
+        description=f"Umanizzazione documento ({filename}, {text_len} caratteri)",
+        db=db
+    )
+
+    job_name = f"Umanizzazione documento: {filename[:40]}"
+    job_manager.create_job(
+        session_id=session_id,
+        user_id=user_id,
+        job_type='humanization',
+        task_func=humanize_document_task,
+        job_id=job_id,
+        name=job_name,
+        src_path=str(src_path),
+        profile=profile,
+        doc_job_id=job_id
+    )
+    session_manager.add_job_to_session(session_id, job_id)
+    background_tasks.add_task(job_manager.execute_job, job_id)
+
+    return HumanizeDocumentResponse(
+        session_id=session_id,
+        job_id=job_id,
+        status='pending',
+        message=f"Umanizzazione documento avviata. Monitora con GET /jobs/{job_id}",
+        created_at=datetime.now()
+    )
+
+
+@app.get("/results/{job_id}/docx", tags=["Results"])
+async def download_result_docx(
+    job_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Scarica il risultato di un job di umanizzazione documento come .docx."""
+    job = job_manager.get_job(job_id, str(current_user.id))
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} non trovato")
+    if job.status != 'completed':
+        raise HTTPException(status_code=400, detail=f"Job {job_id} non ancora completato (stato: {job.status})")
+    docx_path = job.result
+    if not (isinstance(docx_path, str) and docx_path.endswith('.docx') and os.path.exists(docx_path)):
+        raise HTTPException(status_code=404, detail="Nessun documento .docx disponibile per questo job")
+    return FileResponse(
+        path=docx_path,
+        filename=f"documento_umanizzato_{job_id}.docx",
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
 
