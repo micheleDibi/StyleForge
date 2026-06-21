@@ -2056,59 +2056,28 @@ def _apply_anti_ai(content: str, label: str = "Sezione", target_words: int = 0,
     e lunghezza (floor interno al 90%). NON va usato sulla bibliografia (lista formale).
     """
     import config
+    from anti_ai_pipeline import apply_anti_ai_pipeline
 
     if not getattr(config, 'THESIS_ANTI_AI_ENABLED', True):
         return content
     if not content or not content.strip():
         return content
 
-    result = content
-    original_words = len(content.split())
-
-    # Stage 0: parafrasi controllata ricorsiva (leva principale)
-    if getattr(config, 'THESIS_PARAPHRASE_ENABLED', True):
-        try:
-            from ai_client import controlled_paraphrase
-            result = controlled_paraphrase(
-                result,
-                model_id=getattr(config, 'THESIS_PARAPHRASE_MODEL', None),
-                rounds=getattr(config, 'THESIS_PARAPHRASE_ROUNDS', 2),
-                target_words=max(original_words, target_words),
-            )
-        except InsufficientCreditsError:
-            raise
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"Parafrasi controllata errore per '{label}': {e}; tengo il testo precedente")
-
-    # Stage 1: riscrittura de-AI accademica (LLM) — legacy, OFF di default
-    if getattr(config, 'THESIS_REWRITE_ENABLED', False):
-        try:
-            from ai_client import academic_deai_rewrite
-            rewritten = academic_deai_rewrite(
-                result, model_id=getattr(config, 'THESIS_REWRITE_MODEL', None)
-            )
-            floor = int(max(original_words, target_words) * 0.9)
-            if len(rewritten.split()) >= floor:
-                result = rewritten
-        except InsufficientCreditsError:
-            raise
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"Anti-AI rewrite errore per '{label}': {e}; uso il testo pre-rewrite")
-
-    # Stage 2: pass algoritmico (profilo accademico, register-safe)
-    if getattr(config, 'THESIS_ALGO_ENABLED', True):
-        try:
-            from anti_ai_processor import humanize_text_post_processing
-            profile = getattr(config, 'THESIS_ANTI_AI_PROFILE', 'academic')
-            result = humanize_text_post_processing(result, profile=profile, seed=seed)
-        except TypeError:
-            # Compat: versione senza parametro seed
-            from anti_ai_processor import humanize_text_post_processing
-            result = humanize_text_post_processing(result, profile=getattr(config, 'THESIS_ANTI_AI_PROFILE', 'academic'))
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"Anti-AI algo pass errore per '{label}': {e}")
-
-    return result
+    # Delega alla pipeline anti-AI condivisa con i flag specifici della Tesi
+    # (comportamento invariato: profilo 'academic', stessi default THESIS_*).
+    return apply_anti_ai_pipeline(
+        content,
+        profile=getattr(config, 'THESIS_ANTI_AI_PROFILE', 'academic'),
+        target_words=target_words,
+        seed=seed,
+        paraphrase_enabled=getattr(config, 'THESIS_PARAPHRASE_ENABLED', True),
+        paraphrase_rounds=getattr(config, 'THESIS_PARAPHRASE_ROUNDS', 2),
+        paraphrase_model=getattr(config, 'THESIS_PARAPHRASE_MODEL', None),
+        rewrite_enabled=getattr(config, 'THESIS_REWRITE_ENABLED', False),
+        rewrite_model=getattr(config, 'THESIS_REWRITE_MODEL', None),
+        algo_enabled=getattr(config, 'THESIS_ALGO_ENABLED', True),
+        label=label,
+    )
 
 
 def _ensure_word_count(client, content: str, target_words: int, context_info: str, max_tokens: int) -> str:

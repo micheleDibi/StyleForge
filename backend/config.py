@@ -54,6 +54,19 @@ THESIS_PARAPHRASE_MODEL = os.getenv("THESIS_PARAPHRASE_MODEL", "claude-opus-4-8"
 THESIS_GEN_TEMPERATURE = float(os.getenv("THESIS_GEN_TEMPERATURE", "1.0"))
 THESIS_GEN_TOP_P = float(os.getenv("THESIS_GEN_TOP_P", "0.95"))
 
+# ----------------------------------------------------------------------------
+# Anti-AI per Genera/Umanizza (stesso meccanismo della Tesi, applicato alle
+# funzioni di generazione e umanizzazione su sessione addestrata).
+# Default = comportamento della pipeline Tesi. La parafrasi controllata è la leva
+# principale; disattivabile se costo/latenza preoccupano.
+# ----------------------------------------------------------------------------
+ANTI_AI_PARAPHRASE_ENABLED = os.getenv("ANTI_AI_PARAPHRASE_ENABLED", "true").lower() == "true"
+ANTI_AI_PARAPHRASE_ROUNDS = int(os.getenv("ANTI_AI_PARAPHRASE_ROUNDS", "2"))
+ANTI_AI_PARAPHRASE_MODEL = os.getenv("ANTI_AI_PARAPHRASE_MODEL", "claude-opus-4-8")
+ANTI_AI_REWRITE_ENABLED = os.getenv("ANTI_AI_REWRITE_ENABLED", "false").lower() == "true"
+ANTI_AI_REWRITE_MODEL = os.getenv("ANTI_AI_REWRITE_MODEL", "claude-opus-4-8")
+ANTI_AI_ALGO_ENABLED = os.getenv("ANTI_AI_ALGO_ENABLED", "true").lower() == "true"
+
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")

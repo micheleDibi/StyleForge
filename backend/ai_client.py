@@ -754,14 +754,59 @@ __TEXTBODY__
 Restituisci SOLO il testo parafrasato, senza commenti, titoli aggiunti o premesse."""
 
 
-def _controlled_paraphrase_once(text: str, model_id: str, temperature: float = 1.0) -> str:
-    """Una passata di parafrasi controllata. Ritorna il testo o l'originale su errore."""
+# Variante register-preserving della parafrasi controllata: stesse due leve
+# (diversità lessicale + riordino) ma SENZA imporre il registro accademico. Usata
+# da Genera/Umanizza quando si vuole rispettare lo stile dell'autore appreso,
+# qualunque ne sia il registro (formale o colloquiale). La Tesi continua a usare il
+# template accademico sopra (profile='academic').
+_CONTROLLED_PARAPHRASE_TEMPLATE_INFORMAL = """Sei un revisore esperto. Devi PARAFRASARE il brano qui sotto (italiano) producendo un testo nuovo che dica le STESSE cose ma con forma il più possibile DIVERSA dall'originale, MANTENENDO però il registro e lo stile dell'autore.
+
+═══════════════════════════════════════════════════════════════
+DUE LEVE OBBLIGATORIE
+═══════════════════════════════════════════════════════════════
+1. DIVERSITÀ LESSICALE MASSIMA: riformula con parole e costruzioni DIVERSE dall'originale. Sostituisci verbi, sostantivi e aggettivi con sinonimi coerenti col registro; cambia le perifrasi; evita di ricalcare gli stessi n-gram (sequenze di 3-4 parole) del testo di partenza. Non limitarti a cambiare qualche parola: riscrivi davvero le frasi.
+2. RIORDINO STRUTTURALE: cambia l'ordine delle frasi e dei blocchi quando il senso lo permette; unisci frasi brevi in periodi articolati e spezza i periodi lunghi (ritmo irregolare, "burstiness"). Non mantenere lo stesso ordine frase-per-frase dell'originale.
+
+═══════════════════════════════════════════════════════════════
+REGISTRO — RISPETTA LO STILE DELL'AUTORE
+═══════════════════════════════════════════════════════════════
+- MANTIENI il registro naturale del testo originale: se è formale resta formale, se è colloquiale resta colloquiale. NON formalizzare un testo informale né rendere accademico un testo che non lo è.
+- Conserva le scelte stilistiche genuine dell'autore (lessico caratteristico, ritmo, latinismi, incisi con trattino, punto e virgola, strutture bilanciate): sono firma stilistica, non difetti.
+- Niente "errori finti", autocorrezioni o esitazioni inventate: il testo deve restare scorrevole e corretto.
+- Evita SOLO i tic generici da AI: triadi/tricolon meccanici, antitesi bilanciate inserite a forza, transizioni da manuale ("Inoltre", "Pertanto", "In conclusione", "È importante notare che") usate in serie, chiuse a effetto a fine paragrafo, frasi tutte della stessa lunghezza.
+
+═══════════════════════════════════════════════════════════════
+DA PRESERVARE OBBLIGATORIAMENTE
+═══════════════════════════════════════════════════════════════
+- SIGNIFICATO: stessi contenuti, argomenti e conclusioni. Non aggiungere né togliere informazioni.
+- LUNGHEZZA: ALMENO __WORDCOUNT__ parole (come l'originale). Non riassumere.
+- CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni [n] (es. [1], [2]) e le note {{nota: ...}}: non rimuoverle, non rinumerarle, non modificarle.
+- Numeri, percentuali, date, nomi propri, titoli di opere e termini tecnici: identici.
+
+═══════════════════════════════════════════════════════════════
+TESTO DA PARAFRASARE (__WORDCOUNT__ parole)
+═══════════════════════════════════════════════════════════════
+__TEXTBODY__
+
+═══════════════════════════════════════════════════════════════
+Restituisci SOLO il testo parafrasato, senza commenti, titoli aggiunti o premesse."""
+
+
+def _controlled_paraphrase_once(text: str, model_id: str, temperature: float = 1.0,
+                                profile: str = 'academic') -> str:
+    """Una passata di parafrasi controllata. Ritorna il testo o l'originale su errore.
+
+    profile: 'academic' (default, registro formale forzato — usato dalla Tesi) o
+    'informal' (register-preserving — rispetta lo stile dell'autore).
+    """
     if not text or not text.strip():
         return text
     word_count = len(text.split())
     max_tokens = max(int(word_count * 2.5) + 2000, 8192)
+    template = (_CONTROLLED_PARAPHRASE_TEMPLATE_INFORMAL if profile == 'informal'
+                else _CONTROLLED_PARAPHRASE_TEMPLATE)
     prompt = (
-        _CONTROLLED_PARAPHRASE_TEMPLATE
+        template
         .replace("__WORDCOUNT__", str(word_count))
         .replace("__TEXTBODY__", text)
     )
@@ -775,11 +820,16 @@ def controlled_paraphrase(
     model_id: Optional[str] = None,
     rounds: Optional[int] = None,
     target_words: int = 0,
+    profile: str = 'academic',
 ) -> str:
     """
     Parafrasi controllata RICORSIVA (DIPPER-style): max diversità lessicale +
     riordino, applicata `rounds` volte (default da THESIS_PARAPHRASE_ROUNDS).
     Preserva citazioni [x], note {{nota}}, registro e lunghezza.
+
+    profile: 'academic' (default → registro formale, comportamento Tesi invariato)
+    oppure 'informal' (register-preserving → rispetta lo stile dell'autore, anche
+    colloquiale).
 
     Floor di lunghezza per passata: se una passata scende sotto il 90% del testo
     in ingresso a quella passata (o del target), la passata viene SCARTATA e si
@@ -796,7 +846,7 @@ def controlled_paraphrase(
     current = text
     for i in range(max(0, n_rounds)):
         try:
-            candidate = _controlled_paraphrase_once(current, model)
+            candidate = _controlled_paraphrase_once(current, model, profile=profile)
         except InsufficientCreditsError:
             raise
         except Exception as e:  # noqa: BLE001
