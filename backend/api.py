@@ -260,17 +260,30 @@ async def delete_session(
 # TRAINING ENDPOINTS
 # ============================================================================
 
-def train_session_task(session_id: str, file_path: Path, max_pages: int) -> str:
+def _pdf_page_count(path) -> int:
+    """Numero di pagine reali di un PDF (1 se non leggibile)."""
+    try:
+        import fitz
+        doc = fitz.open(str(path))
+        try:
+            return doc.page_count
+        finally:
+            doc.close()
+    except Exception:
+        return 1
+
+
+def train_session_task(session_id: str, file_path: Path, train_job_id: str = None) -> str:
     """
-    Task sincrono per l'addestramento di una sessione.
+    Task sincrono per l'addestramento di una sessione: analizza l'INTERO documento.
 
     Args:
         session_id: ID della sessione.
         file_path: Percorso del file PDF.
-        max_pages: Numero massimo di pagine da leggere.
+        train_job_id: ID del job per gli aggiornamenti di progresso (opzionale).
 
     Returns:
-        Risposta di Claude dopo l'addestramento.
+        Il profilo stilistico prodotto.
     """
     import PyPDF2
     import re
@@ -298,7 +311,8 @@ def train_session_task(session_id: str, file_path: Path, max_pages: int) -> str:
         session_manager.set_session_name(session_id, file_path.stem[:50])
 
     client = session_manager.get_session(session_id)
-    result = client.addestramento(str(file_path))
+    progress_cb = _make_job_progress_cb(train_job_id) if train_job_id else None
+    result = client.addestramento(str(file_path), progress_cb=progress_cb)
 
     # Salva la conversation history e lo stato trained
     session_manager.save_conversation_history(session_id)
@@ -343,13 +357,16 @@ async def train_session(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore nel salvataggio del file: {e}")
 
-    # Deduzione crediti
-    credit_estimate = estimate_credits('train', {'max_pages': max_pages}, db=db)
+    # Pagine effettive del PDF (vengono lette tutte): base per la stima crediti.
+    actual_pages = _pdf_page_count(file_path)
+
+    # Deduzione crediti sulle pagine reali
+    credit_estimate = estimate_credits('train', {'max_pages': actual_pages}, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],
         operation_type='train',
-        description=f"Addestramento modello ({max_pages} pagine)",
+        description=f"Addestramento modello ({actual_pages} pagine)",
         db=db
     )
 
@@ -360,16 +377,18 @@ async def train_session(
     else:
         session_id = session_manager.create_session(user_id, session_id)
 
-    # Crea job con nome auto-generato
+    # Crea job con job_id pre-generato (serve per il progresso)
     job_name = f"Training: {file.filename}"
-    job_id = job_manager.create_job(
+    job_id = f"job_{uuid_module.uuid4().hex[:12]}"
+    job_manager.create_job(
         session_id=session_id,
         user_id=user_id,
         job_type='training',
         task_func=train_session_task,
+        job_id=job_id,
         name=job_name,
         file_path=file_path,
-        max_pages=max_pages
+        train_job_id=job_id
     )
 
     # Aggiungi job alla sessione
@@ -385,6 +404,42 @@ async def train_session(
         message=f"Training avviato. Monitora lo stato con GET /jobs/{job_id}",
         created_at=datetime.now()
     )
+
+
+@app.post("/train/estimate", tags=["Training"])
+async def estimate_training(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_permission('train')),
+    db: Session = Depends(get_db)
+):
+    """
+    Stima i crediti per l'addestramento sulle pagine EFFETTIVE del PDF (file non
+    persistito). L'intero documento verrà analizzato; il costo scala con le pagine.
+    """
+    if not (file.filename or '').lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Solo file PDF sono supportati")
+    content = await file.read()
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        pages = _pdf_page_count(tmp_path)
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    result = estimate_credits('train', {'max_pages': pages}, db=db)
+    is_admin = is_admin_user(current_user)
+    return {
+        'pages': pages,
+        'credits_needed': result['credits_needed'],
+        'breakdown': result['breakdown'],
+        'current_balance': -1 if is_admin else current_user.credits,
+        'sufficient': is_admin or current_user.credits >= result['credits_needed'],
+    }
 
 
 # ============================================================================
