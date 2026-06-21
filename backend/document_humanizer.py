@@ -133,37 +133,59 @@ def _note_token(k: int) -> str:
     return f"⟦N{k}⟧"
 
 
+def _ensure_note_superscript(run_el) -> None:
+    """Garantisce che un run di riferimento a nota/endnote sia in APICE (superscript),
+    anche se l'originale non aveva lo stile FootnoteReference (così i numeretti non
+    appaiono come testo normale)."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    rpr = run_el.find(qn('w:rPr'))
+    if rpr is None:
+        rpr = OxmlElement('w:rPr')
+        run_el.insert(0, rpr)
+    if rpr.find(qn('w:vertAlign')) is None:
+        va = OxmlElement('w:vertAlign'); va.set(qn('w:val'), 'superscript')
+        rpr.append(va)
+
+
 def extract_paragraph_with_placeholders(p):
     """Ritorna (text_with_tokens, token_map, base_rpr).
 
     Cammina i figli di p._element IN ORDINE: i run di solo testo diventano testo; i run
     con elementi speciali (riferimenti a nota/endnote, immagini, campi) e ogni altro
     elemento inline (hyperlink, bookmark...) diventano un token ⟦N{k}⟧ con l'elemento XML
-    originale preservato (deepcopy) in token_map. base_rpr è il <w:rPr> del primo run di
-    testo, usato per formattare i nuovi run di testo nella ricostruzione.
+    originale preservato (deepcopy) in token_map. base_rpr è il <w:rPr> del run di testo
+    DOMINANTE (il più lungo): così un singolo run in corsivo non rende corsivo l'intero
+    paragrafo. I riferimenti a nota vengono forzati in apice.
     """
     from copy import deepcopy
     from docx.oxml.ns import qn
 
     R = qn('w:r'); T = qn('w:t'); PPR = qn('w:pPr'); RPR = qn('w:rPr')
-    SPECIAL = (qn('w:footnoteReference'), qn('w:endnoteReference'), qn('w:drawing'),
-               qn('w:object'), qn('w:pict'), qn('w:fldChar'), qn('w:instrText'))
+    NOTE_REFS = (qn('w:footnoteReference'), qn('w:endnoteReference'))
+    OTHER_SPECIAL = (qn('w:drawing'), qn('w:object'), qn('w:pict'), qn('w:fldChar'), qn('w:instrText'))
 
-    parts, token_map, base_rpr, k = [], {}, None, 0
+    parts, token_map, base_rpr, base_len, k = [], {}, None, -1, 0
     for child in list(p._element):
         if child.tag == PPR:
             continue
         if child.tag == R:
-            if any(child.find(s) is not None for s in SPECIAL):
+            is_note = any(child.find(s) is not None for s in NOTE_REFS)
+            is_special = is_note or any(child.find(s) is not None for s in OTHER_SPECIAL)
+            if is_special:
+                el = deepcopy(child)
+                if is_note:
+                    _ensure_note_superscript(el)
                 tok = _note_token(k); k += 1
-                token_map[tok] = deepcopy(child)
+                token_map[tok] = el
                 parts.append(tok)
             else:
-                if base_rpr is None:
+                txt = ''.join(t.text or '' for t in child.findall(T))
+                if len(txt) > base_len:   # formattazione del run dominante (più lungo)
                     rpr = child.find(RPR)
-                    if rpr is not None:
-                        base_rpr = deepcopy(rpr)
-                parts.append(''.join(t.text or '' for t in child.findall(T)))
+                    base_rpr = deepcopy(rpr) if rpr is not None else None
+                    base_len = len(txt)
+                parts.append(txt)
         else:
             tok = _note_token(k); k += 1
             token_map[tok] = deepcopy(child)
@@ -248,11 +270,23 @@ def _parse_segments(rewritten: str, expected: int):
     return segs
 
 
+def _strip_markdown(s: str) -> str:
+    """Rimuove la formattazione markdown che il modello a volte aggiunge (*x*, **x**,
+    _x_, # titolo): nel .docx finirebbe come asterischi/cancelletti letterali."""
+    s = re.sub(r'\*\*(.+?)\*\*', r'\1', s)
+    s = re.sub(r'\*(.+?)\*', r'\1', s)
+    s = re.sub(r'(?<![A-Za-zÀ-ÿ0-9])_(.+?)_(?![A-Za-zÀ-ÿ0-9])', r'\1', s)
+    s = re.sub(r'^\s*#{1,6}\s+', '', s)
+    s = s.replace('*', '')  # asterischi residui spaiati
+    return s
+
+
 def _clean_segment(s: str) -> str:
     s = _MARKER_RE.sub('', s or '')
     s = s.strip()
     s = re.sub(r'^\s*-{3,}\s*', '', s)
     s = re.sub(r'\s*-{3,}\s*$', '', s)
+    s = _strip_markdown(s)
     return s.strip()
 
 

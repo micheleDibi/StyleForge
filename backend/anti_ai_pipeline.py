@@ -59,8 +59,9 @@ TIC GENERICI DA AI DA EVITARE (questi sì, sempre):
 - Parallelismi/tricolon e antitesi bilanciate ("non solo… ma anche", "da un lato…
   dall'altro") inseriti MECCANICAMENTE quando non sono nello stile dell'autore.
 - Chiuse a effetto, massime o aforismi a fine paragrafo se l'autore non li usa.
-- Artefatti di formattazione: titoli o elenchi markdown non richiesti, emoji,
-  preamboli tipo "Ecco il testo:", "Certo,". Consegna solo il testo.
+- Artefatti di formattazione: NIENTE markdown — niente asterischi (*, **), trattini
+  bassi (_) o cancelletti (#) per enfasi/titoli, niente elenchi non richiesti, niente
+  emoji o preamboli tipo "Ecco il testo:", "Certo,". Consegna SOLO testo semplice.
 """
 
 
