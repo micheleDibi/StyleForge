@@ -361,12 +361,13 @@ export const trainSession = async (file, sessionId = null, maxPages = 50) => {
 // GENERATION
 // ============================================================================
 
-export const generateContent = async (sessionId, argomento, numeroParole, destinatario = 'Pubblico Generale') => {
+export const generateContent = async (sessionId, argomento, numeroParole, destinatario = 'Pubblico Generale', profile = 'academic') => {
   const response = await api.post('/generate', {
     session_id: sessionId,
     argomento,
     numero_parole: numeroParole,
     destinatario,
+    profile,
   });
   return response.data;
 };

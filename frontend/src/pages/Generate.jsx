@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Sparkles, Download, Copy, Check, RefreshCw, AlertTriangle, Shield, FileText, Loader } from 'lucide-react';
+import { ArrowLeft, Sparkles, Download, Copy, Check, RefreshCw, AlertTriangle, Shield, FileText, Loader, GraduationCap } from 'lucide-react';
 import { getSessions, generateContent, pollJobStatus, getResultText, estimateCredits, startCompilatioScan, downloadCompilatioReport } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
@@ -19,6 +19,7 @@ const Generate = () => {
   const [argomento, setArgomento] = useState('');
   const [numeroParole, setNumeroParole] = useState(1000);
   const [destinatario, setDestinatario] = useState('Pubblico Generale');
+  const [profile, setProfile] = useState('academic');
   const [generating, setGenerating] = useState(false);
   const [jobStatus, setJobStatus] = useState(null);
   const [result, setResult] = useState('');
@@ -77,7 +78,7 @@ const Generate = () => {
     setGenerating(true);
 
     try {
-      const response = await generateContent(selectedSession, argomento, numeroParole, destinatario);
+      const response = await generateContent(selectedSession, argomento, numeroParole, destinatario, profile);
       setJobStatus({ ...response, status: 'pending', progress: 0 });
 
       const finalStatus = await pollJobStatus(
@@ -310,6 +311,44 @@ const Generate = () => {
                   className="input w-full"
                   placeholder={t('Pubblico Generale')}
                 />
+              </div>
+
+              {/* Profilo anti-AI */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  {t('Profilo anti-AI')}
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProfile('informal')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                      profile === 'informal'
+                        ? 'bg-orange-50 border-orange-400 text-orange-700'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {t('Informale')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProfile('academic')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                      profile === 'academic'
+                        ? 'bg-blue-50 border-blue-400 text-blue-700'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <GraduationCap className="w-4 h-4" />
+                    {t('Accademico')}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  {profile === 'academic'
+                    ? t('Registro formale: rispetta lo stile dell\'autore, nessun colloquialismo.')
+                    : t('Piu aggressivo: introduce colloquialismi e variazioni piu marcate.')}
+                </p>
               </div>
 
               {selectedSession && argomento.trim() && (

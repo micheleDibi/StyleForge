@@ -47,6 +47,10 @@ class GenerationRequest(BaseModel):
     argomento: str = Field(..., min_length=1, description="Argomento su cui generare contenuto")
     numero_parole: int = Field(..., ge=100, le=10000, description="Numero approssimativo di parole")
     destinatario: str = Field("Pubblico Generale", description="Pubblico destinatario")
+    profile: Literal['informal', 'academic'] = Field(
+        'academic',
+        description="Profilo anti-AI: 'academic' (register-safe, autori formali) o 'informal' (colloquiale)"
+    )
 
     class Config:
         json_schema_extra = {
@@ -54,7 +58,8 @@ class GenerationRequest(BaseModel):
                 "session_id": "session_123",
                 "argomento": "Psicopatologia",
                 "numero_parole": 1000,
-                "destinatario": "Pubblico Generale"
+                "destinatario": "Pubblico Generale",
+                "profile": "academic"
             }
         }
 

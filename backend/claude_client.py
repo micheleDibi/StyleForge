@@ -19,6 +19,7 @@ from anthropic import Anthropic
 from dotenv import load_dotenv, find_dotenv
 from tqdm import tqdm
 from ai_exceptions import InsufficientCreditsError, check_claude_error
+from anti_ai_pipeline import ANTI_AI_PROMPT_BLOCK, apply_anti_ai_pipeline
 
 load_dotenv(find_dotenv())
 
@@ -52,14 +53,12 @@ class ClaudeClient:
         self.client = Anthropic(api_key=API_KEY)
         self.conversation_history: list[dict] = []
         self.system_prompt: str = """
-            Sei un redattore. Riceverai fonti in allegato. 
-            Devi scrivere come l'autore, ma soprattutto devi scrivere come un umano vero — con le sue esitazioni, 
-            le sue ridondanze, i suoi momenti meno brillanti.
-
-            Sei anche un analista linguistico e stilista editoriale di altissimo livello. 
-            Riceverai in allegato una o più fonti di un autore (libri, articoli, saggi, pubblicazioni scientifiche). 
-            Il tuo compito è interiorizzare profondamente la sua voce attraverso lo studio di questi materiali, 
-            fino a poter produrre testi indistinguibili dai suoi originali.
+            Sei un analista linguistico e redattore di altissimo livello. Riceverai in
+            allegato una o più fonti di un autore (libri, articoli, saggi, pubblicazioni
+            scientifiche). Il tuo compito è interiorizzarne fedelmente la voce — registro,
+            sintassi, lessico, ritmo, punteggiatura, idiosincrasie — qualunque ne sia il
+            registro (formale o informale, accademico o colloquiale), senza normalizzarla
+            né giudicarla, e, quando richiesto, produrre testi indistinguibili dai suoi.
         """
         self.is_trained: bool = False
 
@@ -89,7 +88,7 @@ class ClaudeClient:
         if not file_content.strip():
             raise ValueError(f"Il file è vuoto: {file_path}")
         
-        prompt_addestramento = Path("prompt_addestramento.txt").read_text(encoding="utf-8")
+        prompt_addestramento = (Path(__file__).parent / "prompt_addestramento.txt").read_text(encoding="utf-8")
 
         training_message = f"""{prompt_addestramento}
 
@@ -133,7 +132,7 @@ class ClaudeClient:
         self.is_trained = True
         return assistant_message
 
-    def generazione(self, argomento: str, numero_parole: int, destinatario : str = "Pubblico Generale") -> str:
+    def generazione(self, argomento: str, numero_parole: int, destinatario : str = "Pubblico Generale", profile: str = 'academic') -> str:
         """
         Fase di generazione: genera contenuto basandosi sul contesto dell'addestramento.
 
@@ -154,23 +153,23 @@ class ClaudeClient:
                 "Chiama il metodo addestramento() prima."
             )
 
-        # Costruisci il messaggio di generazione
-        # ==========================================
-        # INSERISCI QUI IL TUO PROMPT DI GENERAZIONE
-        # ==========================================
-        generation_message = f"""
-            ═══════════════════════════════════════════════════════════════
-            GENERA RELAZIONE
-            ═══════════════════════════════════════════════════════════════
-            ARGOMENTO: {argomento}
-            PAROLE: {numero_parole}
-            DESTINATARIO: {destinatario}
-            ═══════════════════════════════════════════════════════════════
-            Scrivi.
-            Applica tutto. Ogni regola. Ogni divieto.
-            Se una frase ti sembra riuscita, probabilmente è sbagliata. Sporcala.
-            Consegna solo quando il testo sembra scritto da una persona vera, stanca, che ha poco tempo, non da una macchina che vuole impressionare.
-        """
+        # Costruisci il messaggio di generazione: framing del compito + blocco
+        # anti-AI condiviso (identico a quello iniettato in umanizzazione()).
+        generation_message = (
+            f"""
+═══════════════════════════════════════════════════════════════
+GENERA RELAZIONE
+═══════════════════════════════════════════════════════════════
+ARGOMENTO: {argomento}
+PAROLE: {numero_parole}
+DESTINATARIO: {destinatario}
+═══════════════════════════════════════════════════════════════
+Scrivi un testo di circa {numero_parole} parole sull'argomento indicato, applicando
+fedelmente lo stile dell'autore appreso durante l'addestramento. Consegna SOLO il
+testo, senza commenti né premesse.
+"""
+            + ANTI_AI_PROMPT_BLOCK
+        )
 
         # Aggiungi il messaggio alla cronologia
         self.conversation_history.append({
@@ -203,9 +202,20 @@ class ClaudeClient:
             "content": assistant_message
         })
 
-        # Post-processing anti-AI
-        from anti_ai_processor import humanize_text_post_processing
-        final_text = humanize_text_post_processing(assistant_message)
+        # Post-processing anti-AI: stessa identica pipeline di umanizzazione()/Tesi
+        import config
+        final_text = apply_anti_ai_pipeline(
+            assistant_message,
+            profile=profile,
+            target_words=numero_parole,
+            paraphrase_enabled=getattr(config, 'ANTI_AI_PARAPHRASE_ENABLED', True),
+            paraphrase_rounds=getattr(config, 'ANTI_AI_PARAPHRASE_ROUNDS', 2),
+            paraphrase_model=getattr(config, 'ANTI_AI_PARAPHRASE_MODEL', None),
+            rewrite_enabled=getattr(config, 'ANTI_AI_REWRITE_ENABLED', False),
+            rewrite_model=getattr(config, 'ANTI_AI_REWRITE_MODEL', None),
+            algo_enabled=getattr(config, 'ANTI_AI_ALGO_ENABLED', True),
+            label='generazione',
+        )
 
         return final_text
 
@@ -248,14 +258,16 @@ class ClaudeClient:
         min_words = word_count
         max_words = int(word_count * 1.15)
 
-        # Prompt di umanizzazione che sfrutta il contesto dell'addestramento
-        humanize_prompt = f"""
+        # Prompt di umanizzazione: framing del compito (citazioni + lunghezza) +
+        # blocco anti-AI condiviso (IDENTICO a quello iniettato in generazione()).
+        humanize_prompt = (
+            f"""
 ═══════════════════════════════════════════════════════════════════════════════
 RISCRITTURA — APPLICA LO STILE APPRESO
 ═══════════════════════════════════════════════════════════════════════════════
 
-Riscrivi il testo seguente applicando lo stile dell'autore che hai appreso durante
-l'addestramento. Il testo originale contiene {word_count} parole. La riscrittura
+Riscrivi il testo seguente applicando fedelmente lo stile dell'autore che hai appreso
+durante l'addestramento. Il testo originale contiene {word_count} parole. La riscrittura
 DEVE contenere ALMENO {min_words} parole.
 
 ⚠️ CITAZIONI BIBLIOGRAFICHE: MANTIENI INTATTE tutte le citazioni [x] (es. [1], [2], [3]).
@@ -264,44 +276,18 @@ NON rimuoverle, NON spostarle. Se una frase contiene [3], la riscrittura DEVE co
 ---
 {testo_originale}
 ---
-
-═══════════════════════════════════════════════════════════════════════════════
-COME RISCRIVERE
-═══════════════════════════════════════════════════════════════════════════════
-
-Riscrivi come se fossi lo studente autore di questa tesi che rielabora il materiale
-con le proprie parole. Hai letto e capito il contenuto; ora lo riscrivi nel tuo stile.
-
-VOCABOLARIO:
-- Usa parole semplici e dirette: "usa" non "utilizza", "mostra" non "evidenzia",
-  "aiuta" non "contribuisce a", "serve" non "risulta necessario"
-- Preferisci verbi concreti: "cresce", "cala", "cambia", "funziona", "dipende"
-- NON usare MAI: "fondamentale", "significativo", "cruciale", "rilevante",
-  "sottolineare", "evidenziare", "emergere", "inoltre", "pertanto", "dunque",
-  "tuttavia", "rappresenta", "costituisce", "in questo contesto", "paradigma",
-  "in definitiva", "in ultima analisi", "è importante notare", "vale la pena"
-
-FRASI:
-- Lunghezze MOLTO variabili: corte (8-12 parole), medie (18-25), lunghe (30-40)
-- NON iniziare due paragrafi consecutivi allo stesso modo
-- NON usare strutture simmetriche ("da un lato... dall'altro", "non solo... ma anche")
-- NON usare domande retoriche seguite dalla risposta
-- A volte collega frasi con "e" o "ma" semplici
-
-STRUTTURA:
-- Paragrafi di lunghezze diverse (da 3-4 frasi a 8-10 frasi)
-- NON chiudere paragrafi con frasi a effetto, massime o aforismi
-- Le transizioni tra paragrafi sono a volte esplicite, a volte implicite
-- Il discorso è accademico ma naturale, come lo scriverebbe uno studente preparato
-
-REGOLE:
-- ALMENO {min_words} parole
-- NON abbreviare, NON sintetizzare
-- NON aggiungere interiezioni artificiali ("anzi no", "o meglio", "cioè no")
-- NON inserire frasi incomplete o sospese a caso
-- Scrivi testo accademico naturale, non testo con "errori finti"
-- SOLO il testo riscritto, NESSUN commento o premessa
 """
+            + ANTI_AI_PROMPT_BLOCK
+            + f"""
+═══════════════════════════════════════════════════════════════════════════════
+REGOLE DEL COMPITO
+═══════════════════════════════════════════════════════════════════════════════
+- Riscrivi davvero il testo con parole tue, applicando lo stile dell'autore appreso.
+- ALMENO {min_words} parole. NON abbreviare, NON sintetizzare.
+- Mantieni INTATTE tutte le citazioni [x].
+- SOLO il testo riscritto, NESSUN commento o premessa.
+"""
+        )
 
         # Aggiungi il messaggio alla cronologia (usa il contesto dell'addestramento)
         self.conversation_history.append({
@@ -338,9 +324,21 @@ REGOLE:
             "content": assistant_message
         })
 
-        # Post-processing anti-AI (profilo selezionabile: informal/academic)
-        from anti_ai_processor import humanize_text_post_processing
-        final_text = humanize_text_post_processing(assistant_message, profile=profile)
+        # Post-processing anti-AI: stessa identica pipeline di generazione()/Tesi
+        # (profilo selezionabile: informal/academic).
+        import config
+        final_text = apply_anti_ai_pipeline(
+            assistant_message,
+            profile=profile,
+            target_words=min_words,
+            paraphrase_enabled=getattr(config, 'ANTI_AI_PARAPHRASE_ENABLED', True),
+            paraphrase_rounds=getattr(config, 'ANTI_AI_PARAPHRASE_ROUNDS', 2),
+            paraphrase_model=getattr(config, 'ANTI_AI_PARAPHRASE_MODEL', None),
+            rewrite_enabled=getattr(config, 'ANTI_AI_REWRITE_ENABLED', False),
+            rewrite_model=getattr(config, 'ANTI_AI_REWRITE_MODEL', None),
+            algo_enabled=getattr(config, 'ANTI_AI_ALGO_ENABLED', True),
+            label='umanizzazione',
+        )
 
         return final_text
 

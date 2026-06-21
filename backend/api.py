@@ -395,7 +395,8 @@ def generate_content_task(
     session_id: str,
     argomento: str,
     numero_parole: int,
-    destinatario: str
+    destinatario: str,
+    profile: str = 'academic'
 ) -> str:
     """
     Task sincrono per la generazione di contenuto.
@@ -405,6 +406,7 @@ def generate_content_task(
         argomento: Argomento del contenuto.
         numero_parole: Numero di parole.
         destinatario: Pubblico destinatario.
+        profile: Profilo anti-AI ('academic' o 'informal').
 
     Returns:
         Contenuto generato da Claude.
@@ -413,7 +415,8 @@ def generate_content_task(
     result = client.generazione(
         argomento=argomento,
         numero_parole=numero_parole,
-        destinatario=destinatario
+        destinatario=destinatario,
+        profile=profile
     )
 
     # Salva la conversation history
@@ -478,7 +481,8 @@ async def generate_content(
         name=job_name,
         argomento=request.argomento,
         numero_parole=request.numero_parole,
-        destinatario=request.destinatario
+        destinatario=request.destinatario,
+        profile=request.profile
     )
 
     # Aggiungi job alla sessione
