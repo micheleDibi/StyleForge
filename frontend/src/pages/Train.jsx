@@ -2,18 +2,15 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Upload, ArrowLeft, FileText, CheckCircle, AlertCircle } from 'lucide-react';
-import { trainSession, pollJobStatus, estimateCredits } from '../services/api';
+import { trainSession, estimateTraining, pollJobStatus } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
-import ApiCostEstimate from '../components/ApiCostEstimate';
-import CreditEstimatePreview from '../components/CreditEstimatePreview';
 
 const Train = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { user, isAdmin, credits, refreshUser } = useAuth();
+  const { isAdmin, credits, refreshUser } = useAuth();
   const [file, setFile] = useState(null);
-  const maxPages = 50;
   const [uploading, setUploading] = useState(false);
   const [jobStatus, setJobStatus] = useState(null);
   const [error, setError] = useState('');
@@ -49,7 +46,7 @@ const Train = () => {
     setError('');
 
     try {
-      const estimate = await estimateCredits('train', { max_pages: maxPages });
+      const estimate = await estimateTraining(file);
       setCreditEstimate(estimate);
     } catch (err) {
       console.error('Errore stima crediti:', err);
@@ -67,7 +64,7 @@ const Train = () => {
 
     try {
       // Avvia training
-      const response = await trainSession(file, null, maxPages);
+      const response = await trainSession(file, null);
       setJobStatus({ ...response, status: 'pending', progress: 0 });
 
       // Poll status
@@ -111,7 +108,7 @@ const Train = () => {
             {t('Nuovo Training')}
           </h1>
           <p className="text-slate-600">
-            {t('Carica un PDF per addestrare il modello sul tuo stile di scrittura')}
+            {t("Carica un PDF: l'intero documento verrà analizzato per costruire un profilo stilistico completo")}
           </p>
         </div>
 
@@ -170,9 +167,8 @@ const Train = () => {
             </div>
 
             {file && (
-              <div className="mb-6">
-                <CreditEstimatePreview operationType="train" params={{ max_pages: 50 }} />
-                {isAdmin && <ApiCostEstimate mode="train" maxPages={50} />}
+              <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+                {t("Verrà analizzato l'intero documento. Il costo (in base al numero di pagine) viene mostrato alla conferma.")}
               </div>
             )}
 

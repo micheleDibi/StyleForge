@@ -341,18 +341,27 @@ export const renameSession = async (sessionId, name) => {
 // TRAINING
 // ============================================================================
 
-export const trainSession = async (file, sessionId = null, maxPages = 50) => {
+export const trainSession = async (file, sessionId = null) => {
   const formData = new FormData();
   formData.append('file', file);
   if (sessionId) {
     formData.append('session_id', sessionId);
   }
-  formData.append('max_pages', maxPages);
 
   const response = await api.post('/train', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
+  });
+  return response.data;
+};
+
+// Stima crediti per l'addestramento sulle pagine reali del PDF (l'intero documento viene analizzato).
+export const estimateTraining = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/train/estimate', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
   });
   return response.data;
 };
