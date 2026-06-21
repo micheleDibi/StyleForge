@@ -29,6 +29,29 @@ MAX_TOKENS_TEST = 8192
 
 API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
+# Direttiva di imitazione dello stile, ri-iniettata in testa a ogni prompt di
+# generazione/riscrittura per applicare in modo MARCATO il profilo appreso (il
+# profilo resta in conversation_history ma va ri-enfatizzato a ogni chiamata).
+STYLE_IMITATION_DIRECTIVE = """
+═══════════════════════════════════════════════════════════════════════════════
+IMITAZIONE DELLO STILE — PRIORITÀ ASSOLUTA
+═══════════════════════════════════════════════════════════════════════════════
+Applica in modo MARCATO e RICONOSCIBILE il profilo stilistico dell'autore che hai
+prodotto durante l'addestramento: costruzione e lunghezza dei periodi, lessico e
+parole-chiave ricorrenti, punteggiatura e ritmo, stilemi e costruzioni-firma. Se il
+profilo include una SCHEDA OPERATIVA DI IMITAZIONE, applicala punto per punto.
+NON fare modifiche leggere o caute: il risultato deve suonare INEQUIVOCABILMENTE come
+scritto da quell'autore, non come una parafrasi neutra. Mantieni però INTATTI il
+significato, i dati, le citazioni [x] e i marcatori di nota ⟦N…⟧.
+"""
+
+# Aggiunta usata nelle passate di rifinitura (intensify=True).
+STYLE_INTENSIFY_NOTE = """
+PASSATA DI RIFINITURA: il testo che ricevi è già una riscrittura. Intensifica
+ULTERIORMENTE lo stile dell'autore (sintassi, lessico, ritmo, stilemi) rispetto a
+questo testo, senza alterarne il significato, le citazioni [x] né i marcatori di nota.
+"""
+
 def lettura_pdf(file_path: str, max_pagine: int = 50) -> str:
     doc = fitz.open(file_path)
     testo = ""
@@ -157,7 +180,8 @@ class ClaudeClient:
         # Costruisci il messaggio di generazione: framing del compito + blocco
         # anti-AI condiviso (identico a quello iniettato in umanizzazione()).
         generation_message = (
-            f"""
+            STYLE_IMITATION_DIRECTIVE
+            + f"""
 ═══════════════════════════════════════════════════════════════
 GENERA RELAZIONE
 ═══════════════════════════════════════════════════════════════
@@ -263,7 +287,8 @@ testo, senza commenti né premesse.
         # Prompt di umanizzazione: framing del compito (citazioni + lunghezza) +
         # blocco anti-AI condiviso (IDENTICO a quello iniettato in generazione()).
         humanize_prompt = (
-            f"""
+            STYLE_IMITATION_DIRECTIVE
+            + f"""
 ═══════════════════════════════════════════════════════════════════════════════
 RISCRITTURA — APPLICA LO STILE APPRESO
 ═══════════════════════════════════════════════════════════════════════════════
@@ -372,7 +397,7 @@ REGOLE DEL COMPITO
             raise
         return response.content[0].text
 
-    def umanizzazione_chunk(self, testo: str, profile: str = 'informal') -> str:
+    def umanizzazione_chunk(self, testo: str, profile: str = 'informal', intensify: bool = False) -> str:
         """
         Riscrive UN chunk nello stile appreso, SENZA mutare la history e SENZA
         post-processing (lo applica il chiamante). Usata da humanize_long_text per
@@ -382,7 +407,9 @@ REGOLE DEL COMPITO
         word_count = len(testo.split())
         min_words = word_count
         prompt = (
-            f"""
+            STYLE_IMITATION_DIRECTIVE
+            + (STYLE_INTENSIFY_NOTE if intensify else "")
+            + f"""
 ═══════════════════════════════════════════════════════════════════════════════
 RISCRITTURA — APPLICA LO STILE APPRESO
 ═══════════════════════════════════════════════════════════════════════════════
@@ -414,7 +441,7 @@ REGOLE DEL COMPITO
         dynamic_max_tokens = cap_output_tokens(max(int(word_count * 2.5) + 2000, MAX_TOKENS_TEST))
         return self._rewrite_stateless(prompt, dynamic_max_tokens)
 
-    def umanizzazione_segments(self, joined: str, n_segments: int, profile: str = 'academic') -> str:
+    def umanizzazione_segments(self, joined: str, n_segments: int, profile: str = 'academic', intensify: bool = False) -> str:
         """
         Riscrive N paragrafi (segmenti marcati con <<<Sk>>>) PRESERVANDO i confini,
         per il round-trip docx (corrispondenza 1:1 coi paragrafi). Ritorna il testo
@@ -424,7 +451,9 @@ REGOLE DEL COMPITO
         word_count = len(joined.split())
         last = n_segments - 1
         prompt = (
-            f"""
+            STYLE_IMITATION_DIRECTIVE
+            + (STYLE_INTENSIFY_NOTE if intensify else "")
+            + f"""
 ═══════════════════════════════════════════════════════════════════════════════
 RISCRITTURA A SEGMENTI — APPLICA LO STILE APPRESO
 ═══════════════════════════════════════════════════════════════════════════════

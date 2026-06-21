@@ -71,7 +71,10 @@ ANTI_AI_ALGO_ENABLED = os.getenv("ANTI_AI_ALGO_ENABLED", "true").lower() == "tru
 # usato per limitare max_tokens ed evitare il 400 "max_tokens > 128000".
 MODEL_MAX_OUTPUT_TOKENS = int(os.getenv("MODEL_MAX_OUTPUT_TOKENS", "120000"))
 # Parole per batch nel round-trip docx (umanizzazione documento col template).
-DOC_HUMANIZE_BATCH_WORDS = int(os.getenv("DOC_HUMANIZE_BATCH_WORDS", "2500"))
+# Stile più forte sui documenti: batch piccoli (più focus per paragrafo) + passate
+# extra di rifinitura stilistica (cap a 2 totali per evitare deriva di significato).
+DOC_HUMANIZE_BATCH_WORDS = int(os.getenv("DOC_HUMANIZE_BATCH_WORDS", "1000"))
+DOC_STYLE_REFINE_PASSES = int(os.getenv("DOC_STYLE_REFINE_PASSES", "1"))
 
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")

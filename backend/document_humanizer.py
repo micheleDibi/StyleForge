@@ -256,12 +256,12 @@ def _clean_segment(s: str) -> str:
     return s.strip()
 
 
-def _per_paragraph_fallback(texts, session_client, profile):
+def _per_paragraph_fallback(texts, session_client, profile, intensify=False):
     """Fallback robusto: una riscrittura per paragrafo → corrispondenza 1:1 garantita."""
     out = []
     for t in texts:
         try:
-            out.append(session_client.umanizzazione_chunk(t, profile=profile))
+            out.append(session_client.umanizzazione_chunk(t, profile=profile, intensify=intensify))
         except InsufficientCreditsError:
             raise
         except Exception as e:  # noqa: BLE001
@@ -270,14 +270,51 @@ def _per_paragraph_fallback(texts, session_client, profile):
     return out
 
 
+def _base_rewrite(texts, session_client, profile, intensify=False):
+    """Una riscrittura dei segmenti (batch) con fallback per-paragrafo se il modello
+    sbaglia il conteggio. Garantisce len(out) == len(texts)."""
+    n = len(texts)
+    if n == 1:
+        return _per_paragraph_fallback(texts, session_client, profile, intensify=intensify)
+    joined = _build_segments_payload(texts)
+    try:
+        rewritten = session_client.umanizzazione_segments(joined, n, profile, intensify=intensify)
+        segs = _parse_segments(rewritten, n)
+    except InsufficientCreditsError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Riscrittura a segmenti fallita: {e}; uso il fallback")
+        segs = None
+    if segs is None:
+        segs = _per_paragraph_fallback(texts, session_client, profile, intensify=intensify)
+    return segs
+
+
+def _rewrite_segments(texts, session_client, profile, style_passes=0):
+    """Riscrittura base + N passate di rifinitura stilistica (intensify). Una passata
+    che fallisce o cambia il numero di segmenti viene scartata (si tiene la precedente)."""
+    segs = _base_rewrite(texts, session_client, profile, intensify=False)
+    for _ in range(max(0, int(style_passes))):
+        refined = _base_rewrite(segs, session_client, profile, intensify=True)
+        if refined and len(refined) == len(segs):
+            segs = refined
+    return segs
+
+
 def humanize_docx_inplace(src_path, dst_path, session_client, profile: str = 'academic',
-                          progress_cb=None, batch_words: int = 2500) -> str:
+                          progress_cb=None, batch_words=None, style_passes=None) -> str:
     """
     Umanizza un .docx mantenendo il template originale: sostituisce SOLO il testo dei
     paragrafi del corpo, in batch che preservano la corrispondenza 1:1. Ritorna dst_path.
     """
+    import config
     from docx import Document as DocxDocument
     from anti_ai_processor import humanize_text_post_processing
+
+    if batch_words is None:
+        batch_words = getattr(config, 'DOC_HUMANIZE_BATCH_WORDS', 1000)
+    if style_passes is None:
+        style_passes = getattr(config, 'DOC_STYLE_REFINE_PASSES', 1)
 
     doc = DocxDocument(str(src_path))
     body = [p for p in doc.paragraphs if is_body_paragraph(p)]
@@ -302,20 +339,7 @@ def humanize_docx_inplace(src_path, dst_path, session_client, profile: str = 'ac
     done = 0
     for batch in batches:
         texts = [extracted[i][0] for i in batch]
-        if len(texts) == 1:
-            segs = _per_paragraph_fallback(texts, session_client, profile)
-        else:
-            joined = _build_segments_payload(texts)
-            try:
-                rewritten = session_client.umanizzazione_segments(joined, len(texts), profile)
-                segs = _parse_segments(rewritten, len(texts))
-            except InsufficientCreditsError:
-                raise
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"Riscrittura a segmenti fallita: {e}; uso il fallback")
-                segs = None
-            if segs is None:
-                segs = _per_paragraph_fallback(texts, session_client, profile)
+        segs = _rewrite_segments(texts, session_client, profile, style_passes)
 
         for i, seg in zip(batch, segs):
             seg = _clean_segment(seg)
