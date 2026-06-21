@@ -52,17 +52,42 @@ ULTERIORMENTE lo stile dell'autore (sintassi, lessico, ritmo, stilemi) rispetto 
 questo testo, senza alterarne il significato, le citazioni [x] né i marcatori di nota.
 """
 
-def lettura_pdf(file_path: str, max_pagine: int = 50) -> str:
+# Prompt MAP dell'addestramento: estrae osservazioni stilistiche da UN estratto.
+OSSERVAZIONI_PROMPT = """Stai analizzando l'estratto __I__ di __N__ di un'unica opera dell'autore. Produci OSSERVAZIONI stilistiche STRUTTURATE e CONCRETE su QUESTO estratto (non un profilo finale, non conclusioni generali). Per ciascuna dimensione annota ciò che emerge QUI, con brevi esempi verbatim tratti dall'estratto:
+
+- SINTASSI: lunghezza e costruzione dei periodi, subordinazione/coordinazione, incisi, posizione del verbo, costruzioni marcate.
+- LESSICO: registro, parole-chiave ricorrenti, tecnicismi/latinismi/forestierismi, collocazioni personali.
+- PUNTEGGIATURA E RITMO: uso di punto e virgola, due punti, trattini, virgolette; lunghezza dei paragrafi; ritmo.
+- RETORICA E ARGOMENTAZIONE: figure preferite, modo di introdurre e sviluppare, gestione delle fonti.
+- IDIOSINCRASIE: intercalari, attacchi di frase/paragrafo, modi di chiudere, vezzi, rapporto col lettore.
+- COGNIZIONE: densità del pensiero, esplicitazione, livello di astrazione, gestione dell'incertezza.
+- ESEMPLARI: 3-5 frasi-firma VERBATIM tratte da QUESTO estratto.
+
+Sii sintetico ma specifico. Solo le osservazioni, nessun preambolo."""
+
+
+def lettura_pdf(file_path: str, max_pagine=None) -> str:
+    """Estrae il testo da un PDF. Se max_pagine è None legge TUTTE le pagine."""
     doc = fitz.open(file_path)
+    pagine_da_leggere = len(doc) if max_pagine is None else min(max_pagine, len(doc))
     testo = ""
-    
-    pagine_da_leggere = min(max_pagine, len(doc))
-    
     for i in tqdm(range(pagine_da_leggere), desc="Lettura PDF"):
         testo += doc[i].get_text()
-    
     doc.close()
     return testo
+
+
+def _read_full_document(file_path: Path) -> str:
+    """Legge l'INTERO documento (nessun cap). PDF via fitz (tutte le pagine);
+    docx/txt via attachment_processor."""
+    ext = file_path.suffix.lower()
+    if ext == '.pdf':
+        return lettura_pdf(str(file_path), max_pagine=None)
+    try:
+        from attachment_processor import extract_text
+        return extract_text(file_path)
+    except Exception:  # noqa: BLE001
+        return lettura_pdf(str(file_path), max_pagine=None)
 
 class ClaudeClient:
     """Client per interagire con Claude Opus 4.8 mantenendo il contesto della sessione."""
@@ -86,75 +111,138 @@ class ClaudeClient:
         """
         self.is_trained: bool = False
 
-    def addestramento(self, file_path: str) -> str:
+    def addestramento(self, file_path: str, progress_cb=None) -> str:
         """
-        Fase di addestramento: invia un file con un prompt a Claude.
-
-        Questa funzione legge il contenuto del file e lo invia insieme al prompt
-        per stabilire il contesto della conversazione.
-
-        Args:
-            file_path: Percorso del file da inviare a Claude.
-
-        Returns:
-            La risposta di Claude dopo l'addestramento.
-
-        Raises:
-            FileNotFoundError: Se il file non esiste.
-            ValueError: Se il file è vuoto.
+        Addestramento: analizza l'INTERO documento (nessun cap di pagine) e produce un
+        PROFILO STILISTICO completo. Per documenti lunghi usa un'analisi iterativa
+        map-reduce (osservazioni per blocco → sintesi). Salva nella sessione SOLO il
+        profilo distillato (non il testo sorgente), così le generazioni restano leggere.
         """
-        # Leggi il contenuto del file
+        import config
+        from document_humanizer import split_into_chunks
+
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"Il file non esiste: {file_path}")
 
-        file_content = lettura_pdf(file_path=file_path) #file_path.read_text(encoding="utf-8") #TODO - controllare che prenda in input correttamente i file  PDF
-        if not file_content.strip():
+        full_text = _read_full_document(file_path)
+        if not full_text.strip():
             raise ValueError(f"Il file è vuoto: {file_path}")
-        
+
         prompt_addestramento = (Path(__file__).parent / "prompt_addestramento.txt").read_text(encoding="utf-8")
+        profile_max = getattr(config, 'TRAIN_PROFILE_MAX_TOKENS', 16000)
+        chunk_words = getattr(config, 'TRAIN_CHUNK_WORDS', 6000)
+        chunks = split_into_chunks(full_text, target_words=chunk_words, max_words=int(chunk_words * 1.2))
 
-        training_message = f"""{prompt_addestramento}
+        if progress_cb:
+            try:
+                progress_cb(5)
+            except Exception:  # noqa: BLE001
+                pass
 
-        --- INIZIO CONTENUTO FILE: {file_path.name} ---
-        {file_content}
-        --- FINE CONTENUTO FILE ---
-        """
-
-        # Aggiungi il messaggio alla cronologia
-        self.conversation_history.append({
-            "role": "user",
-            "content": training_message
-        })
-
-        # Invia la richiesta a Claude
-        try:
-            response = self.client.messages.create(
-                model=self.MODEL_ID,
-                max_tokens=MAX_TOKENS_TRAIN,
-                system=self.system_prompt,
-                messages=self.conversation_history
+        if len(chunks) <= 1:
+            # Documento piccolo: sintesi diretta sull'intero testo.
+            synth_msg = (
+                f"{prompt_addestramento}\n\n"
+                f"--- INIZIO MATERIALE DELL'AUTORE: {file_path.name} ---\n"
+                f"{full_text}\n--- FINE MATERIALE ---\n"
             )
+            profile = self._train_call(synth_msg, profile_max)
+        else:
+            # MAP: osservazioni stilistiche per ogni blocco.
+            map_max = getattr(config, 'TRAIN_MAP_MAX_TOKENS', 4000)
+            observations = []
+            n = len(chunks)
+            for i, chunk in enumerate(chunks):
+                obs = self._train_call(
+                    OSSERVAZIONI_PROMPT.replace("__I__", str(i + 1)).replace("__N__", str(n))
+                    + f"\n\n--- ESTRATTO {i + 1}/{n} ---\n{chunk}\n--- FINE ESTRATTO ---\n",
+                    map_max,
+                )
+                observations.append(f"=== OSSERVAZIONI ESTRATTO {i + 1}/{n} ===\n{obs}")
+                if progress_cb:
+                    try:
+                        progress_cb(5 + int((i + 1) / n * 80))
+                    except Exception:  # noqa: BLE001
+                        pass
+
+            # REDUCE (gerarchico se le osservazioni sono troppo lunghe per il contesto).
+            merged_obs = self._reduce_observations(observations)
+            synth_msg = (
+                f"{prompt_addestramento}\n\n"
+                "Il \"materiale\" qui sotto NON è il testo originale ma le OSSERVAZIONI "
+                "stilistiche raccolte analizzando l'INTERA opera dell'autore, estratto per "
+                "estratto. Sulla loro base produci il PROFILO STILISTICO SINTETICO completo "
+                "con la SCHEDA OPERATIVA DI IMITAZIONE, fondendo e deduplicando le osservazioni "
+                "e riportando gli esemplari più rappresentativi raccolti da tutta l'opera.\n\n"
+                f"--- INIZIO OSSERVAZIONI (INTERA OPERA) ---\n{merged_obs}\n--- FINE OSSERVAZIONI ---\n"
+            )
+            profile = self._train_call(synth_msg, profile_max)
+
+        if progress_cb:
+            try:
+                progress_cb(100)
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Salva SOLO il profilo distillato (non il testo sorgente): generazioni leggere.
+        self.conversation_history = [
+            {"role": "user", "content": (
+                "Analizza a fondo le opere dell'autore e produci il suo PROFILO STILISTICO "
+                "SINTETICO completo, con la SCHEDA OPERATIVA DI IMITAZIONE."
+            )},
+            {"role": "assistant", "content": profile},
+        ]
+        self.is_trained = True
+        return profile
+
+    def _train_call(self, user_content: str, max_tokens: int) -> str:
+        """Chiamata LLM one-shot per l'addestramento (stateless, streaming, output capped).
+        NON tocca self.conversation_history."""
+        try:
+            with self.client.messages.stream(
+                model=self.MODEL_ID,
+                max_tokens=cap_output_tokens(max_tokens),
+                system=self.system_prompt,
+                messages=[{"role": "user", "content": user_content}],
+            ) as stream:
+                msg = stream.get_final_message()
         except InsufficientCreditsError:
-            # Rimuovi il messaggio dalla cronologia se la chiamata fallisce
-            self.conversation_history.pop()
             raise
         except Exception as e:
-            self.conversation_history.pop()
             check_claude_error(e)
             raise
+        return msg.content[0].text
 
-        # Estrai la risposta
-        assistant_message = response.content[0].text
-
-        # Aggiungi la risposta alla cronologia per mantenere il contesto
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": assistant_message
-        })
-
-        self.is_trained = True
-        return assistant_message
+    def _reduce_observations(self, observations, _depth: int = 0) -> str:
+        """Fonde le osservazioni dei blocchi. Se troppo lunghe per il contesto, le riduce
+        in modo GERARCHICO (sintesi per gruppi) finché stanno sotto la soglia. Cap di
+        profondità per garantire la terminazione."""
+        import config
+        threshold = getattr(config, 'TRAIN_REDUCE_MAX_OBS_WORDS', 40000)
+        joined = "\n\n".join(observations)
+        if len(joined.split()) <= threshold or _depth >= 3:
+            return joined
+        map_max = getattr(config, 'TRAIN_MAP_MAX_TOKENS', 4000)
+        groups, cur, cur_words = [], [], 0
+        for obs in observations:
+            w = len(obs.split())
+            if cur and cur_words + w > threshold // 2:
+                groups.append(cur); cur, cur_words = [], 0
+            cur.append(obs); cur_words += w
+        if cur:
+            groups.append(cur)
+        if len(groups) <= 1:
+            return joined  # non riducibile ulteriormente: evita ricorsione infinita
+        summaries = []
+        for g in groups:
+            summaries.append(self._train_call(
+                "Unisci e DEDUPLICA queste osservazioni stilistiche di più estratti della "
+                "stessa opera in un riassunto compatto ma completo, mantenendo gli esemplari "
+                "più rappresentativi:\n\n" + "\n\n".join(g),
+                map_max,
+            ))
+        return self._reduce_observations(summaries, _depth + 1)
 
     def generazione(self, argomento: str, numero_parole: int, destinatario : str = "Pubblico Generale", profile: str = 'academic') -> str:
         """

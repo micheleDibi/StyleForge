@@ -76,6 +76,13 @@ MODEL_MAX_OUTPUT_TOKENS = int(os.getenv("MODEL_MAX_OUTPUT_TOKENS", "120000"))
 DOC_HUMANIZE_BATCH_WORDS = int(os.getenv("DOC_HUMANIZE_BATCH_WORDS", "1000"))
 DOC_STYLE_REFINE_PASSES = int(os.getenv("DOC_STYLE_REFINE_PASSES", "1"))
 
+# Addestramento: analisi dell'INTERO documento (nessun cap di pagine) tramite
+# map-reduce iterativo, con profilo finale lungo e dettagliato.
+TRAIN_CHUNK_WORDS = int(os.getenv("TRAIN_CHUNK_WORDS", "6000"))          # parole per blocco di analisi
+TRAIN_PROFILE_MAX_TOKENS = int(os.getenv("TRAIN_PROFILE_MAX_TOKENS", "16000"))  # output del profilo finale
+TRAIN_MAP_MAX_TOKENS = int(os.getenv("TRAIN_MAP_MAX_TOKENS", "4000"))    # output delle osservazioni per blocco
+TRAIN_REDUCE_MAX_OBS_WORDS = int(os.getenv("TRAIN_REDUCE_MAX_OBS_WORDS", "40000"))  # soglia reduce gerarchico
+
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
