@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, XCircle, Loader, Clock, Download, Trash2, FileText, Sparkles, Wand2, Pencil, Shield, RefreshCw } from 'lucide-react';
-import { getJobStatus, downloadResult, deleteJob, renameJob, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../services/api';
+import { getJobStatus, downloadResult, downloadDocumentResult, deleteJob, renameJob, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../services/api';
 
 const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: initialScanResult, isAdmin = false, onScanComplete }) => {
   const { t } = useTranslation();
@@ -44,7 +44,13 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
 
   useEffect(() => { if (editing && editInputRef.current) { editInputRef.current.focus(); editInputRef.current.select(); } }, [editing]);
 
-  const handleDownload = async () => { try { await downloadResult(currentJob.job_id); } catch { alert(t('Errore nel download')); } };
+  const isDocResult = (currentJob.result || '').trim().toLowerCase().endsWith('.docx');
+  const handleDownload = async () => {
+    try {
+      if (isDocResult) await downloadDocumentResult(currentJob.job_id);
+      else await downloadResult(currentJob.job_id);
+    } catch { alert(t('Errore nel download')); }
+  };
   const handleDelete = async () => {
     if (confirm(t('Eliminare questo job?'))) {
       try { await deleteJob(currentJob.job_id); if (onDelete) onDelete(currentJob.job_id); } catch { alert(t('Errore nell\'eliminazione')); }
@@ -176,12 +182,16 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
       {showResult && currentJob.result && currentJob.status === 'completed' && (
         <div className="mt-3 bg-green-50 rounded-xl p-3 border border-green-200">
           <p className="text-[10px] text-green-700 font-bold uppercase tracking-wide mb-1">{t('Risultato')}</p>
-          <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{currentJob.result}</p>
+          {isDocResult ? (
+            <p className="text-xs text-gray-700">{t('Documento .docx pronto: usa Scarica per ottenerlo col formato originale.')}</p>
+          ) : (
+            <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{currentJob.result}</p>
+          )}
         </div>
       )}
 
       {/* Scan */}
-      {isAdmin && currentJob.status === 'completed' && currentJob.result && ['generation','humanization'].includes(currentJob.job_type) && (
+      {isAdmin && currentJob.status === 'completed' && currentJob.result && !isDocResult && ['generation','humanization'].includes(currentJob.job_type) && (
         <div className="mt-3">
           {!scanResult && !scanScanning && !scanError && (
             <button onClick={handleStartScan} className="btn btn-secondary btn-sm">

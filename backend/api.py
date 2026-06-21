@@ -642,6 +642,18 @@ async def humanize_content(
     )
 
 
+def _resolve_docx_result(result):
+    """Se result è un .docx (path assoluto o filename in RESULTS_DIR) ed esiste,
+    ritorna il path assoluto del file; altrimenti None."""
+    if not isinstance(result, str) or not result.strip().lower().endswith('.docx'):
+        return None
+    cand = result.strip()
+    if os.path.exists(cand):
+        return cand
+    rel = str(config.RESULTS_DIR / os.path.basename(cand))
+    return rel if os.path.exists(rel) else None
+
+
 def humanize_document_task(
     session_id: str,
     src_path: str,
@@ -657,7 +669,8 @@ def humanize_document_task(
     import config
     client = session_manager.get_session(session_id)
     progress_cb = _make_job_progress_cb(doc_job_id) if doc_job_id else None
-    dst = str(Path(config.RESULTS_DIR) / f"humanized_{doc_job_id or 'doc'}.docx")
+    out_name = f"humanized_{doc_job_id or 'doc'}.docx"
+    dst = str(Path(config.RESULTS_DIR) / out_name)
     try:
         humanize_docx_inplace(src_path, dst, client, profile=profile, progress_cb=progress_cb)
     finally:
@@ -665,7 +678,8 @@ def humanize_document_task(
             os.unlink(src_path)
         except OSError:
             pass
-    return dst
+    # Salva solo il filename (relativo a RESULTS_DIR): lo risolve _resolve_docx_result.
+    return out_name
 
 
 @app.post("/humanize-document", response_model=HumanizeDocumentResponse, tags=["Humanize"])
@@ -778,8 +792,8 @@ async def download_result_docx(
         raise HTTPException(status_code=404, detail=f"Job {job_id} non trovato")
     if job.status != 'completed':
         raise HTTPException(status_code=400, detail=f"Job {job_id} non ancora completato (stato: {job.status})")
-    docx_path = job.result
-    if not (isinstance(docx_path, str) and docx_path.endswith('.docx') and os.path.exists(docx_path)):
+    docx_path = _resolve_docx_result(job.result)
+    if not docx_path:
         raise HTTPException(status_code=404, detail="Nessun documento .docx disponibile per questo job")
     return FileResponse(
         path=docx_path,
@@ -1623,6 +1637,16 @@ async def download_result(
         raise HTTPException(
             status_code=404,
             detail=f"Nessun risultato disponibile per job {job_id}"
+        )
+
+    # Se il risultato è un documento .docx (umanizzazione documento), servilo
+    # direttamente col template originale invece di generare un PDF.
+    docx_path = _resolve_docx_result(job.result)
+    if docx_path:
+        return FileResponse(
+            path=docx_path,
+            filename=f"documento_umanizzato_{job_id}.docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
 
     # Genera PDF con il contenuto
