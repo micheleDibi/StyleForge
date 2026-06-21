@@ -179,12 +179,13 @@ testo, senza commenti né premesse.
 
         # Invia la richiesta a Claude (stessa sessione, mantiene il contesto)
         try:
-            response = self.client.messages.create(
+            with self.client.messages.stream(
                 model=self.MODEL_ID,
                 max_tokens=MAX_TOKENS_TEST,
                 system=self.system_prompt,
                 messages=self.conversation_history
-            )
+            ) as stream:
+                response = stream.get_final_message()
         except InsufficientCreditsError:
             self.conversation_history.pop()
             raise
@@ -301,12 +302,13 @@ REGOLE DEL COMPITO
 
         # Invia la richiesta a Claude (stessa sessione, mantiene il contesto dell'addestramento)
         try:
-            response = self.client.messages.create(
+            with self.client.messages.stream(
                 model=self.MODEL_ID,
                 max_tokens=dynamic_max_tokens,
                 system=self.system_prompt,
                 messages=self.conversation_history
-            )
+            ) as stream:
+                response = stream.get_final_message()
         except InsufficientCreditsError:
             self.conversation_history.pop()
             raise

@@ -326,8 +326,11 @@ class ClaudeClient(BaseAIClient):
                 kwargs["temperature"] = temperature
             elif top_p is not None:
                 kwargs["top_p"] = top_p
-            message = self.client.messages.create(**kwargs)
-            return message.content[0].text
+            # Streaming: necessario per output lunghi. L'SDK rifiuta le richieste
+            # non-streaming la cui durata stimata supera i 10 minuti (max_tokens alto).
+            with self.client.messages.stream(**kwargs) as stream:
+                final_message = stream.get_final_message()
+            return final_message.content[0].text
         except InsufficientCreditsError:
             raise  # Rilancia direttamente senza wrapping
         except Exception as e:
