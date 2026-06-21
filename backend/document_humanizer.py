@@ -125,17 +125,108 @@ def is_body_paragraph(p) -> bool:
     return True
 
 
-def set_paragraph_text(p, new_text: str) -> None:
-    """Sostituisce il testo del paragrafo mantenendone lo STILE (riusa il primo run
-    per la formattazione di carattere, elimina gli altri). La formattazione inline
-    (es. una parola in grassetto a metà) va persa: accettabile, le parole cambiano."""
-    runs = p.runs
-    if runs:
-        runs[0].text = new_text
-        for r in runs[1:]:
-            r._element.getparent().remove(r._element)
-    else:
-        p.add_run(new_text)
+# Token segnaposto per elementi inline preservati (note, endnote, immagini, campi, hyperlink).
+_NOTE_TOKEN_RE = re.compile(r'⟦N\d+⟧')
+
+
+def _note_token(k: int) -> str:
+    return f"⟦N{k}⟧"
+
+
+def extract_paragraph_with_placeholders(p):
+    """Ritorna (text_with_tokens, token_map, base_rpr).
+
+    Cammina i figli di p._element IN ORDINE: i run di solo testo diventano testo; i run
+    con elementi speciali (riferimenti a nota/endnote, immagini, campi) e ogni altro
+    elemento inline (hyperlink, bookmark...) diventano un token ⟦N{k}⟧ con l'elemento XML
+    originale preservato (deepcopy) in token_map. base_rpr è il <w:rPr> del primo run di
+    testo, usato per formattare i nuovi run di testo nella ricostruzione.
+    """
+    from copy import deepcopy
+    from docx.oxml.ns import qn
+
+    R = qn('w:r'); T = qn('w:t'); PPR = qn('w:pPr'); RPR = qn('w:rPr')
+    SPECIAL = (qn('w:footnoteReference'), qn('w:endnoteReference'), qn('w:drawing'),
+               qn('w:object'), qn('w:pict'), qn('w:fldChar'), qn('w:instrText'))
+
+    parts, token_map, base_rpr, k = [], {}, None, 0
+    for child in list(p._element):
+        if child.tag == PPR:
+            continue
+        if child.tag == R:
+            if any(child.find(s) is not None for s in SPECIAL):
+                tok = _note_token(k); k += 1
+                token_map[tok] = deepcopy(child)
+                parts.append(tok)
+            else:
+                if base_rpr is None:
+                    rpr = child.find(RPR)
+                    if rpr is not None:
+                        base_rpr = deepcopy(rpr)
+                parts.append(''.join(t.text or '' for t in child.findall(T)))
+        else:
+            tok = _note_token(k); k += 1
+            token_map[tok] = deepcopy(child)
+            parts.append(tok)
+    return ''.join(parts), token_map, base_rpr
+
+
+def rebuild_paragraph(p, new_text: str, token_map: dict, base_rpr) -> None:
+    """Ricostruisce il paragrafo dal testo riscritto reinserendo gli elementi inline
+    preservati al posto dei token ⟦N{k}⟧. Mantiene <w:pPr> (stile del paragrafo) e usa
+    base_rpr per la formattazione dei nuovi run di testo. I token persi dal modello
+    vengono ri-appesi in coda → le note non si perdono mai."""
+    from copy import deepcopy
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    PPR = qn('w:pPr')
+    for child in list(p._element):
+        if child.tag != PPR:
+            p._element.remove(child)
+
+    used = set()
+    parts = _NOTE_TOKEN_RE.split(new_text)
+    tokens = _NOTE_TOKEN_RE.findall(new_text)
+    for i, txt in enumerate(parts):
+        if txt:
+            r = OxmlElement('w:r')
+            if base_rpr is not None:
+                r.append(deepcopy(base_rpr))
+            t = OxmlElement('w:t')
+            t.set(qn('xml:space'), 'preserve')
+            t.text = txt
+            r.append(t)
+            p._element.append(r)
+        if i < len(tokens):
+            tok = tokens[i]
+            el = token_map.get(tok)
+            if el is not None and tok not in used:
+                p._element.append(el)
+                used.add(tok)
+    # Garanzia anti-perdita: elementi (note) mai ricomparsi → ri-appesi in coda.
+    for tok, el in token_map.items():
+        if tok not in used:
+            p._element.append(el)
+
+
+def _protect_note_tokens(text: str):
+    """Sostituisce i token ⟦N{k}⟧ con un sentinel ASCII che il pass algoritmico non
+    altera. Ritorna (testo_protetto, mapping)."""
+    mapping = {}
+
+    def repl(m):
+        sentinel = f"ZZNOTE{len(mapping)}ZZ"
+        mapping[sentinel] = m.group(0)
+        return sentinel
+
+    return _NOTE_TOKEN_RE.sub(repl, text or ''), mapping
+
+
+def _restore_note_tokens(text: str, mapping: dict) -> str:
+    for sentinel, tok in mapping.items():
+        text = text.replace(sentinel, tok)
+    return text
 
 
 _MARKER_RE = re.compile(r'<<<\s*S\s*\d+\s*>>>')
@@ -195,19 +286,22 @@ def humanize_docx_inplace(src_path, dst_path, session_client, profile: str = 'ac
         doc.save(str(dst_path))
         return str(dst_path)
 
+    # Pre-estrai testo tokenizzato + mappa elementi inline + rPr base per paragrafo.
+    extracted = [extract_paragraph_with_placeholders(p) for p in body]
+
     # Raggruppa paragrafi-corpo consecutivi fino a ~batch_words parole.
     batches, cur, cur_words = [], [], 0
-    for p in body:
-        w = len(p.text.split())
+    for idx in range(total):
+        w = len(extracted[idx][0].split())
         if cur and cur_words + w > batch_words:
             batches.append(cur); cur, cur_words = [], 0
-        cur.append(p); cur_words += w
+        cur.append(idx); cur_words += w
     if cur:
         batches.append(cur)
 
     done = 0
     for batch in batches:
-        texts = [p.text for p in batch]
+        texts = [extracted[i][0] for i in batch]
         if len(texts) == 1:
             segs = _per_paragraph_fallback(texts, session_client, profile)
         else:
@@ -223,14 +317,18 @@ def humanize_docx_inplace(src_path, dst_path, session_client, profile: str = 'ac
             if segs is None:
                 segs = _per_paragraph_fallback(texts, session_client, profile)
 
-        for p, seg in zip(batch, segs):
+        for i, seg in zip(batch, segs):
             seg = _clean_segment(seg)
+            # Proteggi i token nota dal pass algoritmico, poi ripristinali.
+            protected, tokmap = _protect_note_tokens(seg)
             try:
-                seg = humanize_text_post_processing(seg, profile='academic')
+                protected = humanize_text_post_processing(protected, profile=profile)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"Pass algoritmico per-paragrafo fallito: {e}")
+            seg = _restore_note_tokens(protected, tokmap)
             if seg and seg.strip():
-                set_paragraph_text(p, seg.strip())
+                _, token_map, base_rpr = extracted[i]
+                rebuild_paragraph(body[i], seg.strip(), token_map, base_rpr)
 
         done += len(batch)
         if progress_cb:

@@ -393,6 +393,8 @@ intero senza introdurre né conclusioni né aperture generali. Il blocco contien
 {word_count} parole; la riscrittura DEVE contenere ALMENO {min_words} parole.
 
 ⚠️ CITAZIONI BIBLIOGRAFICHE: MANTIENI INTATTE tutte le citazioni [x] (es. [1], [2]).
+⚠️ MARCATORI DI NOTA: MANTIENI INTATTI i marcatori di nota ⟦N0⟧, ⟦N1⟧, … esattamente
+dove si trovano: non rimuoverli, non modificarli, non rinumerarli.
 
 ---
 {testo}
@@ -437,6 +439,8 @@ REGOLE TASSATIVE DI STRUTTURA (NON VIOLARLE):
 - NON unire né dividere segmenti; NON aggiungere né togliere marcatori; non lasciare
   un segmento vuoto.
 - Mantieni INTATTE tutte le citazioni [x] all'interno di ogni segmento.
+- Mantieni INTATTI i marcatori di nota ⟦N…⟧ (es. ⟦N0⟧) dentro ogni segmento: non
+  rimuoverli né modificarli.
 
 ---
 {joined}
