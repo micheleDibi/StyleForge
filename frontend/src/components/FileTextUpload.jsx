@@ -12,10 +12,11 @@ const ACCEPT = '.pdf,.docx,.txt';
  *
  * Props:
  *  - onExtracted(text, filename): callback con il testo estratto
+ *  - onFileSelected(file, filename): callback col File grezzo (per il round-trip .docx)
  *  - disabled: disabilita il caricamento (es. durante elaborazione/scansione)
  *  - className: classi extra per il contenitore
  */
-const FileTextUpload = ({ onExtracted, disabled = false, className = '' }) => {
+const FileTextUpload = ({ onExtracted, onFileSelected, disabled = false, className = '' }) => {
   const { t } = useTranslation();
   const inputRef = useRef(null);
   const [extracting, setExtracting] = useState(false);
@@ -26,6 +27,7 @@ const FileTextUpload = ({ onExtracted, disabled = false, className = '' }) => {
 
   const handleFile = async (file) => {
     if (!file) return;
+    if (onFileSelected) onFileSelected(file, file.name);
     setError(null);
     setExtracting(true);
     try {

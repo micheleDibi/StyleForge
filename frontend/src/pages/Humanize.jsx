@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Wand2, Download, Copy, Check, AlertTriangle, RefreshCw, Shield, Sparkles, FileText, Loader, GraduationCap } from 'lucide-react';
-import { getSessions, humanizeContent, antiAICorrection, pollJobStatus, estimateCredits, startCompilatioScan, downloadCompilatioReport } from '../services/api';
+import { getSessions, humanizeContent, humanizeDocument, downloadDocumentResult, antiAICorrection, pollJobStatus, estimateCredits, startCompilatioScan, downloadCompilatioReport } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
 import ApiCostEstimate from '../components/ApiCostEstimate';
@@ -22,6 +22,11 @@ const Humanize = () => {
   const [jobStatus, setJobStatus] = useState(null);
   const [result, setResult] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Umanizzazione documento .docx (round-trip col template originale)
+  const [docFile, setDocFile] = useState(null);
+  const [docResultJobId, setDocResultJobId] = useState(null);
+  const [pendingDoc, setPendingDoc] = useState(false);
 
   // Mode: 'correction' (Anti-AI) or 'full' (Umanizzazione con Profilo)
   const [mode, setMode] = useState('correction');
@@ -89,18 +94,91 @@ const Humanize = () => {
     }
   };
 
-  // Testo estratto da file caricato: riempi la textarea e avvia in automatico
-  const handleFileExtracted = (text) => {
+  // Cattura il File grezzo: se è un .docx abilita l'umanizzazione documento
+  const handleFileSelected = (file) => {
+    setDocFile(file && /\.docx$/i.test(file.name) ? file : null);
+  };
+
+  // Testo estratto da file caricato: riempi la textarea.
+  const handleFileExtracted = (text, filename) => {
     setTestoOriginale(text);
     setResult('');
     setJobStatus(null);
+    setDocResultJobId(null);
     setCompilatioResult(null);
     setCompilatioError(null);
+    // Per un .docx in modalità Umanizzazione NON avvio in automatico: l'utente
+    // sceglie se umanizzare il documento mantenendo il formato originale.
+    const isDocx = (filename || '').toLowerCase().endsWith('.docx');
+    if (isDocx && mode === 'full') return;
     handleSubmit(null, text);
+  };
+
+  // Avvio umanizzazione documento (mantiene il template): conferma crediti
+  const handleHumanizeDocument = async () => {
+    if (!docFile) return;
+    if (!selectedSession) { alert(t('Seleziona una sessione addestrata')); return; }
+    setPendingDoc(true);
+    setCreditLoading(true);
+    setShowCreditDialog(true);
+    try {
+      const estimate = await estimateCredits('humanize', { text_length: testoOriginale.length });
+      setCreditEstimate(estimate);
+    } catch (err) {
+      console.error('Errore stima crediti:', err);
+      setCreditEstimate({ credits_needed: 0, breakdown: {}, current_balance: credits, sufficient: true });
+    } finally {
+      setCreditLoading(false);
+    }
+  };
+
+  const handleConfirmedDocument = async () => {
+    setProcessing(true);
+    setResult('');
+    setDocResultJobId(null);
+    try {
+      const response = await humanizeDocument(docFile, selectedSession, profile);
+      setJobStatus({ ...response, status: 'pending', progress: 0 });
+      const finalStatus = await pollJobStatus(
+        response.job_id,
+        (status) => setJobStatus(status),
+        5000,
+        1800000 // documenti lunghi: fino a 30 minuti
+      );
+      if (finalStatus.status === 'completed') {
+        setDocResultJobId(response.job_id);
+      } else if (finalStatus.status === 'failed') {
+        alert(t('Errore durante l\'elaborazione: ') + (finalStatus.error || t('Errore sconosciuto')));
+      }
+      refreshUser();
+    } catch (error) {
+      console.error('Errore umanizzazione documento:', error);
+      if (error.response?.status === 402) {
+        alert(t('Crediti insufficienti per questa operazione.'));
+      } else {
+        alert(t('Errore nell\'elaborazione del documento'));
+      }
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDownloadDocx = async () => {
+    if (!docResultJobId) return;
+    try {
+      await downloadDocumentResult(docResultJobId, docFile?.name ? `umanizzato_${docFile.name}` : null);
+    } catch (error) {
+      console.error('Errore download documento:', error);
+      alert(t('Errore nel download del documento'));
+    }
   };
 
   const handleConfirmedHumanize = async () => {
     setShowCreditDialog(false);
+    if (pendingDoc) {
+      setPendingDoc(false);
+      return handleConfirmedDocument();
+    }
     setProcessing(true);
     setResult('');
 
@@ -355,7 +433,7 @@ const Humanize = () => {
 
             <form onSubmit={handleSubmit} className="card space-y-6">
               {/* Caricamento file: estrae il testo e avvia in automatico */}
-              <FileTextUpload onExtracted={handleFileExtracted} disabled={processing} />
+              <FileTextUpload onExtracted={handleFileExtracted} onFileSelected={handleFileSelected} disabled={processing} />
 
               {/* Profilo anti-AI (valido per entrambe le modalita) */}
               <div>
@@ -476,6 +554,23 @@ const Humanize = () => {
                   </>
                 )}
               </button>
+
+              {docFile && mode === 'full' && (
+                <div className="border-t border-slate-100 pt-4">
+                  <button
+                    type="button"
+                    onClick={handleHumanizeDocument}
+                    disabled={processing || !selectedSession}
+                    className="w-full btn btn-secondary h-12 text-base gap-2"
+                  >
+                    <FileText className="w-5 h-5" />
+                    {t('Umanizza documento (mantieni formato)')}
+                  </button>
+                  <p className="text-xs text-slate-500 mt-2 text-center">
+                    {t('Riscrive il corpo del .docx mantenendo titoli, indice e formattazione originali.')}
+                  </p>
+                </div>
+              )}
             </form>
           </div>
 
@@ -632,7 +727,23 @@ const Humanize = () => {
               </div>
             )}
 
-            {!jobStatus && !result && (
+            {docResultJobId && (
+              <div className="card">
+                <div className="text-center py-6">
+                  <FileText className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
+                  <p className="text-slate-700 font-medium mb-1">{t('Documento umanizzato pronto')}</p>
+                  <p className="text-sm text-slate-500 mb-4">
+                    {t('Il formato originale (titoli, indice, font) e stato mantenuto.')}
+                  </p>
+                  <button onClick={handleDownloadDocx} className="btn btn-primary gap-2 mx-auto">
+                    <Download className="w-4 h-4" />
+                    {t('Scarica documento (.docx)')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!jobStatus && !result && !docResultJobId && (
               <div className="card text-center py-12">
                 {mode === 'correction' ? (
                   <Shield className="w-16 h-16 text-slate-300 mx-auto mb-4" />
@@ -655,8 +766,8 @@ const Humanize = () => {
       <CreditConfirmDialog
         isOpen={showCreditDialog}
         onConfirm={handleConfirmedHumanize}
-        onCancel={() => setShowCreditDialog(false)}
-        operationName={mode === 'correction' ? t('Correzione Anti-AI') : t('Umanizza Testo')}
+        onCancel={() => { setShowCreditDialog(false); setPendingDoc(false); }}
+        operationName={pendingDoc ? t('Umanizza documento') : (mode === 'correction' ? t('Correzione Anti-AI') : t('Umanizza Testo'))}
         estimatedCredits={creditEstimate?.credits_needed || 0}
         breakdown={creditEstimate?.breakdown || {}}
         currentBalance={isAdmin ? -1 : (creditEstimate?.current_balance ?? credits)}

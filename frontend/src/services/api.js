@@ -381,6 +381,35 @@ export const humanizeContent = async (sessionId, testo, profile = 'informal') =>
   return response.data;
 };
 
+// Umanizza un documento .docx mantenendo il template originale. Ritorna { job_id, ... }.
+export const humanizeDocument = async (file, sessionId, profile = 'academic') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('session_id', sessionId);
+  formData.append('profile', profile);
+  const response = await api.post('/humanize-document', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
+  });
+  return response.data;
+};
+
+// Scarica il .docx umanizzato (col template originale) di un job completato.
+export const downloadDocumentResult = async (jobId, filename = null) => {
+  const response = await api.get(`/results/${jobId}/docx`, { responseType: 'blob' });
+  const url = window.URL.createObjectURL(new Blob([response.data], {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename || `documento_umanizzato_${jobId}.docx`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+  return response.data;
+};
+
 export const antiAICorrection = async (testo, profile = 'informal') => {
   const response = await api.post('/anti-ai-correction', { testo, profile });
   return response.data;
