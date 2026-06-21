@@ -12,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
 
+from token_utils import cap_output_tokens
+
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Depends, Form
@@ -2006,7 +2008,7 @@ def _humanize_content(content: str, trained_session_client, section_name: str = 
         client = trained_session_client
         word_count = len(content.split())
         estimated_tokens = int(word_count * 2.5) + 2000
-        dynamic_max_tokens = max(estimated_tokens, 8192)
+        dynamic_max_tokens = cap_output_tokens(max(estimated_tokens, 8192))
 
         style_prompt = f"""Riscrivi il seguente testo accademico applicando lo stile di scrittura
 che hai appreso durante l'addestramento. Mantieni il registro formale e accademico.
@@ -2251,7 +2253,7 @@ def generate_content_task(thesis_id: str, user_id: str):
 
         # Calcola max_tokens dinamico per le generazioni
         words_per_section = thesis_data.get('words_per_section', 5000)
-        dynamic_max_tokens = max(int(words_per_section * 2.5) + 2000, 16000)
+        dynamic_max_tokens = cap_output_tokens(max(int(words_per_section * 2.5) + 2000, 16000))
 
         # Raccoglie titoli dei capitoli per i prompt di intro/conclusione
         chapters_titles = [

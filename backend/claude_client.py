@@ -20,6 +20,7 @@ from dotenv import load_dotenv, find_dotenv
 from tqdm import tqdm
 from ai_exceptions import InsufficientCreditsError, check_claude_error
 from anti_ai_pipeline import ANTI_AI_PROMPT_BLOCK, apply_anti_ai_pipeline
+from token_utils import cap_output_tokens
 
 load_dotenv(find_dotenv())
 
@@ -298,7 +299,7 @@ REGOLE DEL COMPITO
 
         # Calcola max_tokens in base alla lunghezza del testo (~2.5 token per parola italiana + margine)
         estimated_tokens = int(word_count * 2.5) + 2000
-        dynamic_max_tokens = max(estimated_tokens, MAX_TOKENS_TEST)
+        dynamic_max_tokens = cap_output_tokens(max(estimated_tokens, MAX_TOKENS_TEST))
 
         # Invia la richiesta a Claude (stessa sessione, mantiene il contesto dell'addestramento)
         try:
@@ -343,6 +344,115 @@ REGOLE DEL COMPITO
         )
 
         return final_text
+
+    def _rewrite_stateless(self, user_content: str, dynamic_max_tokens: int) -> str:
+        """
+        Invia una richiesta usando il contesto di addestramento in SOLA LETTURA:
+        NON muta self.conversation_history (essenziale per elaborare molti chunk/
+        batch senza far esplodere il contesto né corrompere la sessione salvata).
+        Streaming. Ritorna il testo della risposta.
+        """
+        if not self.is_trained:
+            raise RuntimeError(
+                "Devi prima eseguire l'addestramento. Chiama il metodo addestramento() prima."
+            )
+        messages = self.conversation_history + [{"role": "user", "content": user_content}]
+        try:
+            with self.client.messages.stream(
+                model=self.MODEL_ID,
+                max_tokens=dynamic_max_tokens,
+                system=self.system_prompt,
+                messages=messages
+            ) as stream:
+                response = stream.get_final_message()
+        except InsufficientCreditsError:
+            raise
+        except Exception as e:
+            check_claude_error(e)
+            raise
+        return response.content[0].text
+
+    def umanizzazione_chunk(self, testo: str, profile: str = 'informal') -> str:
+        """
+        Riscrive UN chunk nello stile appreso, SENZA mutare la history e SENZA
+        post-processing (lo applica il chiamante). Usata da humanize_long_text per
+        umanizzare testi lunghi a blocchi. Il blocco anti-AI condiviso è
+        register-respecting, quindi il `profile` qui non cambia il prompt.
+        """
+        word_count = len(testo.split())
+        min_words = word_count
+        prompt = (
+            f"""
+═══════════════════════════════════════════════════════════════════════════════
+RISCRITTURA — APPLICA LO STILE APPRESO
+═══════════════════════════════════════════════════════════════════════════════
+
+Riscrivi il testo seguente applicando fedelmente lo stile dell'autore che hai appreso
+durante l'addestramento. Questo è un BLOCCO di un testo più lungo: riscrivilo per
+intero senza introdurre né conclusioni né aperture generali. Il blocco contiene
+{word_count} parole; la riscrittura DEVE contenere ALMENO {min_words} parole.
+
+⚠️ CITAZIONI BIBLIOGRAFICHE: MANTIENI INTATTE tutte le citazioni [x] (es. [1], [2]).
+
+---
+{testo}
+---
+"""
+            + ANTI_AI_PROMPT_BLOCK
+            + f"""
+═══════════════════════════════════════════════════════════════════════════════
+REGOLE DEL COMPITO
+═══════════════════════════════════════════════════════════════════════════════
+- Riscrivi davvero il testo con parole tue, applicando lo stile dell'autore appreso.
+- ALMENO {min_words} parole. NON abbreviare, NON sintetizzare.
+- Mantieni INTATTE tutte le citazioni [x].
+- SOLO il testo riscritto, NESSUN commento o premessa.
+"""
+        )
+        dynamic_max_tokens = cap_output_tokens(max(int(word_count * 2.5) + 2000, MAX_TOKENS_TEST))
+        return self._rewrite_stateless(prompt, dynamic_max_tokens)
+
+    def umanizzazione_segments(self, joined: str, n_segments: int, profile: str = 'academic') -> str:
+        """
+        Riscrive N paragrafi (segmenti marcati con <<<Sk>>>) PRESERVANDO i confini,
+        per il round-trip docx (corrispondenza 1:1 coi paragrafi). Ritorna il testo
+        coi marcatori, SENZA mutare la history. Il chiamante valida il numero di
+        segmenti e applica il pass algoritmico per-paragrafo.
+        """
+        word_count = len(joined.split())
+        last = n_segments - 1
+        prompt = (
+            f"""
+═══════════════════════════════════════════════════════════════════════════════
+RISCRITTURA A SEGMENTI — APPLICA LO STILE APPRESO
+═══════════════════════════════════════════════════════════════════════════════
+
+Ricevi {n_segments} segmenti di testo, ciascuno preceduto dal proprio marcatore
+<<<Sk>>> (con k da 0 a {last}). Riscrivi OGNI segmento applicando fedelmente lo stile
+dell'autore appreso durante l'addestramento.
+
+REGOLE TASSATIVE DI STRUTTURA (NON VIOLARLE):
+- Restituisci ESATTAMENTE {n_segments} segmenti, ognuno preceduto dal SUO marcatore
+  <<<Sk>>> invariato, nello stesso ordine (<<<S0>>> ... <<<S{last}>>>).
+- NON unire né dividere segmenti; NON aggiungere né togliere marcatori; non lasciare
+  un segmento vuoto.
+- Mantieni INTATTE tutte le citazioni [x] all'interno di ogni segmento.
+
+---
+{joined}
+---
+"""
+            + ANTI_AI_PROMPT_BLOCK
+            + f"""
+═══════════════════════════════════════════════════════════════════════════════
+REGOLE DEL COMPITO
+═══════════════════════════════════════════════════════════════════════════════
+- ESATTAMENTE {n_segments} segmenti, coi marcatori <<<S0>>> ... <<<S{last}>>>.
+- SOLO i segmenti riscritti, nessun commento o premessa.
+"""
+        )
+        dynamic_max_tokens = cap_output_tokens(max(int(word_count * 2.5) + 2000, MAX_TOKENS_TEST))
+        return self._rewrite_stateless(prompt, dynamic_max_tokens)
 
     def reset_session(self) -> None:
         """Resetta la sessione, cancellando la cronologia della conversazione."""

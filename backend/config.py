@@ -67,6 +67,12 @@ ANTI_AI_REWRITE_ENABLED = os.getenv("ANTI_AI_REWRITE_ENABLED", "false").lower() 
 ANTI_AI_REWRITE_MODEL = os.getenv("ANTI_AI_REWRITE_MODEL", "claude-opus-4-8")
 ANTI_AI_ALGO_ENABLED = os.getenv("ANTI_AI_ALGO_ENABLED", "true").lower() == "true"
 
+# Massimo output token del modello (claude-opus-4-8: 128000). Tetto di sicurezza
+# usato per limitare max_tokens ed evitare il 400 "max_tokens > 128000".
+MODEL_MAX_OUTPUT_TOKENS = int(os.getenv("MODEL_MAX_OUTPUT_TOKENS", "120000"))
+# Parole per batch nel round-trip docx (umanizzazione documento col template).
+DOC_HUMANIZE_BATCH_WORDS = int(os.getenv("DOC_HUMANIZE_BATCH_WORDS", "2500"))
+
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")

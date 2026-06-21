@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv, find_dotenv
 from ai_exceptions import InsufficientCreditsError, check_openai_error, check_claude_error
+from token_utils import cap_output_tokens
 
 load_dotenv(find_dotenv())
 
@@ -202,7 +203,7 @@ class BaseAIClient(ABC):
         num_chapters = len(chapters)
         # ~200 token per sezione (titolo + key_points) + overhead JSON
         estimated_tokens = num_chapters * sections_per_chapter * 200 + 1000
-        max_tokens = max(estimated_tokens, MAX_TOKENS)
+        max_tokens = cap_output_tokens(max(estimated_tokens, MAX_TOKENS))
         return self.generate_json(prompt, max_tokens=max_tokens)
 
     def generate_section_content(
@@ -232,7 +233,7 @@ class BaseAIClient(ABC):
         # ~2.5 token per parola italiana + margine
         words_per_section = thesis_data.get('words_per_section', 5000)
         estimated_tokens = int(words_per_section * 2.5) + 2000
-        max_tokens = max(estimated_tokens, MAX_TOKENS)
+        max_tokens = cap_output_tokens(max(estimated_tokens, MAX_TOKENS))
 
         # Sampling ad alta varietà (più perplessità => meno rilevabile). Ignorato
         # dai modelli reasoning OpenAI; efficace con modelli sampling-capable (Claude).
@@ -490,7 +491,7 @@ REGOLE FINALI:
         client = get_claude_client()
         # Calcola max_tokens necessari: ~1.5 token per parola italiana + margine
         estimated_tokens = int(word_count * 2.5) + 2000
-        max_tokens = max(estimated_tokens, 20000)  # Minimo 20000 tokens
+        max_tokens = cap_output_tokens(max(estimated_tokens, 20000))  # Minimo 20000 tokens
         rewritten = client.generate_text(humanize_prompt, max_tokens=max_tokens)
 
         # Applica anche l'algoritmo anti-AI post-processing
@@ -600,7 +601,7 @@ REGOLE FINALI:
     try:
         client = get_claude_client()
         estimated_tokens = int(word_count * 2.5) + 2000
-        max_tokens = max(estimated_tokens, 20000)
+        max_tokens = cap_output_tokens(max(estimated_tokens, 20000))
         corrected = client.generate_text(correction_prompt, max_tokens=max_tokens)
 
         # Applica anche l'algoritmo anti-AI post-processing (leggero)
@@ -695,7 +696,7 @@ def academic_deai_rewrite(text: str, model_id: Optional[str] = None) -> str:
 
     word_count = len(text.split())
     estimated_tokens = int(word_count * 2.5) + 2000
-    max_tokens = max(estimated_tokens, 8192)
+    max_tokens = cap_output_tokens(max(estimated_tokens, 8192))
 
     prompt = (
         _ACADEMIC_DEAI_TEMPLATE
@@ -805,7 +806,7 @@ def _controlled_paraphrase_once(text: str, model_id: str, temperature: float = 1
     if not text or not text.strip():
         return text
     word_count = len(text.split())
-    max_tokens = max(int(word_count * 2.5) + 2000, 8192)
+    max_tokens = cap_output_tokens(max(int(word_count * 2.5) + 2000, 8192))
     template = (_CONTROLLED_PARAPHRASE_TEMPLATE_INFORMAL if profile == 'informal'
                 else _CONTROLLED_PARAPHRASE_TEMPLATE)
     prompt = (

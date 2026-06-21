@@ -504,29 +504,59 @@ async def generate_content(
 # HUMANIZE ENDPOINTS
 # ============================================================================
 
+def _make_job_progress_cb(progress_job_id: str):
+    """Crea una callback di progresso per un job: aggiorna sempre lo stato in memoria
+    e scrive in DB solo periodicamente (evita l'esaurimento delle connessioni NullPool).
+    Stesso schema di compilatio_scan_task."""
+    _state = {"count": 0, "last": 0}
+
+    def cb(progress: int):
+        try:
+            job = job_manager._active_jobs.get(progress_job_id)
+            if job:
+                job.progress = progress
+            _state["count"] += 1
+            if _state["count"] % 5 == 0 or progress >= 100 or progress - _state["last"] >= 20:
+                _state["last"] = progress
+                from database import SessionLocal
+                from db_models import Job as JobModel
+                db = SessionLocal()
+                try:
+                    db_job = db.query(JobModel).filter_by(job_id=progress_job_id).first()
+                    if db_job:
+                        db_job.progress = progress
+                        db.commit()
+                finally:
+                    db.close()
+        except Exception:
+            pass
+
+    return cb
+
+
 def humanize_content_task(
     session_id: str,
     testo: str,
-    profile: str = 'informal'
+    profile: str = 'informal',
+    hum_job_id: str = None
 ) -> str:
     """
-    Task sincrono per l'umanizzazione di un testo AI.
+    Task sincrono per l'umanizzazione di un testo AI. Umanizza a CHUNK, così gestisce
+    anche testi lunghi senza superare il cap di output del modello.
 
     Args:
         session_id: ID della sessione addestrata.
         testo: Il testo generato da AI da riscrivere.
         profile: Profilo anti-AI ('informal' o 'academic').
+        hum_job_id: ID del job per gli aggiornamenti di progresso (opzionale).
 
     Returns:
         Testo riscritto nello stile appreso e non rilevabile dai detector.
     """
+    from document_humanizer import humanize_long_text
     client = session_manager.get_session(session_id)
-    result = client.umanizzazione(testo_originale=testo, profile=profile)
-
-    # Salva la conversation history
-    session_manager.save_conversation_history(session_id)
-
-    return result
+    progress_cb = _make_job_progress_cb(hum_job_id) if hum_job_id else None
+    return humanize_long_text(testo, client, profile=profile, progress_cb=progress_cb)
 
 
 @app.post("/humanize", response_model=HumanizeResponse, tags=["Humanize"])
@@ -584,14 +614,17 @@ async def humanize_content(
     # Crea job con nome auto-generato
     testo_preview = request.testo[:40].replace('\n', ' ')
     job_name = f"Umanizzazione: {testo_preview}..."
-    job_id = job_manager.create_job(
+    job_id = f"job_{uuid_module.uuid4().hex[:12]}"
+    job_manager.create_job(
         session_id=request.session_id,
         user_id=user_id,
         job_type='humanization',
         task_func=humanize_content_task,
+        job_id=job_id,
         name=job_name,
         testo=request.testo,
-        profile=request.profile
+        profile=request.profile,
+        hum_job_id=job_id
     )
 
     # Aggiungi job alla sessione
