@@ -107,10 +107,32 @@ const Train = () => {
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
             {t('Nuovo Training')}
           </h1>
-          <p className="text-slate-600">
-            {t("Carica un PDF: l'intero documento verrà analizzato per costruire un profilo stilistico completo")}
+          <p className="text-slate-600 leading-relaxed">
+            {t('In questa sezione puoi addestrare il modello linguistico di scrittura sui tuoi pattern personali, cioè sulle caratteristiche tipiche del tuo modo di scrivere: tono, lessico, ritmo, struttura delle frasi, stile argomentativo ed espressioni ricorrenti.')}
           </p>
         </div>
+
+        {!jobStatus && (
+          <div className="card mb-6">
+            <div className="space-y-4 text-sm text-slate-600 leading-relaxed">
+              <p>
+                {t('Per avviare il training, carica un elaborato scritto interamente di tuo pugno, composto da almeno 50 pagine e con una dimensione massima del file di 100 MB. Il contenuto caricato verrà utilizzato per aiutare il sistema a riconoscere la tua impronta stilistica e generare testi più coerenti con la tua scrittura naturale.')}
+              </p>
+              <div className="flex gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-amber-800">
+                  {t("È importante non caricare testi scritti o rielaborati con strumenti di intelligenza artificiale. In tal caso, il sistema potrebbe apprendere i pattern tipici dell'AI anziché quelli della tua scrittura personale, compromettendo la qualità della generazione umanizzata del testo.")}
+                </p>
+              </div>
+              <div className="flex gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-amber-800">
+                  {t("Se il file caricato non rispetta questi requisiti, non possiamo garantire il successo dell'elaborato finale e i crediti utilizzati per lo stesso non potranno essere recuperati.")}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {!jobStatus ? (
           /* Upload Form */
