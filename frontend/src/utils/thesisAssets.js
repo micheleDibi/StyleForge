@@ -1,12 +1,16 @@
 /**
- * Parser client-side degli elementi visivi della tesi (tabelle/grafici/HINT).
+ * Parser client-side degli elementi visivi della tesi (tabelle/grafici/HINT
+ * + equazioni display).
  *
  * SPECCHIA backend/thesis_assets.py (sintassi e numerazione devono restare
  * allineate):
  *   [TABELLA: didascalia] ... | celle | ... [/TABELLA]
  *   [GRAFICO: didascalia] { spec JSON } [/GRAFICO]
  *   HINT: "testo del segnaposto"
+ *   $$formula$$ su riga isolata (o blocco $$ ... $$) → segmento 'math' "(N.M)"
  */
+
+import { DISPLAY_FENCE_RE, DISPLAY_LINE_RE } from './thesisMath.js';
 
 const TABLE_OPEN_RE = /^\s*\[TABELLA\s*:?\s*(.*?)\]\s*$/;
 const TABLE_CLOSE_RE = /^\s*\[\/TABELLA\]\s*$/;
@@ -149,6 +153,27 @@ export function parseThesisContent(content, chaptersStructure) {
 
     if (TABLE_CLOSE_RE.test(line) || CHART_CLOSE_RE.test(line)) { i += 1; continue; }
 
+    const dm = DISPLAY_LINE_RE.exec(line);
+    if (dm) {
+      flushText();
+      segments.push({ kind: 'math', math: { latex: dm[1].trim(), label: null } });
+      i += 1;
+      continue;
+    }
+
+    if (DISPLAY_FENCE_RE.test(line)) {
+      // blocco display legacy multi-riga: $$ \n ... \n $$
+      const close = findClose(i + 1, DISPLAY_FENCE_RE);
+      if (close === -1) { i += 1; continue; }
+      const latex = lines.slice(i + 1, close).join(' ').split(/\s+/).filter(Boolean).join(' ');
+      if (latex) {
+        flushText();
+        segments.push({ kind: 'math', math: { latex, label: null } });
+      }
+      i = close + 1;
+      continue;
+    }
+
     const hint = HINT_RE.exec(line);
     if (hint) {
       flushText();
@@ -187,8 +212,10 @@ function assignAssetNumbers(segments, chaptersStructure) {
   let fallbackCounter = Math.max(0, ...titleToNum.values());
   let tableN = 0;
   let figureN = 0;
+  let eqN = 0;
   let globalTableN = 0;
   let globalFigureN = 0;
+  let globalEqN = 0;
 
   for (const seg of segments) {
     if (seg.kind === 'text') {
@@ -197,6 +224,7 @@ function assignAssetNumbers(segments, chaptersStructure) {
           const title = normalizeTitle(line.slice(2));
           tableN = 0;
           figureN = 0;
+          eqN = 0;
           if (specialTitles.has(title)) currentCh = null;
           else if (titleToNum.has(title)) {
             currentCh = titleToNum.get(title);
@@ -222,6 +250,14 @@ function assignAssetNumbers(segments, chaptersStructure) {
       } else {
         globalFigureN += 1;
         seg.chart.label = `Figura ${globalFigureN}`;
+      }
+    } else if (seg.kind === 'math') {
+      if (currentCh !== null) {
+        eqN += 1;
+        seg.math.label = `(${currentCh}.${eqN})`;
+      } else {
+        globalEqN += 1;
+        seg.math.label = `(${globalEqN})`;
       }
     }
   }

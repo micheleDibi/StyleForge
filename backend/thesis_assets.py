@@ -28,6 +28,9 @@ Sintassi (marcatori sempre su righe isolate):
 
     HINT: "<cosa inserire, perché, dove reperirlo>"
 
+Le equazioni display `$$...$$` su riga isolata diventano segmenti kind='math'
+numerati "(N.M)" per capitolo (sintassi e rendering in thesis_math.py).
+
 Il frontend replica parsing e numerazione in
 frontend/src/utils/thesisAssets.js: le due implementazioni devono restare
 allineate.
@@ -41,6 +44,17 @@ from io import BytesIO
 from typing import Callable, Optional
 
 import config
+from thesis_math import (
+    DISPLAY_FENCE_RE as MATH_DISPLAY_FENCE_RE,
+    DISPLAY_LINE_RE as MATH_DISPLAY_LINE_RE,
+    MathAsset,
+    MathRenderError,
+    latex_to_omml,
+    latex_to_unicode,
+    protect_math_spans,
+    render_math_png,
+    strip_math_sentinels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +112,7 @@ class HintAsset:
 
 @dataclass
 class Segment:
-    kind: str  # 'text' | 'table' | 'chart' | 'hint'
+    kind: str  # 'text' | 'table' | 'chart' | 'hint' | 'math'
     text: Optional[str] = None
     asset: object = None
 
@@ -258,6 +272,26 @@ def parse_segments(content: str) -> list:
             i += 1  # chiusura orfana: rimossa
             continue
 
+        m = MATH_DISPLAY_LINE_RE.match(line)
+        if m:
+            flush_text()
+            segments.append(Segment(kind='math', asset=MathAsset(latex=m.group(1).strip())))
+            i += 1
+            continue
+
+        if MATH_DISPLAY_FENCE_RE.match(line):
+            # blocco display legacy multi-riga: $$ \n ... \n $$
+            close = find_close(i + 1, MATH_DISPLAY_FENCE_RE)
+            if close == -1:
+                i += 1  # recinzione orfana: rimossa, il corpo resta testo
+                continue
+            latex = ' '.join(' '.join(lines[i + 1:close]).split())
+            if latex:
+                flush_text()
+                segments.append(Segment(kind='math', asset=MathAsset(latex=latex)))
+            i = close + 1
+            continue
+
         m = HINT_RE.match(line)
         if m:
             flush_text()
@@ -281,11 +315,12 @@ def _normalize_title(t: str) -> str:
 
 def assign_asset_numbers(segments: list, chapters_structure: Optional[dict] = None) -> None:
     """
-    Assegna label "Tabella N.M" / "Figura N.M" per capitolo (contatore Figura
-    condiviso da grafici e future immagini). I capitoli speciali (is_special,
-    Introduzione/Conclusione/Bibliografia) non contano; titolo `# ` sconosciuto
-    → contatore sequenziale di fallback. Asset prima di qualunque capitolo o
-    dentro uno speciale → numerazione globale senza prefisso ("Tabella 3").
+    Assegna label "Tabella N.M" / "Figura N.M" / equazione "(N.M)" per capitolo
+    (contatore Figura condiviso da grafici e future immagini). I capitoli
+    speciali (is_special, Introduzione/Conclusione/Bibliografia) non contano;
+    titolo `# ` sconosciuto → contatore sequenziale di fallback. Asset prima di
+    qualunque capitolo o dentro uno speciale → numerazione globale senza
+    prefisso ("Tabella 3", "(3)").
     """
     title_to_num = {}
     special_titles = set(SPECIAL_TITLES)
@@ -303,8 +338,8 @@ def assign_asset_numbers(segments: list, chapters_structure: Optional[dict] = No
 
     current_ch = None
     fallback_counter = max(title_to_num.values(), default=0)
-    table_n = figure_n = 0
-    global_table_n = global_figure_n = 0
+    table_n = figure_n = eq_n = 0
+    global_table_n = global_figure_n = global_eq_n = 0
 
     for seg in segments:
         if seg.kind == 'text':
@@ -312,7 +347,7 @@ def assign_asset_numbers(segments: list, chapters_structure: Optional[dict] = No
             for line in seg.text.split('\n'):
                 if line.startswith('# ') and not line.startswith('## '):
                     title = _normalize_title(line[2:])
-                    table_n = figure_n = 0
+                    table_n = figure_n = eq_n = 0
                     if title in special_titles:
                         current_ch = None
                     elif title in title_to_num:
@@ -335,6 +370,13 @@ def assign_asset_numbers(segments: list, chapters_structure: Optional[dict] = No
             else:
                 global_figure_n += 1
                 seg.asset.label = f"Figura {global_figure_n}"
+        elif seg.kind == 'math':
+            if current_ch is not None:
+                eq_n += 1
+                seg.asset.label = f"({current_ch}.{eq_n})"
+            else:
+                global_eq_n += 1
+                seg.asset.label = f"({global_eq_n})"
 
 
 def format_caption(asset) -> str:
@@ -492,10 +534,12 @@ def restore_asset_blocks(text: str, mapping: dict) -> str:
 
 
 def count_words_excluding_assets(text: str) -> int:
-    """Parole del solo testo discorsivo (tabelle/grafici/HINT esclusi)."""
+    """Parole del solo testo discorsivo (tabelle/grafici/HINT/formule esclusi)."""
     if not text:
         return 0
     protected, _ = protect_asset_blocks(text)
+    protected, _ = protect_math_spans(protected)
+    protected = strip_math_sentinels(protected)
     return len(SENTINEL_RE.sub(' ', protected).split())
 
 
@@ -818,6 +862,74 @@ def add_docx_chart(doc, chart: ChartAsset, ds: dict):
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.add_run().add_picture(BytesIO(png), width=Inches(5.8))
     _docx_caption_paragraph(doc, format_caption(chart), ds, italic=True)
+
+
+def add_docx_math(doc, math_asset: MathAsset, ds: dict):
+    """Equazione display: OMML nativo centrato, numero "(N.M)" al margine destro.
+
+    Layout da convenzione Word per le equazioni numerate: tab stop CENTER a
+    metà testo + tab stop RIGHT al margine. Catena di fallback per formula:
+    OMML → PNG mathtext → testo Unicode corsivo (mai eccezioni verso l'alto
+    oltre MathRenderError già assorbite qui).
+    """
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+    from docx.shared import Emu, Pt
+
+    font_name = ds.get('font_name', 'Times New Roman')
+    font_size = int(ds.get('font_size', 12))
+    label = math_asset.label
+
+    p = doc.add_paragraph()
+    pf = p.paragraph_format
+    pf.space_before = Pt(6)
+    pf.space_after = Pt(6)
+
+    usable = None
+    if label:
+        try:
+            sec = doc.sections[-1]
+            usable = int(sec.page_width) - int(sec.left_margin) - int(sec.right_margin)
+        except (AttributeError, TypeError, IndexError):
+            usable = None
+    if usable and usable > 0:
+        pf.tab_stops.add_tab_stop(Emu(usable // 2), WD_TAB_ALIGNMENT.CENTER)
+        pf.tab_stops.add_tab_stop(Emu(usable), WD_TAB_ALIGNMENT.RIGHT)
+        p.add_run().add_tab()
+    else:
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    def _append_label():
+        if not label:
+            return
+        if usable:
+            p.add_run().add_tab()
+            run = p.add_run(label)
+        else:
+            run = p.add_run(f" {label}")  # em space se il tab stop non è disponibile
+        run.font.name = font_name
+        run.font.size = Pt(max(8, font_size - 1))
+
+    try:
+        p._p.append(latex_to_omml(math_asset.latex, block=True))
+        _append_label()
+        return
+    except MathRenderError as e:
+        logger.warning(f"Equazione OMML non convertita ('{math_asset.latex[:60]}'): {e}")
+
+    try:
+        mp = render_math_png(math_asset.latex, fontsize=float(font_size),
+                             dpi=300, display=True)
+        p.add_run().add_picture(BytesIO(mp.png), width=Pt(min(mp.width_pt, 420.0)))
+        _append_label()
+        return
+    except MathRenderError as e:
+        logger.warning(f"Equazione PNG non renderizzata ('{math_asset.latex[:60]}'): {e}")
+
+    run = p.add_run(latex_to_unicode(math_asset.latex))
+    run.font.name = font_name
+    run.font.size = Pt(font_size)
+    run.font.italic = True
+    _append_label()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

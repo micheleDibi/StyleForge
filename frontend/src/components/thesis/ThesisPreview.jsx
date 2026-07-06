@@ -1,9 +1,33 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Download, FileText, Eye, Copy, Check, Loader, FileType, FileCode, BookOpen, List, Calendar, User, Settings, ChevronDown, Shield, AlertTriangle, BarChart3 } from 'lucide-react';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 import { exportThesis, getExportTemplates, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../../services/api';
 import { parseThesisContent, buildAssetIndices, formatAssetCaption } from '../../utils/thesisAssets';
+import { splitMathSpans } from '../../utils/thesisMath';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
+
+// KaTeX con throwOnError:false produce sempre HTML con escape (formula rotta →
+// sorgente in rosso); trust:false tiene disattivati \href e simili.
+const katexHtml = (latex, displayMode) =>
+  katex.renderToString(latex, {
+    displayMode,
+    throwOnError: false,
+    trust: false,
+    maxExpand: 100,
+  });
+
+/** Testo con eventuali formule $...$ renderizzate via KaTeX. */
+const MathText = ({ text }) => {
+  const spans = useMemo(() => splitMathSpans(text), [text]);
+  if (!spans.some((s) => s.kind === 'math')) return text;
+  return spans.map((s, i) => (
+    s.kind === 'math'
+      ? <span key={i} dangerouslySetInnerHTML={{ __html: katexHtml(s.value, false) }} />
+      : <span key={i}>{s.value}</span>
+  ));
+};
 
 const ThesisPreview = ({ thesis, content }) => {
   const { t } = useTranslation();
@@ -468,7 +492,20 @@ const ThesisPreview = ({ thesis, content }) => {
                       {segments.map((seg, idx) => {
                         if (seg.kind === 'text') {
                           return (
-                            <div key={idx} className="whitespace-pre-wrap">{seg.text}</div>
+                            <div key={idx} className="whitespace-pre-wrap"><MathText text={seg.text} /></div>
+                          );
+                        }
+                        if (seg.kind === 'math') {
+                          return (
+                            <div key={idx} className="my-4 not-prose flex items-center">
+                              <span
+                                className="flex-1 text-center overflow-x-auto"
+                                dangerouslySetInnerHTML={{ __html: katexHtml(seg.math.latex, true) }}
+                              />
+                              {seg.math.label && (
+                                <span className="text-sm text-slate-700 pl-3">{seg.math.label}</span>
+                              )}
+                            </div>
                           );
                         }
                         if (seg.kind === 'table') {

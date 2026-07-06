@@ -287,3 +287,35 @@ class TestOmml:
     def test_garbage_raises(self):
         with pytest.raises(MathRenderError):
             latex_to_omml("\\left(  aperto senza chiusura")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Parità con il parser frontend (fixture condivisa)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestParityFixture:
+    """La stessa fixture è verificata lato JS da frontend/tests/thesisMath.parity.test.mjs."""
+
+    @staticmethod
+    def _fixture():
+        import json
+        from pathlib import Path
+        path = Path(__file__).parent / "fixtures" / "math_parity.json"
+        return json.loads(path.read_text(encoding='utf-8'))
+
+    def test_content_cases(self):
+        from thesis_assets import assign_asset_numbers, parse_segments
+        fx = self._fixture()
+        for case in fx["content_cases"]:
+            segs = parse_segments(case["content"])
+            assign_asset_numbers(segs, fx["chapters_structure"])
+            assert [s.kind for s in segs] == case["kinds"], case["name"]
+            maths = [s.asset for s in segs if s.kind == 'math']
+            assert [m.latex for m in maths] == case["math_latex"], case["name"]
+            assert [m.label for m in maths] == case["math_labels"], case["name"]
+
+    def test_inline_cases(self):
+        fx = self._fixture()
+        for case in fx["inline_cases"]:
+            got = [[k, v] for k, v, _ in iter_inline_math(case["line"])]
+            assert got == case["spans"], case["line"]

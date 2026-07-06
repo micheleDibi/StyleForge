@@ -376,3 +376,94 @@ def test_docx_builders_smoke(tmp_path):
     from docx.oxml.ns import qn
     drawings = reread.element.findall('.//' + qn('w:drawing'))
     assert len(drawings) == 1
+
+
+# ═══════════════════════════ FORMULE MATH ═══════════════════════════
+MATH_CONTENT = """# Introduzione
+
+Testo introduttivo senza formule.
+
+# Il quadro normativo
+
+Il rapporto $\\beta = \\omega / \\omega_n$ governa la risposta dinamica.
+
+$$D = \\frac{1}{\\sqrt{(1 - \\beta^2)^2 + (2\\xi\\beta)^2}}$$
+
+Segue il commento all'equazione, che ne discute il comportamento.
+
+$$
+u_0 = u_{st} \\cdot D
+$$
+
+# Capitolo rinominato dall'utente
+
+$$E = mc^2$$
+
+# Conclusione
+
+Testo conclusivo.
+"""
+
+
+def _math_segments():
+    segs = parse_segments(MATH_CONTENT)
+    assign_asset_numbers(segs, CHAPTERS_STRUCTURE)
+    return segs
+
+
+def test_math_segmentation_kinds():
+    kinds = [s.kind for s in _math_segments()]
+    assert kinds == ['text', 'math', 'text', 'math', 'text', 'math', 'text']
+
+
+def test_math_display_and_legacy_fence_parsed():
+    segs = _math_segments()
+    assert segs[1].asset.latex == r"D = \frac{1}{\sqrt{(1 - \beta^2)^2 + (2\xi\beta)^2}}"
+    assert segs[3].asset.latex == r"u_0 = u_{st} \cdot D"  # blocco multi-riga legacy
+
+
+def test_math_inline_stays_in_text_segment():
+    segs = _math_segments()
+    assert r"$\beta = \omega / \omega_n$" in segs[0].text
+
+
+def test_math_numbering_per_chapter_and_fallback():
+    segs = _math_segments()
+    labels = [s.asset.label for s in segs if s.kind == 'math']
+    # "Il quadro normativo" è il capitolo 1; il rinominato prende il fallback 3
+    assert labels == ["(1.1)", "(1.2)", "(3.1)"]
+
+
+def test_math_orphan_fence_removed_body_stays_text():
+    segs = parse_segments("prima\n$$\ncorpo rimasto testo\ne basta")
+    assert [s.kind for s in segs] == ['text']
+    assert 'corpo rimasto testo' in segs[0].text
+    assert '$$' not in segs[0].text
+
+
+def test_count_words_excludes_math():
+    text = "Due parole.\n\n$$E = mc^2$$\n\nAltre due parole $\\beta$ qui."
+    # display esclusa e inline esclusa: contano solo le parole di prosa
+    assert count_words_excluding_assets(text) == 6
+
+
+def test_add_docx_math_omml_native_and_fallback(tmp_path):
+    from docx import Document
+    from thesis_assets import add_docx_math
+    from thesis_math import MathAsset
+
+    doc = Document()
+    ds = {"font_name": "Times New Roman", "font_size": 12}
+
+    add_docx_math(doc, MathAsset(latex=r"E = mc^2", label="(2.1)"), ds)
+    p_omml = doc.paragraphs[-1]
+    assert 'oMath' in p_omml._p.xml          # equazione nativa Word
+    assert '(2.1)' in p_omml.text            # numero a destra via tab
+
+    add_docx_math(doc, MathAsset(latex=r"\left( rotta", label="(2.2)"), ds)
+    p_fallback = doc.paragraphs[-1]
+    assert 'oMath' not in p_fallback._p.xml  # degradata (PNG o Unicode), mai crash
+
+    out = tmp_path / "math.docx"
+    doc.save(str(out))
+    assert 'oMath' in Document(str(out)).element.xml

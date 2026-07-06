@@ -71,9 +71,22 @@ from thesis_assets import (
     render_chart_png,
     restore_asset_blocks,
     sanitize_generated_assets,
+    add_docx_math,
     table_to_markdown,
     table_to_plain_lines,
     wrap_text_to_width,
+)
+from thesis_math import (
+    MathRenderError,
+    has_inline_math,
+    inline_math_to_unicode,
+    iter_inline_math,
+    latex_to_omml,
+    latex_to_unicode,
+    protect_math_spans,
+    render_math_png,
+    restore_math_spans,
+    sanitize_generated_math,
 )
 from research_providers import UnifiedPaper
 from research_service import DEFAULT_SOURCES, PROVIDER_REGISTRY, run_search_pipeline
@@ -2916,6 +2929,8 @@ async def export_thesis(
                 if has_footnotes:
                     seg_text, seg_notes, next_note_num = strip_footnotes_for_plain(seg_text, next_note_num)
                     all_notes.extend(seg_notes)
+                # Formule inline in Unicode leggibile (β, ω, √)
+                seg_text = inline_math_to_unicode(seg_text)
                 # In plain text gli asterischi del corsivo Markdown non hanno senso → rimuovi
                 parts.append(strip_italic_markers(seg_text))
             elif seg.kind == 'table':
@@ -2927,6 +2942,11 @@ async def export_thesis(
                 parts.append(
                     f"{format_caption(seg.asset)}\n[Grafico disponibile negli export PDF/DOCX]"
                 )
+            elif seg.kind == 'math':
+                eq_line = f"    {latex_to_unicode(seg.asset.latex)}"
+                if seg.asset.label:
+                    eq_line += f"    {seg.asset.label}"
+                parts.append(eq_line)
             elif seg.kind == 'hint':
                 parts.append(f">>> HINT (da sostituire): {seg.asset.text} <<<")
         processed_content = '\n\n'.join(parts)
@@ -2944,7 +2964,7 @@ async def export_thesis(
         if all_notes:
             full_content += "\n\n" + "=" * 60 + "\nNOTE\n" + "=" * 60 + "\n\n"
             for num, note_text in all_notes:
-                full_content += f"[{num}] {strip_italic_markers(note_text)}\n"
+                full_content += f"[{num}] {strip_italic_markers(inline_math_to_unicode(note_text))}\n"
 
         file_path = config.RESULTS_DIR / f"thesis_{safe_title}_{timestamp}.txt"
         file_path.write_text(full_content, encoding='utf-8')
@@ -2994,6 +3014,10 @@ async def export_thesis(
                         block += f"\n\n*Fonte: {spec['source']}*"
                 block += "\n\n*Grafico renderizzato negli export PDF e DOCX.*"
                 parts.append(block)
+            elif seg.kind == 'math':
+                # $..$ / $$..$$ sono math markdown standard: sorgente verbatim
+                tag = f" \\tag{{{seg.asset.label.strip('()')}}}" if seg.asset.label else ""
+                parts.append(f"$$ {seg.asset.latex}{tag} $$")
             elif seg.kind == 'hint':
                 parts.append(f"> ⚠️ **HINT (da sostituire):** {seg.asset.text}")
         processed_content = '\n\n'.join(parts)
@@ -3360,14 +3384,33 @@ async def export_thesis(
             doc.add_page_break()
 
         # ── Contenuto con body_alignment e footnotes ──
+        def _append_math_run(para, latex):
+            """Formula inline: OMML nativo → PNG mathtext → testo Unicode corsivo."""
+            try:
+                para._p.append(latex_to_omml(latex))
+                return
+            except MathRenderError as e:
+                logger.warning(f"Formula inline non convertita in OMML: {e}")
+            try:
+                from io import BytesIO
+                mp = render_math_png(latex, fontsize=float(font_sz), dpi=300)
+                para.add_run().add_picture(BytesIO(mp.png), width=Pt(min(mp.width_pt, 420.0)))
+                return
+            except MathRenderError as e:
+                logger.warning(f"Formula inline non renderizzata in PNG: {e}")
+            run = para.add_run(latex_to_unicode(latex))
+            run.font.name = font_name
+            run.font.size = Pt(font_sz)
+            run.italic = True
+
         def render_docx_text_line(line):
             if line.startswith('# '):
-                h = doc.add_heading(line[2:], level=1)
+                h = doc.add_heading(inline_math_to_unicode(line[2:]), level=1)
                 h.paragraph_format.space_before = Pt(chapter_sp_before)
                 for run in h.runs:
                     run.font.name = font_name
             elif line.startswith('## '):
-                h = doc.add_heading(line[3:], level=2)
+                h = doc.add_heading(inline_math_to_unicode(line[3:]), level=2)
                 h.paragraph_format.space_before = Pt(section_sp_before)
                 for run in h.runs:
                     run.font.name = font_name
@@ -3375,15 +3418,24 @@ async def export_thesis(
                 footnotes_in_line = extract_footnotes_from_line(line)
 
                 def _add_runs_with_italic(para, text):
-                    """Aggiunge run al paragrafo rispettando il Markdown *italic*."""
-                    for seg_text, seg_italic in iter_italic_segments(text):
-                        if not seg_text:
+                    """Run del paragrafo: Markdown *italic* + formule $...$ (OMML).
+
+                    Le formule vengono estratte PRIMA dello split del corsivo,
+                    così un asterisco dentro la matematica non viene
+                    interpretato come marcatore.
+                    """
+                    for kind, latex, raw in iter_inline_math(text):
+                        if kind == 'math':
+                            _append_math_run(para, latex)
                             continue
-                        run = para.add_run(seg_text)
-                        run.font.name = font_name
-                        run.font.size = Pt(font_sz)
-                        if seg_italic:
-                            run.italic = True
+                        for seg_text, seg_italic in iter_italic_segments(raw):
+                            if not seg_text:
+                                continue
+                            run = para.add_run(seg_text)
+                            run.font.name = font_name
+                            run.font.size = Pt(font_sz)
+                            if seg_italic:
+                                run.italic = True
 
                 if footnotes_in_line:
                     para = doc.add_paragraph()
@@ -3399,7 +3451,9 @@ async def export_thesis(
                             _add_runs_with_italic(para, before_text)
                         # Aggiungi la footnote (italic gestito dentro add_footnote)
                         try:
-                            add_footnote(doc, para, fn_text, docx_footnote_id[0], font_name, font_sz - 2)
+                            # Eventuale matematica nel testo della nota → Unicode
+                            add_footnote(doc, para, inline_math_to_unicode(fn_text),
+                                         docx_footnote_id[0], font_name, font_sz - 2)
                             docx_footnote_id[0] += 1
                         except Exception:
                             # Fallback: aggiungi come testo in apice
@@ -3434,6 +3488,8 @@ async def export_thesis(
                     add_docx_table(doc, seg.asset, ds)
                 elif seg.kind == 'chart':
                     add_docx_chart(doc, seg.asset, ds)
+                elif seg.kind == 'math':
+                    add_docx_math(doc, seg.asset, ds)
                 elif seg.kind == 'hint':
                     add_docx_hint(doc, seg.asset, ds)
             except Exception as e:  # noqa: BLE001
@@ -3981,6 +4037,144 @@ async def export_thesis(
             y += disp_h + 8
             render_pdf_caption(format_caption(chart))
 
+        def render_pdf_math(math_asset):
+            """Equazione display: PNG mathtext centrato, numero "(N.M)" a destra.
+
+            Su MathRenderError degrada al sorgente LaTeX come testo (ASCII: i
+            font base-14 non hanno i glifi greci, il PNG sì)."""
+            nonlocal y
+            try:
+                mp = render_math_png(math_asset.latex, fontsize=font_size * 1.15,
+                                     dpi=300, display=True)
+            except MathRenderError as e:
+                logger.warning(f"Equazione display non renderizzata nel PDF: {e}")
+                render_pdf_text_line(_pdf_safe(f"$$ {math_asset.latex} $$"))
+                return
+            scale = 1.0
+            disp_w, disp_h = mp.width_pt, mp.height_pt
+            if disp_w > content_width:
+                scale = content_width / disp_w
+                disp_w, disp_h = disp_w * scale, disp_h * scale
+            if disp_h > page_capacity - 40:
+                s2 = (page_capacity - 40) / disp_h
+                scale *= s2
+                disp_w, disp_h = disp_w * s2, disp_h * s2
+            check_new_page_needed(disp_h + 12)
+            y += 6
+            img_x = margin_left + (content_width - disp_w) / 2
+            current_page.insert_image(
+                fitz.Rect(img_x, y, img_x + disp_w, y + disp_h), stream=mp.png)
+            if math_asset.label:
+                # numero al margine destro, allineato al baseline della formula
+                num_w = fitz.get_text_length(math_asset.label, fontname=font_body,
+                                             fontsize=font_size)
+                baseline = y + disp_h - mp.depth_pt * scale
+                current_page.insert_text(
+                    (page_width - margin_right - num_w, baseline),
+                    math_asset.label, fontsize=font_size, fontname=font_body)
+            y += disp_h + 6
+
+        def render_pdf_inline_math_line(line):
+            """Riga di corpo con formule $...$: parole e PNG inline sul baseline.
+
+            Wrap greedy a item (parola o formula) sulla larghezza colonna;
+            giustificazione a gap uniforme come insert_justified_line; le
+            formule sono allineate al baseline tramite la metrica depth."""
+            nonlocal y
+            # Cluster = sequenza indivisibile di item senza spazio interno, così
+            # la punteggiatura resta attaccata alla formula ("ω/ωₙ," e non "ω/ωₙ ,")
+            # e il wrap non spezza mai formula e virgola.
+            clusters = []  # lista di liste di ('word', testo, w, _) | ('math', MathPng, w, scala)
+
+            def add_item(item, glued):
+                if glued and clusters:
+                    clusters[-1].append(item)
+                else:
+                    clusters.append([item])
+
+            last_ends_nospace = False
+            for kind, latex, raw in iter_inline_math(line):
+                if kind == 'math':
+                    try:
+                        mp = render_math_png(latex, fontsize=font_size, dpi=300)
+                        scale = min(1.0, content_width / mp.width_pt) if mp.width_pt else 1.0
+                        add_item(('math', mp, mp.width_pt * scale, scale), last_ends_nospace)
+                        last_ends_nospace = True
+                        continue
+                    except MathRenderError as e:
+                        logger.warning(f"Formula inline non renderizzata nel PDF: {e}")
+                        raw = _pdf_safe(raw)  # sorgente come testo
+                chunk = strip_italic_markers(raw)
+                words = chunk.split()
+                if not words:
+                    if chunk:
+                        last_ends_nospace = False  # soli spazi: separa
+                    continue
+                starts_ws = chunk[0].isspace()
+                for wi, w in enumerate(words):
+                    item = ('word', w, fitz.get_text_length(
+                        w, fontname=font_body, fontsize=font_size), 1.0)
+                    add_item(item, glued=(wi == 0 and not starts_ws and last_ends_nospace))
+                last_ends_nospace = not chunk[-1].isspace()
+            if not clusters:
+                return
+            space_w = fitz.get_text_length(' ', fontname=font_body, fontsize=font_size)
+
+            def cluster_w(cluster):
+                return sum(it[2] for it in cluster)
+
+            rows, row, row_w = [], [], 0.0
+            for cluster in clusters:
+                cw = cluster_w(cluster)
+                needed = cw if not row else row_w + space_w + cw
+                if row and needed > content_width:
+                    rows.append(row)
+                    row, row_w = [cluster], cw
+                else:
+                    row.append(cluster)
+                    row_w = needed
+            if row:
+                rows.append(row)
+
+            text_asc = font_size * 0.8    # ascendente tipico dei font base-14
+            text_desc = font_size * 0.25
+            for ri, current_row in enumerate(rows):
+                asc, desc = text_asc, text_desc
+                for cluster in current_row:
+                    for item in cluster:
+                        if item[0] == 'math':
+                            mp, scale = item[1], item[3]
+                            asc = max(asc, (mp.height_pt - mp.depth_pt) * scale)
+                            desc = max(desc, mp.depth_pt * scale)
+                row_h = max(line_height, asc + desc + 2)
+                check_new_page_needed(row_h)
+                # il baseline scende se la matematica è più alta del testo
+                baseline = y + (asc - text_asc)
+                is_last = ri == len(rows) - 1
+                total_w = sum(cluster_w(c) for c in current_row)
+                gaps = len(current_row) - 1
+                if body_align == "justify" and not is_last and gaps > 0:
+                    gap = (content_width - total_w) / gaps
+                else:
+                    gap = space_w
+                cx = margin_left
+                for cluster in current_row:
+                    for item in cluster:
+                        if item[0] == 'word':
+                            current_page.insert_text((cx, baseline), item[1],
+                                                     fontsize=font_size, fontname=font_body)
+                        else:
+                            mp, scale = item[1], item[3]
+                            h, d = mp.height_pt * scale, mp.depth_pt * scale
+                            current_page.insert_image(
+                                fitz.Rect(cx, baseline - (h - d), cx + item[2], baseline + d),
+                                stream=mp.png)
+                        cx += item[2]
+                    cx += gap
+                y += row_h
+            if paragraph_spacing > 0:
+                y += paragraph_spacing
+
         # Contenuto con footnotes
         def render_pdf_text_line(line):
             nonlocal y
@@ -4052,6 +4246,12 @@ async def export_thesis(
                     processed_line += line[last_end:]
                     line = processed_line
 
+                # Formule inline: layout a run dedicato (PNG sul baseline).
+                # Va PRIMA dello strip corsivi: un * dentro $...$ non è Markdown.
+                if has_inline_math(line):
+                    render_pdf_inline_math_line(line)
+                    return
+
                 # PDF non gestisce nativamente il corsivo Markdown: rimuoviamo gli asterischi
                 # così i titoli APA non appaiono come letterali. (Il DOCX usa run italic.)
                 line = strip_italic_markers(line)
@@ -4101,6 +4301,8 @@ async def export_thesis(
                     render_pdf_table(seg.asset)
                 elif seg.kind == 'chart':
                     render_pdf_chart(seg.asset)
+                elif seg.kind == 'math':
+                    render_pdf_math(seg.asset)
                 elif seg.kind == 'hint':
                     render_pdf_hint(seg.asset)
             except Exception as e:  # noqa: BLE001
