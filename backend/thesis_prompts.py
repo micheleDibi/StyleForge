@@ -7,6 +7,8 @@ della generazione di tesi utilizzando OpenAI o1/o3.
 
 from typing import Dict, Any, List, Optional
 
+import config
+
 
 def _get_citation_instructions(citation_style: str = "footnotes") -> str:
     """Restituisce le istruzioni sulle citazioni in base allo stile scelto.
@@ -62,6 +64,70 @@ def _get_no_citation_instruction(citation_style: str = "footnotes") -> str:
         return "NON inserire citazioni bibliografiche [x]"
     else:
         return "NON inserire note bibliografiche {{nota:...}}"
+
+
+def _get_assets_instructions(citation_style: str = "footnotes") -> str:
+    """
+    Istruzioni per gli elementi visivi (tabelle, grafici, HINT) nel contenuto
+    di sezione. La sintassi è quella riconosciuta da thesis_assets.parse_segments.
+    Ritorna stringa vuota se THESIS_ASSETS_ENABLED è False.
+    """
+    if not getattr(config, 'THESIS_ASSETS_ENABLED', True):
+        return ""
+    citation_ban = "citazioni [x]" if citation_style == "bibliography" else "note {{nota:...}}"
+    if getattr(config, 'THESIS_CHARTS_ENABLED', True):
+        chart_block = '''   GRAFICO — SOLO con dati numerici CONCRETI e REALI presi dalla base di
+   conoscenza (fonti, allegati, paper):
+   ⚠️ NON INVENTARE MAI numeri, percentuali o serie storiche. Se nelle fonti
+   non ci sono dati numerici concreti, NIENTE grafico: usa un HINT.
+   [GRAFICO: <didascalia accademica descrittiva>]
+   {"type": "bar|line|pie|scatter", "x_label": "...", "y_label": "...",
+    "labels": ["..."], "series": [{"name": "...", "values": [numeri]}],
+    "source": "<fonte reale dei dati>"}
+   [/GRAFICO]
+   - Un solo oggetto JSON tra i marcatori. Il campo "source" è OBBLIGATORIO
+     e deve indicare la fonte reale da cui provengono i dati.'''
+    else:
+        chart_block = '''   GRAFICI: non generarli mai direttamente. Se un grafico sarebbe utile in un
+   punto, inserisci un HINT che descriva quale grafico inserire e con quali dati.'''
+    return f"""8. ELEMENTI VISIVI — TABELLE, GRAFICI, IMMAGINI (solo se DAVVERO utili):
+
+   QUANDO USARLI (e quando NO):
+   - MAI forzare un elemento visivo: nella maggior parte delle sezioni non
+     serve nulla, e va benissimo così. Massimo 1-2 elementi per sezione.
+   - TABELLA: solo per confronti strutturati, quadri sinottici o dati che in
+     prosa risulterebbero pesanti da seguire.
+   - GRAFICO: solo alle condizioni indicate sotto.
+   - IMMAGINI, FOTO, SCHEMI che non puoi produrre: inserisci un HINT (vedi
+     sotto), MAI descrizioni finte di immagini inesistenti.
+
+   TABELLA — sintassi obbligatoria (ECCEZIONE ESPLICITA alla regola "niente
+   elenchi/markdown": DENTRO i marcatori [TABELLA]...[/TABELLA] le righe
+   | ... | sono AMMESSE e OBBLIGATORIE):
+   [TABELLA: <didascalia accademica, eventualmente con la fonte>]
+   | Intestazione 1 | Intestazione 2 |
+   | valore | valore |
+   Fonte: <fonte dei dati>
+   (la riga "Fonte:" è opzionale)
+   [/TABELLA]
+   - La prima riga | ... | è l'intestazione. Celle brevi (max ~12 parole).
+   - NIENTE {citation_ban} dentro le celle: la fonte va nella didascalia o
+     nella riga "Fonte: ...".
+
+{chart_block}
+
+   HINT — segnaposto BEN VISIBILE per un elemento che NON puoi generare
+   (fotografie, schemi, diagrammi, grafici senza dati). Riga isolata, tra due
+   righe vuote:
+   HINT: "<descrizione precisa di cosa inserire, perché è utile in quel punto, e dove l'autore può reperirlo>"
+
+   REGOLE COMUNI:
+   - Marcatori SEMPRE su righe isolate, con una riga vuota prima e dopo.
+   - NON numerare tu tabelle e figure ("Tabella 1", "Figura 2.1"): la
+     numerazione e le didascalie numerate vengono aggiunte automaticamente.
+   - Didascalie professionali e descrittive, da tesi di laurea.
+   - Il testo attorno deve introdurre e commentare l'elemento (es. "come
+     mostra la tabella seguente, ..."), mai lasciarlo orfano."""
 
 
 def build_chapters_prompt(thesis_data: Dict[str, Any], attachments_context: str = "") -> str:
@@ -311,6 +377,12 @@ def build_section_content_prompt(
     key_points = section.get('key_points', [])
     key_points_text = "\n".join([f"• {point}" for point in key_points]) if key_points else "Non specificati"
 
+    assets_block = _get_assets_instructions(thesis_data.get('citation_style', 'footnotes'))
+    hint_exception = (
+        ' — UNICA ECCEZIONE ammessa: la riga HINT: "..." descritta al punto 8'
+        if assets_block else ""
+    )
+
     return f"""
 ═══════════════════════════════════════════════════════════════════════════════
 GENERAZIONE CONTENUTO SEZIONE
@@ -469,6 +541,8 @@ ISTRUZIONI DI SCRITTURA
    - Qualche volta fai un'osservazione personale breve senza citazioni
    - Varia il ritmo: dopo 2-3 paragrafi densi, inserisci uno piu' leggero
 
+{assets_block}
+
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT
 ═══════════════════════════════════════════════════════════════════════════════
@@ -478,7 +552,7 @@ Scrivi SOLO il contenuto della sezione.
 IMPORTANTE:
 - NON includere il titolo della sezione (verrà aggiunto separatamente)
 - NON includere meta-commenti o note per l'autore
-- NON usare placeholder o [inserire qui]
+- NON usare placeholder o [inserire qui]{hint_exception}
 - Scrivi il contenuto completo e definitivo
 - Il testo deve essere pronto per la pubblicazione
 - RICORDA: ALMENO {thesis_data.get('words_per_section', 5000)} parole! Questo è NON negoziabile.

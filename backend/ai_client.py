@@ -653,6 +653,7 @@ DA PRESERVARE OBBLIGATORIAMENTE
 - LUNGHEZZA: la riscrittura deve avere ALMENO __WORDCOUNT__ parole (come l'originale). Non riassumere, non tagliare contenuti; semmai approfondisci.
 - CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni nel formato [n] (es. [1], [2]) e tutte le note nel formato {{nota: ...}}. Non rimuoverle, non rinumerarle, non modificarne il contenuto, non spostarle fuori dalla frase cui appartengono.
 - Dati, numeri, percentuali, nomi propri, titoli di opere e termini tecnici vanno mantenuti identici.
+- SEGNAPOSTO ZZASSETnZZ: se compaiono token come ZZASSET0ZZ, ZZASSET1ZZ (segnaposto di tabelle/figure), mantienili INTATTI su riga isolata, nella stessa posizione logica del discorso: non rimuoverli, non duplicarli, non spostarli in fondo.
 
 ═══════════════════════════════════════════════════════════════
 TESTO DA RISCRIVERE (__WORDCOUNT__ parole)
@@ -748,6 +749,7 @@ DA PRESERVARE OBBLIGATORIAMENTE
 - LUNGHEZZA: ALMENO __WORDCOUNT__ parole (come l'originale). Non riassumere.
 - CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni [n] (es. [1], [2]) e le note {{nota: ...}}: non rimuoverle, non rinumerarle, non modificarle.
 - Numeri, percentuali, date, nomi propri, titoli di opere e termini tecnici: identici.
+- SEGNAPOSTO ZZASSETnZZ: se compaiono token come ZZASSET0ZZ, ZZASSET1ZZ (segnaposto di tabelle/figure), mantienili INTATTI su riga isolata, nella stessa posizione logica del discorso: non rimuoverli, non duplicarli, non spostarli in fondo.
 
 ═══════════════════════════════════════════════════════════════
 TESTO DA PARAFRASARE (__WORDCOUNT__ parole)
@@ -786,6 +788,7 @@ DA PRESERVARE OBBLIGATORIAMENTE
 - LUNGHEZZA: ALMENO __WORDCOUNT__ parole (come l'originale). Non riassumere.
 - CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni [n] (es. [1], [2]) e le note {{nota: ...}}: non rimuoverle, non rinumerarle, non modificarle.
 - Numeri, percentuali, date, nomi propri, titoli di opere e termini tecnici: identici.
+- SEGNAPOSTO ZZASSETnZZ: se compaiono token come ZZASSET0ZZ, ZZASSET1ZZ (segnaposto di tabelle/figure), mantienili INTATTI su riga isolata, nella stessa posizione logica del discorso: non rimuoverli, non duplicarli, non spostarli in fondo.
 
 ═══════════════════════════════════════════════════════════════
 TESTO DA PARAFRASARE (__WORDCOUNT__ parole)
