@@ -319,3 +319,77 @@ class TestParityFixture:
         for case in fx["inline_cases"]:
             got = [[k, v] for k, v, _ in iter_inline_math(case["line"])]
             assert got == case["spans"], case["line"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Regressioni dalla review avversariale
+# ═══════════════════════════════════════════════════════════════════════════
+
+from thesis_math import DISPLAY_LINE_RE, unprotect_math_spans
+
+
+class TestReviewRegressions:
+    def test_orphan_display_never_swallows_paragraphs(self):
+        # $$ orfano (output troncato da max_tokens): la prosa dei paragrafi
+        # successivi NON deve finire dentro una pseudo-formula
+        text = ("Formula incompleta $$x = 1\n\n"
+                "Questo paragrafo e' testo normale della tesi.\n\n"
+                "$$y = 2$$\n\n"
+                "Altro testo.")
+        out = sanitize_generated_math(text)
+        lines = out.split('\n')
+        assert "Questo paragrafo e' testo normale della tesi." in lines
+        assert "$$y = 2$$" in lines
+        assert "Formula incompleta $$x = 1" in out  # orfano lasciato letterale
+
+    def test_adjacent_inline_sequence_not_split(self):
+        text = "Siano $a$$b$$c$ i coefficienti."
+        assert sanitize_generated_math(text) == text
+
+    def test_escaped_citation_brackets_untouched(self):
+        # i modelli escapano spesso [1] in markdown: NON è una display
+        text = r"Come dimostrato in \[1\], il fenomeno cresce."
+        assert sanitize_generated_math(text) == text
+
+    def test_escaped_parens_untouched(self):
+        text = r"Il valore \(in euro\) raddoppia."
+        assert sanitize_generated_math(text) == text
+
+    def test_mathish_bracket_still_converted(self):
+        out = sanitize_generated_math(r"vale \[ E = mc^2 \] sempre")
+        assert "$$E = mc^2$$" in out.split('\n')
+
+    def test_orphan_bracket_does_not_cross_lines(self):
+        text = "Apro \\[ senza chiudere.\n\nParagrafo intermedio.\n\n\\[E = mc^2\\]"
+        out = sanitize_generated_math(text)
+        assert "Paragrafo intermedio." in out.split('\n')
+        assert "$$E = mc^2$$" in out.split('\n')
+
+    def test_display_line_accepts_escaped_dollar(self):
+        line = r"$$\mathrm{costo\ in\ \$} = 5$$"
+        assert DISPLAY_LINE_RE.match(line)
+        protected, mapping = protect_math_spans(f"prima\n{line}\ndopo")
+        assert len(mapping) == 1 and '$' not in protected
+
+    def test_fence_with_escaped_dollar_collapsed_and_protected(self):
+        text = "prima\n\n$$\n\\mathrm{costo\\ \\$} = 5\n$$\n\ndopo"
+        out = sanitize_generated_math(text)
+        assert "$$\\mathrm{costo\\ \\$} = 5$$" in out.split('\n')
+        _, mapping = protect_math_spans(out)
+        assert len(mapping) == 1
+
+    def test_display_too_long_raises(self):
+        with pytest.raises(MathRenderError):
+            render_math_png("x+" * 1500, fontsize=11.0)
+        with pytest.raises(MathRenderError):
+            latex_to_omml("{" * 2500)
+
+    def test_unprotect_partial_fragments(self):
+        text = r"prima $\beta$ e poi $\xi$ fine"
+        protected, mapping = protect_math_spans(text)
+        s0, s1 = list(mapping)
+        left, right = protected.split(' e poi ')
+        assert unprotect_math_spans(left, mapping) == r"prima $\beta$"
+        assert unprotect_math_spans(right, mapping) == r"$\xi$ fine"
+        # nessun ri-append delle sentinelle assenti nel frammento
+        assert s1 not in unprotect_math_spans(left, mapping)

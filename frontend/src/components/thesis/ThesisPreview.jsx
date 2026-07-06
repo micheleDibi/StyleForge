@@ -8,15 +8,31 @@ import { splitMathSpans } from '../../utils/thesisMath';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 
-// KaTeX con throwOnError:false produce sempre HTML con escape (formula rotta →
-// sorgente in rosso); trust:false tiene disattivati \href e simili.
-const katexHtml = (latex, displayMode) =>
-  katex.renderToString(latex, {
-    displayMode,
-    throwOnError: false,
-    trust: false,
-    maxExpand: 100,
-  });
+const escapeHtml = (s) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// KaTeX escapa sempre l'input nell'HTML prodotto; trust:false tiene
+// disattivati \href e simili. ATTENZIONE: throwOnError:false intercetta solo
+// i ParseError — un RangeError (nesting patologico) verrebbe comunque
+// rilanciato e farebbe scattare l'ErrorBoundary dell'app: mai senza try/catch.
+const katexHtml = (latex, displayMode) => {
+  try {
+    return katex.renderToString(latex, {
+      displayMode,
+      throwOnError: false,
+      trust: false,
+      maxExpand: 100,
+    });
+  } catch {
+    return `<span style="color:#b91c1c;font-family:monospace">$${escapeHtml(latex)}$</span>`;
+  }
+};
+
+/** Singola formula KaTeX con HTML memoizzato (non ricalcolato a ogni re-render). */
+const KatexSpan = ({ latex, display = false, className }) => {
+  const html = useMemo(() => katexHtml(latex, display), [latex, display]);
+  return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
+};
 
 /** Testo con eventuali formule $...$ renderizzate via KaTeX. */
 const MathText = ({ text }) => {
@@ -24,7 +40,7 @@ const MathText = ({ text }) => {
   if (!spans.some((s) => s.kind === 'math')) return text;
   return spans.map((s, i) => (
     s.kind === 'math'
-      ? <span key={i} dangerouslySetInnerHTML={{ __html: katexHtml(s.value, false) }} />
+      ? <KatexSpan key={i} latex={s.value} />
       : <span key={i}>{s.value}</span>
   ));
 };
@@ -498,9 +514,10 @@ const ThesisPreview = ({ thesis, content }) => {
                         if (seg.kind === 'math') {
                           return (
                             <div key={idx} className="my-4 not-prose flex items-center">
-                              <span
+                              <KatexSpan
+                                latex={seg.math.latex}
+                                display
                                 className="flex-1 text-center overflow-x-auto"
-                                dangerouslySetInnerHTML={{ __html: katexHtml(seg.math.latex, true) }}
                               />
                               {seg.math.label && (
                                 <span className="text-sm text-slate-700 pl-3">{seg.math.label}</span>

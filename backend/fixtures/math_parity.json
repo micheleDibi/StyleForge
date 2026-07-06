@@ -2,76 +2,259 @@
   "_comment": "Fixture condivisa di parità parser matematica: consumata da backend/test_thesis_math.py (pytest) e da frontend/tests/thesisMath.parity.test.mjs (node --test). Le due implementazioni devono produrre ESATTAMENTE questi risultati.",
   "chapters_structure": {
     "chapters": [
-      {"chapter_index": 0, "chapter_title": "Introduzione", "is_special": true},
-      {"chapter_index": 1, "chapter_title": "Il quadro normativo", "sections": []},
-      {"chapter_index": 2, "chapter_title": "Analisi dei dati", "sections": []},
-      {"chapter_index": 0, "chapter_title": "Conclusione", "is_special": true},
-      {"chapter_index": 0, "chapter_title": "Bibliografia", "is_special": true}
+      {
+        "chapter_index": 0,
+        "chapter_title": "Introduzione",
+        "is_special": true
+      },
+      {
+        "chapter_index": 1,
+        "chapter_title": "Il quadro normativo",
+        "sections": []
+      },
+      {
+        "chapter_index": 2,
+        "chapter_title": "Analisi dei dati",
+        "sections": []
+      },
+      {
+        "chapter_index": 0,
+        "chapter_title": "Conclusione",
+        "is_special": true
+      },
+      {
+        "chapter_index": 0,
+        "chapter_title": "Bibliografia",
+        "is_special": true
+      }
     ]
   },
   "content_cases": [
     {
       "name": "documento completo con inline, display, fence legacy e capitolo rinominato",
       "content": "# Introduzione\n\nTesto introduttivo senza formule.\n\n# Il quadro normativo\n\nIl rapporto $\\beta = \\omega / \\omega_n$ governa la risposta dinamica.\n\n$$D = \\frac{1}{\\sqrt{(1 - \\beta^2)^2 + (2\\xi\\beta)^2}}$$\n\nSegue il commento all'equazione.\n\n$$\nu_0 = u_{st} \\cdot D\n$$\n\n# Capitolo rinominato dall'utente\n\n$$E = mc^2$$\n\n# Conclusione\n\nTesto conclusivo.\n",
-      "kinds": ["text", "math", "text", "math", "text", "math", "text"],
+      "kinds": [
+        "text",
+        "math",
+        "text",
+        "math",
+        "text",
+        "math",
+        "text"
+      ],
       "math_latex": [
         "D = \\frac{1}{\\sqrt{(1 - \\beta^2)^2 + (2\\xi\\beta)^2}}",
         "u_0 = u_{st} \\cdot D",
         "E = mc^2"
       ],
-      "math_labels": ["(1.1)", "(1.2)", "(3.1)"]
+      "math_labels": [
+        "(1.1)",
+        "(1.2)",
+        "(3.1)"
+      ]
     },
     {
       "name": "recinzione $$ orfana: resta testo senza la riga di recinzione",
       "content": "prima\n$$\ncorpo rimasto testo\ne basta",
-      "kinds": ["text"],
+      "kinds": [
+        "text"
+      ],
       "math_latex": [],
       "math_labels": []
     },
     {
       "name": "solo valuta: nessun segmento math",
       "content": "Il progetto costa $50$ e tra $5 e $10 al giorno.",
-      "kinds": ["text"],
+      "kinds": [
+        "text"
+      ],
       "math_latex": [],
       "math_labels": []
+    },
+    {
+      "name": "display con \\$ nel contenuto su riga isolata",
+      "content": "# Il quadro normativo\n\n$$\\mathrm{costo\\ in\\ \\$} = 5$$\n\nTesto dopo.\n",
+      "kinds": [
+        "text",
+        "math",
+        "text"
+      ],
+      "math_latex": [
+        "\\mathrm{costo\\ in\\ \\$} = 5"
+      ],
+      "math_labels": [
+        "(1.1)"
+      ]
     }
   ],
   "inline_cases": [
     {
       "line": "il rapporto $\\beta = \\omega / \\omega_n$ tra le frequenze",
-      "spans": [["text", "il rapporto "], ["math", "\\beta = \\omega / \\omega_n"], ["text", " tra le frequenze"]]
+      "spans": [
+        [
+          "text",
+          "il rapporto "
+        ],
+        [
+          "math",
+          "\\beta = \\omega / \\omega_n"
+        ],
+        [
+          "text",
+          " tra le frequenze"
+        ]
+      ]
     },
     {
       "line": "con $\\xi$ e $\\beta$ si ottiene",
-      "spans": [["text", "con "], ["math", "\\xi"], ["text", " e "], ["math", "\\beta"], ["text", " si ottiene"]]
+      "spans": [
+        [
+          "text",
+          "con "
+        ],
+        [
+          "math",
+          "\\xi"
+        ],
+        [
+          "text",
+          " e "
+        ],
+        [
+          "math",
+          "\\beta"
+        ],
+        [
+          "text",
+          " si ottiene"
+        ]
+      ]
     },
     {
       "line": "si scrive come $$D = \\frac{1}{2}$$ dove",
-      "spans": [["text", "si scrive come "], ["math", "D = \\frac{1}{2}"], ["text", " dove"]]
+      "spans": [
+        [
+          "text",
+          "si scrive come "
+        ],
+        [
+          "math",
+          "D = \\frac{1}{2}"
+        ],
+        [
+          "text",
+          " dove"
+        ]
+      ]
     },
     {
       "line": "costa $50$ al mese",
-      "spans": [["text", "costa $50$ al mese"]]
+      "spans": [
+        [
+          "text",
+          "costa $50$ al mese"
+        ]
+      ]
     },
     {
       "line": "tra $5 e $10",
-      "spans": [["text", "tra $5 e $10"]]
+      "spans": [
+        [
+          "text",
+          "tra $5 e $10"
+        ]
+      ]
     },
     {
       "line": "il simbolo \\$ resta letterale \\$",
-      "spans": [["text", "il simbolo \\$ resta letterale \\$"]]
+      "spans": [
+        [
+          "text",
+          "il simbolo \\$ resta letterale \\$"
+        ]
+      ]
     },
     {
       "line": "testo $ x $ testo",
-      "spans": [["text", "testo $ x $ testo"]]
+      "spans": [
+        [
+          "text",
+          "testo $ x $ testo"
+        ]
+      ]
     },
     {
       "line": "un solo $ nel testo",
-      "spans": [["text", "un solo $ nel testo"]]
+      "spans": [
+        [
+          "text",
+          "un solo $ nel testo"
+        ]
+      ]
     },
     {
       "line": "u_0 = u_{st} per $u_{st} = p_0/k$ statico",
-      "spans": [["text", "u_0 = u_{st} per "], ["math", "u_{st} = p_0/k"], ["text", " statico"]]
+      "spans": [
+        [
+          "text",
+          "u_0 = u_{st} per "
+        ],
+        [
+          "math",
+          "u_{st} = p_0/k"
+        ],
+        [
+          "text",
+          " statico"
+        ]
+      ]
+    },
+    {
+      "line": "chiuso $x$٠ subito",
+      "spans": [
+        [
+          "text",
+          "chiuso "
+        ],
+        [
+          "math",
+          "x"
+        ],
+        [
+          "text",
+          "٠ subito"
+        ]
+      ]
+    },
+    {
+      "line": "vale $٥٥$ dinari",
+      "spans": [
+        [
+          "text",
+          "vale "
+        ],
+        [
+          "math",
+          "٥٥"
+        ],
+        [
+          "text",
+          " dinari"
+        ]
+      ]
+    },
+    {
+      "line": "$$\\mathrm{costo\\ in\\ \\$} = 5$$ su riga",
+      "spans": [
+        [
+          "math",
+          "\\mathrm{costo\\ in\\ \\$} = 5"
+        ],
+        [
+          "text",
+          " su riga"
+        ]
+      ]
     }
   ]
 }

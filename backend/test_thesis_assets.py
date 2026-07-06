@@ -467,3 +467,19 @@ def test_add_docx_math_omml_native_and_fallback(tmp_path):
     out = tmp_path / "math.docx"
     doc.save(str(out))
     assert 'oMath' in Document(str(out)).element.xml
+
+
+def test_sanitize_math_outside_assets_preserves_table_cells():
+    from thesis_assets import sanitize_math_outside_assets
+    text = (
+        "Prosa con $$E = mc^2$$ in mezzo alla riga.\n"
+        "\n"
+        "[TABELLA: Valori]\n"
+        "| Caso | Formula |\n"
+        "| Risonanza | $$D = 1/(2\\zeta)$$ |\n"
+        "[/TABELLA]\n"
+    )
+    out = sanitize_math_outside_assets(text)
+    lines = out.split('\n')
+    assert "| Risonanza | $$D = 1/(2\\zeta)$$ |" in lines  # cella MAI esplosa
+    assert "$$E = mc^2$$" in lines  # prosa canonicalizzata su riga isolata

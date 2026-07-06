@@ -72,6 +72,7 @@ from thesis_assets import (
     restore_asset_blocks,
     sanitize_generated_assets,
     add_docx_math,
+    sanitize_math_outside_assets,
     table_to_markdown,
     table_to_plain_lines,
     wrap_text_to_width,
@@ -86,7 +87,7 @@ from thesis_math import (
     protect_math_spans,
     render_math_png,
     restore_math_spans,
-    sanitize_generated_math,
+    unprotect_math_spans,
 )
 from research_providers import UnifiedPaper
 from research_service import DEFAULT_SOURCES, PROVIDER_REGISTRY, run_search_pipeline
@@ -2326,7 +2327,7 @@ def generate_content_task(thesis_id: str, user_id: str):
                 # JSON rotto degradati a HINT, marcatori orfani rimossi) e la
                 # matematica (\(..\)/\[..\] → $/$$, display su riga isolata)
                 raw_content = sanitize_generated_assets(raw_content)
-                raw_content = sanitize_generated_math(raw_content)
+                raw_content = sanitize_math_outside_assets(raw_content)
 
                 # Verifica word count e richiedi continuazione se troppo corto
                 section_label = f"Cap. {chapter.get('chapter_index', '?')} - {section.get('title', 'Sezione')}"
@@ -2335,7 +2336,7 @@ def generate_content_task(thesis_id: str, user_id: str):
                     section_label, dynamic_max_tokens
                 )
                 raw_content = sanitize_generated_assets(raw_content)
-                raw_content = sanitize_generated_math(raw_content)
+                raw_content = sanitize_math_outside_assets(raw_content)
 
                 # Salva contenuto raw per la bibliografia (con citazioni [x] intatte)
                 raw_chapter_content += f"\n{raw_content}\n"
@@ -2385,7 +2386,7 @@ def generate_content_task(thesis_id: str, user_id: str):
         )
         intro_content = client.generate_text(intro_prompt, max_tokens=dynamic_max_tokens)
         intro_content = sanitize_generated_assets(intro_content)
-        intro_content = sanitize_generated_math(intro_content)
+        intro_content = sanitize_math_outside_assets(intro_content)
         intro_content = _ensure_word_count(
             client, intro_content, words_per_section, "Introduzione", dynamic_max_tokens
         )
@@ -2418,7 +2419,7 @@ def generate_content_task(thesis_id: str, user_id: str):
         )
         conclusion_content = client.generate_text(conclusion_prompt, max_tokens=dynamic_max_tokens)
         conclusion_content = sanitize_generated_assets(conclusion_content)
-        conclusion_content = sanitize_generated_math(conclusion_content)
+        conclusion_content = sanitize_math_outside_assets(conclusion_content)
         conclusion_content = _ensure_word_count(
             client, conclusion_content, words_per_section, "Conclusione", dynamic_max_tokens
         )
@@ -2800,19 +2801,23 @@ def strip_footnotes_for_plain(content: str, start_num: int = 1) -> tuple:
     """
     Per export TXT/MD: sostituisce {{nota:...}} con numeri e raccoglie le note.
     Ritorna (testo_processato, lista_note, next_num).
+
+    Le formule vengono protette prima del match: le graffe }} del LaTeX
+    (es. \\sqrt{\\frac{a}{b}}) non devono chiudere prematuramente la {{nota:}}.
     """
     notes = []
     num = start_num
+    protected, math_map = protect_math_spans(content)
 
     def replacer(m):
         nonlocal num
-        note_text = m.group(1).strip()
+        note_text = unprotect_math_spans(m.group(1).strip(), math_map)
         notes.append((num, note_text))
         result = f"[{num}]"
         num += 1
         return result
 
-    processed = _FOOTNOTE_PATTERN.sub(replacer, content)
+    processed = unprotect_math_spans(_FOOTNOTE_PATTERN.sub(replacer, protected), math_map)
     return processed, notes, num
 
 
@@ -3433,7 +3438,10 @@ async def export_thesis(
                 for run in h.runs:
                     run.font.name = font_name
             elif line.strip():
-                footnotes_in_line = extract_footnotes_from_line(line)
+                # Estrazione note sulla riga con formule PROTETTE: le graffe
+                # }} del LaTeX (\frac{a}{b}}) non devono chiudere la {{nota:}}
+                pline, line_math_map = protect_math_spans(line)
+                footnotes_in_line = extract_footnotes_from_line(pline)
 
                 def _add_runs_with_italic(para, text):
                     """Run del paragrafo: Markdown *italic* + formule $...$ (OMML).
@@ -3464,10 +3472,11 @@ async def export_thesis(
                     last_end = 0
                     for fn_start, fn_end, fn_text in footnotes_in_line:
                         # Testo prima della nota (con eventuale italic Markdown)
-                        before_text = line[last_end:fn_start]
+                        before_text = unprotect_math_spans(pline[last_end:fn_start], line_math_map)
                         if before_text:
                             _add_runs_with_italic(para, before_text)
                         # Aggiungi la footnote (italic gestito dentro add_footnote)
+                        fn_text = unprotect_math_spans(fn_text, line_math_map)
                         try:
                             # Eventuale matematica nel testo della nota → Unicode
                             add_footnote(doc, para, inline_math_to_unicode(fn_text),
@@ -3483,7 +3492,7 @@ async def export_thesis(
                         last_end = fn_end
 
                     # Testo dopo l'ultima nota
-                    remaining = line[last_end:]
+                    remaining = unprotect_math_spans(pline[last_end:], line_math_map)
                     if remaining:
                         _add_runs_with_italic(para, remaining)
                 else:
@@ -3901,6 +3910,18 @@ async def export_thesis(
                     .replace('“', '"').replace('”', '"')
                     .replace('…', '...').replace('⚠', '').replace('️', '').strip())
 
+        def _latin1_math(s):
+            """Formule inline → Unicode SOLO se i glifi restano latin-1 (base-14):
+            per il greco meglio il sorgente LaTeX leggibile che glifi persi."""
+            if '$' not in s:
+                return s
+            converted = inline_math_to_unicode(s)
+            try:
+                converted.encode('latin-1')
+                return converted
+            except UnicodeEncodeError:
+                return s
+
         def render_pdf_caption(text):
             """Didascalia centrata in grigio sotto/sopra un asset."""
             nonlocal y
@@ -4062,16 +4083,27 @@ async def export_thesis(
             font base-14 non hanno i glifi greci, il PNG sì)."""
             nonlocal y
             try:
-                mp = render_math_png(math_asset.latex, fontsize=font_size * 1.15,
+                # display=True applica già il fattore 1.15 dentro render_math_png
+                mp = render_math_png(math_asset.latex, fontsize=font_size,
                                      dpi=300, display=True)
             except MathRenderError as e:
                 logger.warning(f"Equazione display non renderizzata nel PDF: {e}")
-                render_pdf_text_line(_pdf_safe(f"$$ {math_asset.latex} $$"))
+                fallback = f"$$ {math_asset.latex} $$"
+                if math_asset.label:
+                    fallback += f" {math_asset.label}"
+                render_pdf_text_line(_pdf_safe(fallback))
                 return
+            num_w = 0.0
+            if math_asset.label:
+                num_w = fitz.get_text_length(math_asset.label, fontname=font_body,
+                                             fontsize=font_size)
+            # la formula è centrata su content_width: perché non tocchi il
+            # numero a destra deve restare dentro content_width - 2*num_w
+            max_w = content_width - (2 * num_w + 12 if num_w else 0)
             scale = 1.0
             disp_w, disp_h = mp.width_pt, mp.height_pt
-            if disp_w > content_width:
-                scale = content_width / disp_w
+            if disp_w > max_w:
+                scale = max_w / disp_w
                 disp_w, disp_h = disp_w * scale, disp_h * scale
             if disp_h > page_capacity - 40:
                 s2 = (page_capacity - 40) / disp_h
@@ -4084,8 +4116,6 @@ async def export_thesis(
                 fitz.Rect(img_x, y, img_x + disp_w, y + disp_h), stream=mp.png)
             if math_asset.label:
                 # numero al margine destro, allineato al baseline della formula
-                num_w = fitz.get_text_length(math_asset.label, fontname=font_body,
-                                             fontsize=font_size)
                 baseline = y + disp_h - mp.depth_pt * scale
                 current_page.insert_text(
                     (page_width - margin_right - num_w, baseline),
@@ -4141,6 +4171,14 @@ async def export_thesis(
             def cluster_w(cluster):
                 return sum(it[2] for it in cluster)
 
+            # Un cluster più largo della colonna (formula quasi a tutta pagina
+            # + punteggiatura incollata) sborderebbe: meglio spezzarlo che
+            # uscire dal margine destro.
+            clusters = [c for cluster in clusters
+                        for c in ([[it] for it in cluster]
+                                  if len(cluster) > 1 and cluster_w(cluster) > content_width
+                                  else [cluster])]
+
             rows, row, row_w = [], [], 0.0
             for cluster in clusters:
                 cw = cluster_w(cluster)
@@ -4175,7 +4213,14 @@ async def export_thesis(
                     gap = (content_width - total_w) / gaps
                 else:
                     gap = space_w
-                cx = margin_left
+                # stesso allineamento del fast path (calc_text_x)
+                row_total = total_w + gaps * gap
+                if body_align == "center":
+                    cx = margin_left + max(0.0, content_width - row_total) / 2
+                elif body_align == "right":
+                    cx = margin_left + max(0.0, content_width - row_total)
+                else:
+                    cx = margin_left
                 for cluster in current_row:
                     for item in cluster:
                         if item[0] == 'word':
@@ -4202,8 +4247,8 @@ async def export_thesis(
             if line.startswith('# '):
                 y += chapter_spacing
                 check_new_page_needed(font_chapter_size + 10)
-                # Word-wrap chapter title
-                ch_title_text = line[2:]
+                # Word-wrap chapter title (eventuale math → Unicode se latin-1)
+                ch_title_text = _latin1_math(line[2:])
                 ch_words = ch_title_text.split()
                 ch_current_line = []
                 for ch_word in ch_words:
@@ -4225,8 +4270,8 @@ async def export_thesis(
             elif line.startswith('## '):
                 y += section_spacing
                 check_new_page_needed(font_section_size + 8)
-                # Word-wrap section title
-                sec_title_text = line[3:]
+                # Word-wrap section title (eventuale math → Unicode se latin-1)
+                sec_title_text = _latin1_math(line[3:])
                 sec_words = sec_title_text.split()
                 sec_current_line = []
                 for sec_word in sec_words:
@@ -4245,8 +4290,10 @@ async def export_thesis(
                     current_page.insert_text((margin_left, y), ' '.join(sec_current_line), fontsize=font_section_size, fontname=font_body)
                     y += font_section_size + 3
             elif line.strip():
-                # Check for footnotes in line
-                footnotes_in_line = extract_footnotes_from_line(line)
+                # Estrazione note sulla riga con formule PROTETTE: le graffe
+                # }} del LaTeX (\frac{a}{b}}) non devono chiudere la {{nota:}}
+                pline, line_math_map = protect_math_spans(line)
+                footnotes_in_line = extract_footnotes_from_line(pline)
 
                 if footnotes_in_line:
                     # Process line: strip {{nota:...}} and replace with superscript numbers
@@ -4254,15 +4301,16 @@ async def export_thesis(
                     last_end = 0
                     line_fn_nums = []
                     for fn_start, fn_end, fn_text in footnotes_in_line:
-                        processed_line += line[last_end:fn_start]
+                        processed_line += pline[last_end:fn_start]
                         fn_num = pdf_footnote_num[0]
                         processed_line += f"[{fn_num}]"
+                        fn_text = _latin1_math(unprotect_math_spans(fn_text, line_math_map))
                         line_fn_nums.append((fn_num, fn_text))
                         page_footnotes.append((fn_num, fn_text))
                         pdf_footnote_num[0] += 1
                         last_end = fn_end
-                    processed_line += line[last_end:]
-                    line = processed_line
+                    processed_line += pline[last_end:]
+                    line = unprotect_math_spans(processed_line, line_math_map)
 
                 # Formule inline: layout a run dedicato (PNG sul baseline).
                 # Va PRIMA dello strip corsivi: un * dentro $...$ non è Markdown.

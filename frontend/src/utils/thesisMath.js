@@ -8,14 +8,16 @@
  * subito dentro, contenuto solo-numerico rifiutato ("$50$" resta testo).
  */
 
+// NOTA PARITÀ: classi esplicite [0-9] e [ \t] (mai \d o \s) perché la loro
+// semantica Unicode diverge tra il motore regex di Python e quello JS.
 export const INLINE_MATH_RE =
-  /(?<![\\$])\$\$(?!\s)((?:\\\$|[^$\n])+?)(?<!\s)\$\$(?!\$)|(?<![\\$\d])\$(?!\s)((?:\\\$|[^$\n])+?)(?<!\s)\$(?![\d$])/g;
+  /(?<![\\$])\$\$(?![ \t])((?:\\\$|[^$\n])+?)(?<![ \t])\$\$(?!\$)|(?<![\\$0-9])\$(?![ \t])((?:\\\$|[^$\n])+?)(?<![ \t])\$(?![0-9$])/g;
 
-export const DISPLAY_LINE_RE = /^\s*\$\$([^$]+?)\$\$\s*$/;
+export const DISPLAY_LINE_RE = /^\s*\$\$((?:\\\$|[^$\n])+?)\$\$\s*$/;
 export const DISPLAY_FENCE_RE = /^\s*\$\$\s*$/;
 
 const MAX_INLINE_LATEX_LEN = 200;
-const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)*$/;
+const PURE_NUMBER_RE = /^[0-9]+(?:[.,][0-9]+)*$/;
 
 export function isValidInline(content) {
   const c = (content || '').trim();

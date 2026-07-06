@@ -53,6 +53,7 @@ from thesis_math import (
     latex_to_unicode,
     protect_math_spans,
     render_math_png,
+    sanitize_generated_math,
     strip_math_sentinels,
 )
 
@@ -533,6 +534,19 @@ def restore_asset_blocks(text: str, mapping: dict) -> str:
     return re.sub(r'\n{3,}', '\n\n', result)
 
 
+def sanitize_math_outside_assets(text: str) -> str:
+    """sanitize_generated_math applicata SOLO fuori dai blocchi [TABELLA]/[GRAFICO].
+
+    Le celle possono contenere legittimamente $ (matematica o valuta): la
+    canonicalizzazione delle display non deve mai esplodere una riga di
+    tabella su più righe.
+    """
+    if not text or '$' not in text and '\\(' not in text and '\\[' not in text:
+        return text
+    protected, mapping = protect_asset_blocks(text)
+    return restore_asset_blocks(sanitize_generated_math(protected), mapping)
+
+
 def count_words_excluding_assets(text: str) -> int:
     """Parole del solo testo discorsivo (tabelle/grafici/HINT/formule esclusi)."""
     if not text:
@@ -891,7 +905,9 @@ def add_docx_math(doc, math_asset: MathAsset, ds: dict):
             usable = int(sec.page_width) - int(sec.left_margin) - int(sec.right_margin)
         except (AttributeError, TypeError, IndexError):
             usable = None
-    if usable and usable > 0:
+        if usable is not None and usable <= 0:
+            usable = None
+    if usable:
         pf.tab_stops.add_tab_stop(Emu(usable // 2), WD_TAB_ALIGNMENT.CENTER)
         pf.tab_stops.add_tab_stop(Emu(usable), WD_TAB_ALIGNMENT.RIGHT)
         p.add_run().add_tab()

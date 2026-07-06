@@ -64,13 +64,15 @@ class MathPng:
 # Span inline dentro una riga: $$...$$ (display in mezzo al testo, contenuto
 # legacy) oppure $...$. Guardie anti-valuta: niente cifra subito prima/dopo i
 # delimitatori, niente spazio subito dentro, mai attraverso un newline.
+# NOTA PARITÀ: classi esplicite [0-9] e [ \t] (mai \d o \s) perché la loro
+# semantica Unicode diverge tra il motore regex di Python e quello JS.
 INLINE_MATH_RE = re.compile(
-    r'(?<![\\$])\$\$(?!\s)((?:\\\$|[^$\n])+?)(?<!\s)\$\$(?!\$)'
-    r'|(?<![\\$\d])\$(?!\s)((?:\\\$|[^$\n])+?)(?<!\s)\$(?![\d$])'
+    r'(?<![\\$])\$\$(?![ \t])((?:\\\$|[^$\n])+?)(?<![ \t])\$\$(?!\$)'
+    r'|(?<![\\$0-9])\$(?![ \t])((?:\\\$|[^$\n])+?)(?<![ \t])\$(?![0-9$])'
 )
 
-# Riga display canonica: solo $$...$$ (il contenuto non contiene altri $)
-DISPLAY_LINE_RE = re.compile(r'^\s*\$\$([^$]+?)\$\$\s*$')
+# Riga display canonica: solo $$...$$ (ammesso \$ letterale nel contenuto)
+DISPLAY_LINE_RE = re.compile(r'^\s*\$\$((?:\\\$|[^$\n])+?)\$\$\s*$')
 # Blocco display legacy multi-riga: riga di apertura/chiusura fatta di soli $$
 DISPLAY_FENCE_RE = re.compile(r'^\s*\$\$\s*$')
 
@@ -78,8 +80,10 @@ MATH_SENTINEL_RE = re.compile(r'ZZMATH(\d+)ZZ')
 
 # Contenuto inline oltre questa lunghezza: quasi certamente non è una formula
 MAX_INLINE_LATEX_LEN = 200
+# Cap difensivo per le display (KaTeX/mathtext/OMML su input patologici)
+MAX_DISPLAY_LATEX_LEN = 2000
 # Contenuto solo numerico ("$50$", "$ 1.500 $"): valuta, non matematica
-_PURE_NUMBER_RE = re.compile(r'^\d+(?:[.,]\d+)*$')
+_PURE_NUMBER_RE = re.compile(r'^[0-9]+(?:[.,][0-9]+)*$')
 
 
 def _is_valid_inline(content: str) -> bool:
@@ -118,39 +122,106 @@ def has_inline_math(text: str) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════
 
 _PAREN_INLINE_RE = re.compile(r'\\\(\s*([^\n]*?)\s*\\\)')
-_BRACKET_DISPLAY_RE = re.compile(r'\\\[\s*(.*?)\s*\\\]', re.DOTALL)
-_DISPLAY_BLOCK_RE = re.compile(r'\$\$([^$]+?)\$\$', re.DOTALL)
+_BRACKET_DISPLAY_RE = re.compile(r'\\\[\s*([^\n]*?)\s*\\\]')
+# Il contenuto "sembra matematica" solo con marcatori LaTeX espliciti: evita
+# di convertire escape markdown come le citazioni \[1\] o incisi \(in euro\).
+_MATHISH_RE = re.compile(r'[\\^_={}]')
+_MIDLINE_DISPLAY_RE = re.compile(r'\$\$((?:\\\$|[^$\n])+?)\$\$')
 
 
 def normalize_math_delimiters(text: str) -> str:
-    """Delimitatori alternativi → canonici: \\(..\\) → $..$, \\[..\\] → $$..$$."""
-    text = _PAREN_INLINE_RE.sub(lambda m: f"${m.group(1)}$", text)
-    text = _BRACKET_DISPLAY_RE.sub(lambda m: f"$${m.group(1)}$$", text)
+    """Delimitatori alternativi → canonici: \\(..\\) → $..$, \\[..\\] → $$..$$.
+
+    Solo sulla singola riga e solo se il contenuto contiene marcatori LaTeX
+    (\\, ^, _, =, graffe): \\[1\\] (citazione escaped) e \\(in euro\\) restano testo.
+    """
+    def _sub(wrap):
+        def inner(m):
+            content = m.group(1)
+            if not _MATHISH_RE.search(content):
+                return m.group(0)
+            return wrap.format(content)
+        return inner
+
+    text = _PAREN_INLINE_RE.sub(_sub("${0}$"), text)
+    text = _BRACKET_DISPLAY_RE.sub(_sub("$${0}$$"), text)
     return text
 
 
 def sanitize_generated_math(text: str) -> str:
     """Normalizza la matematica appena generata (mai distruttiva sul testo).
 
-    - \\(..\\) / \\[..\\] → $ / $$;
-    - ogni blocco $$...$$ (anche multi-riga o in mezzo a una riga) viene
-      canonicalizzato su riga isolata con il contenuto su una sola riga;
-    - display vuote rimosse; $ spaiati lasciati intatti (il tokenizer
-      semplicemente non li riconosce: degradano a testo letterale).
+    Line-based, con criteri prudenti (un $$ orfano NON deve mai inghiottire
+    la prosa dei paragrafi successivi):
+    - \\(..\\) / \\[..\\] matematici → $ / $$;
+    - blocco recintato ($$ / corpo / $$ senza righe vuote, max 10 righe) →
+      collassato su una riga display canonica isolata;
+    - riga già display → normalizzata (spazi interni compattati, righe vuote
+      attorno); display vuota rimossa;
+    - $$..$$ in mezzo a una riga → spostato su riga isolata SOLO se è l'unico
+      span e la riga non contiene altri $ (mai spezzare "$a$$b$$c$");
+    - $ o $$ spaiati lasciati intatti: degradano a testo letterale.
+
+    NOTA: va chiamata sul testo FUORI dai blocchi [TABELLA]/[GRAFICO] (vedi
+    thesis_assets.sanitize_math_outside_assets) per non rompere le celle.
     """
     if '$' not in text and '\\(' not in text and '\\[' not in text:
         return text
     text = normalize_math_delimiters(text)
+    if '$$' not in text:
+        return text
 
-    def _canonical(m: re.Match) -> str:
-        content = ' '.join(m.group(1).split())
-        if not content:
-            return ''
-        return f"\n\n$${content}$$\n\n"
+    lines = text.split('\n')
+    out = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
 
-    text = _DISPLAY_BLOCK_RE.sub(_canonical, text)
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    return text
+        # Blocco recintato: $$ / corpo senza righe vuote (max 10) / $$
+        if DISPLAY_FENCE_RE.match(line):
+            j = i + 1
+            body = []
+            while (j < len(lines) and j - i <= 10 and lines[j].strip()
+                   and not DISPLAY_FENCE_RE.match(lines[j])):
+                body.append(lines[j])
+                j += 1
+            if j < len(lines) and DISPLAY_FENCE_RE.match(lines[j]) and body:
+                content = ' '.join(' '.join(body).split())
+                out.extend(['', f"$${content}$$", ''])
+                i = j + 1
+                continue
+            out.append(line)  # recinzione orfana: lasciata (il parser la ignora)
+            i += 1
+            continue
+
+        m = DISPLAY_LINE_RE.match(line)
+        if m:
+            content = ' '.join(m.group(1).split())
+            if content:
+                out.extend(['', f"$${content}$$", ''])
+            i += 1
+            continue
+
+        # Display in mezzo alla riga: solo caso non ambiguo
+        if '$$' in line:
+            spans = list(_MIDLINE_DISPLAY_RE.finditer(line))
+            if len(spans) == 1 and '$' not in (line[:spans[0].start()] + line[spans[0].end():]):
+                s = spans[0]
+                content = ' '.join(s.group(1).split())
+                before, after = line[:s.start()].rstrip(), line[s.end():].lstrip()
+                if before:
+                    out.append(before)
+                if content:
+                    out.extend(['', f"$${content}$$", ''])
+                if after:
+                    out.append(after)
+                i += 1
+                continue
+
+        out.append(line)
+        i += 1
+
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(out))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -223,6 +294,22 @@ def strip_math_sentinels(text: str) -> str:
     return MATH_SENTINEL_RE.sub('', text)
 
 
+def unprotect_math_spans(text: str, mapping: dict) -> str:
+    """Sostituisce le sole sentinelle PRESENTI nel frammento (per pezzi di riga).
+
+    A differenza di restore_math_spans non ri-appende le sentinelle assenti:
+    serve quando una riga protetta viene spezzata in più frammenti (es.
+    estrazione delle note a piè di pagina) e ogni frammento va ripristinato
+    per conto suo.
+    """
+    if not mapping or 'ZZMATH' not in text:
+        return text
+    for sentinel, raw_span in mapping.items():
+        if sentinel in text:
+            text = text.replace(sentinel, raw_span)
+    return text
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CONVERSIONE UNICODE (txt e fallback)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -292,6 +379,8 @@ def render_math_png(latex: str, fontsize: float = 11.0, dpi: int = 300,
     from matplotlib.font_manager import FontProperties
     from matplotlib.mathtext import MathTextParser
 
+    if len(latex) > MAX_DISPLAY_LATEX_LEN:
+        raise MathRenderError("formula troppo lunga per essere renderizzata")
     mathtext = f"${sanitize_for_mathtext(latex)}$"
     size = fontsize * (1.15 if display else 1.0)
     prop = FontProperties(size=size)
@@ -325,6 +414,8 @@ def latex_to_omml(latex: str, block: bool = False):
     `block=True` converte il MathML in stile display (frazioni/limiti grandi).
     Solleva MathRenderError se la catena latex2mathml → mathml2omml fallisce.
     """
+    if len(latex) > MAX_DISPLAY_LATEX_LEN:
+        raise MathRenderError("formula troppo lunga per essere convertita")
     try:
         import latex2mathml.converter
         import mathml2omml
