@@ -54,6 +54,14 @@ THESIS_PARAPHRASE_MODEL = os.getenv("THESIS_PARAPHRASE_MODEL", "claude-opus-4-8"
 THESIS_GEN_TEMPERATURE = float(os.getenv("THESIS_GEN_TEMPERATURE", "1.0"))
 THESIS_GEN_TOP_P = float(os.getenv("THESIS_GEN_TOP_P", "0.95"))
 
+# Elementi visivi nella tesi (tabelle [TABELLA], grafici [GRAFICO], HINT).
+# THESIS_ASSETS_ENABLED inietta le istruzioni nel prompt di sezione (producer);
+# gli exporter riconoscono comunque la sintassi anche a flag spento.
+# THESIS_CHARTS_ENABLED = kill-switch dei grafici: se False i [GRAFICO] degradano
+# a box HINT negli export e il prompt chiede sempre un HINT al posto del grafico.
+THESIS_ASSETS_ENABLED = os.getenv("THESIS_ASSETS_ENABLED", "true").lower() == "true"
+THESIS_CHARTS_ENABLED = os.getenv("THESIS_CHARTS_ENABLED", "true").lower() == "true"
+
 # ----------------------------------------------------------------------------
 # Anti-AI per Genera/Umanizza (stesso meccanismo della Tesi, applicato alle
 # funzioni di generazione e umanizzazione su sessione addestrata).
