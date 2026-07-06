@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Download, FileText, Eye, Copy, Check, Loader, FileType, FileCode, BookOpen, List, Calendar, User, Settings, ChevronDown, Shield, AlertTriangle } from 'lucide-react';
+import { Download, FileText, Eye, Copy, Check, Loader, FileType, FileCode, BookOpen, List, Calendar, User, Settings, ChevronDown, Shield, AlertTriangle, BarChart3 } from 'lucide-react';
 import { exportThesis, getExportTemplates, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../../services/api';
+import { parseThesisContent, buildAssetIndices, formatAssetCaption } from '../../utils/thesisAssets';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 
@@ -184,6 +185,13 @@ const ThesisPreview = ({ thesis, content }) => {
     if (!content) return '';
     return tableOfContents + content;
   }, [tableOfContents, content]);
+
+  // Segmenti (testo / tabelle / grafici / HINT) per l'anteprima formattata
+  const segments = useMemo(
+    () => parseThesisContent(content, thesis?.chapters_structure),
+    [content, thesis]
+  );
+  const assetIndices = useMemo(() => buildAssetIndices(segments), [segments]);
 
   // Calcola statistiche
   const wordCount = contentWithIndex ? contentWithIndex.split(/\s+/).filter(w => w.length > 0).length : 0;
@@ -435,9 +443,101 @@ const ThesisPreview = ({ thesis, content }) => {
               {/* Content Preview */}
               <div className="bg-slate-50 rounded-lg border border-slate-200 p-6 max-h-[600px] overflow-y-auto">
                 <div className="prose prose-slate max-w-none">
-                  {contentWithIndex ? (
-                    <div className="whitespace-pre-wrap font-serif text-slate-800 leading-relaxed">
-                      {contentWithIndex}
+                  {content ? (
+                    <div className="font-serif text-slate-800 leading-relaxed">
+                      {tableOfContents && (
+                        <div className="whitespace-pre-wrap">{tableOfContents}</div>
+                      )}
+                      {(assetIndices.tables.length > 0 || assetIndices.figures.length > 0) && (
+                        <div className="mb-6 space-y-4">
+                          {[
+                            [t('Indice delle tabelle'), assetIndices.tables],
+                            [t('Indice delle figure'), assetIndices.figures],
+                          ].map(([idxTitle, entries]) => entries.length > 0 && (
+                            <div key={idxTitle}>
+                              <p className="font-semibold text-slate-900">{idxTitle}</p>
+                              <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
+                                {entries.map((e, i) => (
+                                  <li key={i} className="pl-4">{e.label} – {e.caption}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {segments.map((seg, idx) => {
+                        if (seg.kind === 'text') {
+                          return (
+                            <div key={idx} className="whitespace-pre-wrap">{seg.text}</div>
+                          );
+                        }
+                        if (seg.kind === 'table') {
+                          return (
+                            <div key={idx} className="my-6 not-prose">
+                              <p className="text-sm font-semibold text-slate-700 text-center mb-2">
+                                {formatAssetCaption(seg.table)}
+                              </p>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm border border-slate-300 border-collapse">
+                                  <thead>
+                                    <tr className="bg-slate-100">
+                                      {seg.table.header.map((h, i) => (
+                                        <th key={i} className="border border-slate-300 px-3 py-1.5 text-left font-semibold text-slate-800">{h}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {seg.table.rows.map((row, r) => (
+                                      <tr key={r}>
+                                        {row.map((cell, c) => (
+                                          <td key={c} className="border border-slate-300 px-3 py-1.5 text-slate-700">{cell}</td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                              {seg.table.source && (
+                                <p className="text-xs text-slate-500 italic text-center mt-1">
+                                  {t('Fonte:')} {seg.table.source}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        }
+                        if (seg.kind === 'chart') {
+                          return (
+                            <div key={idx} className="my-6 not-prose border border-slate-300 bg-white rounded-lg p-5 text-center">
+                              <BarChart3 className="w-10 h-10 mx-auto mb-2 text-slate-400" />
+                              <p className="text-sm font-semibold text-slate-700">
+                                {formatAssetCaption(seg.chart)}
+                              </p>
+                              {seg.chart.spec?.source && (
+                                <p className="text-xs text-slate-500 italic mt-1">
+                                  {t('Fonte:')} {seg.chart.spec.source}
+                                </p>
+                              )}
+                              <p className="text-xs text-slate-400 mt-2">
+                                {seg.chart.error
+                                  ? t('Grafico non valido: verrà sostituito da un suggerimento negli export.')
+                                  : t('Il grafico renderizzato sarà incluso negli export PDF e DOCX.')}
+                              </p>
+                            </div>
+                          );
+                        }
+                        // hint
+                        return (
+                          <div key={idx} className="my-6 not-prose bg-amber-50 border-2 border-amber-400 rounded-lg p-4 flex gap-3">
+                            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-bold text-amber-800">
+                                {t('SUGGERIMENTO — da sostituire')}
+                              </p>
+                              <p className="text-sm text-amber-800 mt-0.5">{seg.text}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-8">

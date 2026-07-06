@@ -55,6 +55,22 @@ from ai_client import get_ai_client, humanize_text_with_claude
 from ai_exceptions import InsufficientCreditsError
 from session_manager import session_manager
 from template_service import get_template_by_id, get_page_dimensions, get_export_templates
+from thesis_assets import (
+    ChartRenderError,
+    HintAsset,
+    assign_asset_numbers,
+    add_docx_chart,
+    add_docx_hint,
+    add_docx_table,
+    build_figures_index,
+    build_tables_index,
+    format_caption,
+    parse_segments,
+    render_chart_png,
+    table_to_markdown,
+    table_to_plain_lines,
+    wrap_text_to_width,
+)
 from research_providers import UnifiedPaper
 from research_service import DEFAULT_SOURCES, PROVIDER_REGISTRY, run_search_pipeline
 from research_summarizer import (
@@ -2849,14 +2865,50 @@ async def export_thesis(
     # Genera l'indice
     toc = generate_table_of_contents(thesis.chapters_structure, format)
 
+    # Segmenta il contenuto (testo / tabelle / grafici / HINT) e numera gli
+    # asset per capitolo; i contenuti senza marcatori restano un solo segmento
+    # di testo e tutti i percorsi si comportano come prima.
+    segments = parse_segments(content)
+    assign_asset_numbers(segments, thesis.chapters_structure or {})
+    tables_index = build_tables_index(segments)
+    figures_index = build_figures_index(segments)
+
     if format == "txt":
         # Export TXT con indice e note a piè di pagina come endnotes
         has_footnotes = cit_style == 'footnotes'
-        processed_content, all_notes, _ = strip_footnotes_for_plain(content) if has_footnotes else (content, [], 1)
-        # In plain text gli asterischi del corsivo Markdown non hanno senso → rimuovi
-        processed_content = strip_italic_markers(processed_content)
+        all_notes = []
+        next_note_num = 1
+        parts = []
+        for seg in segments:
+            if seg.kind == 'text':
+                seg_text = seg.text
+                if has_footnotes:
+                    seg_text, seg_notes, next_note_num = strip_footnotes_for_plain(seg_text, next_note_num)
+                    all_notes.extend(seg_notes)
+                # In plain text gli asterischi del corsivo Markdown non hanno senso → rimuovi
+                parts.append(strip_italic_markers(seg_text))
+            elif seg.kind == 'table':
+                t_lines = [format_caption(seg.asset), ''] + table_to_plain_lines(seg.asset)
+                if seg.asset.source:
+                    t_lines.append(f"Fonte: {seg.asset.source}")
+                parts.append('\n'.join(t_lines))
+            elif seg.kind == 'chart':
+                parts.append(
+                    f"{format_caption(seg.asset)}\n[Grafico disponibile negli export PDF/DOCX]"
+                )
+            elif seg.kind == 'hint':
+                parts.append(f">>> HINT (da sostituire): {seg.asset.text} <<<")
+        processed_content = '\n\n'.join(parts)
+
         full_content = f"{thesis.title}\n{'=' * len(thesis.title)}\n\n"
         full_content += toc
+        for idx_title, idx_entries in (("INDICE DELLE TABELLE", tables_index),
+                                       ("INDICE DELLE FIGURE", figures_index)):
+            if idx_entries:
+                full_content += f"{idx_title}\n"
+                for label, caption in idx_entries:
+                    full_content += f"    {label} – {caption}\n"
+                full_content += "\n"
         full_content += processed_content
         if all_notes:
             full_content += "\n\n" + "=" * 60 + "\nNOTE\n" + "=" * 60 + "\n\n"
@@ -2875,9 +2927,55 @@ async def export_thesis(
     elif format == "md":
         # Export Markdown con indice e note come footnotes
         has_footnotes = cit_style == 'footnotes'
-        processed_content, all_notes, _ = strip_footnotes_for_plain(content) if has_footnotes else (content, [], 1)
+        all_notes = []
+        next_note_num = 1
+        parts = []
+        for seg in segments:
+            if seg.kind == 'text':
+                seg_text = seg.text
+                if has_footnotes:
+                    seg_text, seg_notes, next_note_num = strip_footnotes_for_plain(seg_text, next_note_num)
+                    all_notes.extend(seg_notes)
+                parts.append(seg_text)
+            elif seg.kind == 'table':
+                block = f"**{format_caption(seg.asset)}**\n\n{table_to_markdown(seg.asset)}"
+                if seg.asset.source:
+                    block += f"\n\n*Fonte: {seg.asset.source}*"
+                parts.append(block)
+            elif seg.kind == 'chart':
+                block = f"**{format_caption(seg.asset)}**"
+                if seg.asset.spec and not seg.asset.error:
+                    # fallback leggibile: i dati del grafico come tabella markdown
+                    spec = seg.asset.spec
+                    labels = [str(l) for l in spec.get('labels', [])]
+                    header = '| ' + ' | '.join([''] + [s.get('name') or f"Serie {i+1}"
+                                                       for i, s in enumerate(spec.get('series', []))]) + ' |'
+                    sep = '|' + '|'.join([' --- '] * (len(spec.get('series', [])) + 1)) + '|'
+                    data_rows = []
+                    for li, lab in enumerate(labels):
+                        row = [lab]
+                        for s in spec.get('series', []):
+                            vals = s.get('values', [])
+                            row.append(str(vals[li]) if li < len(vals) else '')
+                        data_rows.append('| ' + ' | '.join(row) + ' |')
+                    block += '\n\n' + '\n'.join([header, sep] + data_rows)
+                    if spec.get('source'):
+                        block += f"\n\n*Fonte: {spec['source']}*"
+                block += "\n\n*Grafico renderizzato negli export PDF e DOCX.*"
+                parts.append(block)
+            elif seg.kind == 'hint':
+                parts.append(f"> ⚠️ **HINT (da sostituire):** {seg.asset.text}")
+        processed_content = '\n\n'.join(parts)
+
         md_content = f"# {thesis.title}\n\n"
         md_content += toc
+        for idx_title, idx_entries in (("Indice delle tabelle", tables_index),
+                                       ("Indice delle figure", figures_index)):
+            if idx_entries:
+                md_content += f"## {idx_title}\n\n"
+                for label, caption in idx_entries:
+                    md_content += f"- **{label}** – {caption}\n"
+                md_content += "\n"
         md_content += processed_content
         if all_notes:
             md_content += "\n\n---\n\n### Note\n\n"
@@ -3214,10 +3312,24 @@ async def export_thesis(
                             run.font.size = Pt(font_sz - 2)
                             run.font.name = font_name
 
+            # ── Indici delle tabelle/figure (solo se presenti) ──
+            for idx_title, idx_entries in (("Indice delle tabelle", tables_index),
+                                           ("Indice delle figure", figures_index)):
+                if not idx_entries:
+                    continue
+                idx_heading = doc.add_heading(idx_title, level=1)
+                for run in idx_heading.runs:
+                    run.font.name = font_name
+                for label, caption in idx_entries:
+                    idx_para = doc.add_paragraph()
+                    idx_run = idx_para.add_run(f"{label} – {caption}")
+                    idx_run.font.size = Pt(font_sz - 1)
+                    idx_run.font.name = font_name
+
             doc.add_page_break()
 
         # ── Contenuto con body_alignment e footnotes ──
-        for line in content.split('\n'):
+        def render_docx_text_line(line):
             if line.startswith('# '):
                 h = doc.add_heading(line[2:], level=1)
                 h.paragraph_format.space_before = Pt(chapter_sp_before)
@@ -3278,6 +3390,29 @@ async def export_thesis(
                     para.paragraph_format.line_spacing = line_sp
                     _add_runs_with_italic(para, line)
             # Righe vuote: non aggiungere nulla (spazio naturale)
+
+        for seg in segments:
+            if seg.kind == 'text':
+                for line in seg.text.split('\n'):
+                    render_docx_text_line(line)
+                continue
+            # Un asset malformato non deve MAI far fallire l'export:
+            # degrada a riquadro HINT.
+            try:
+                if seg.kind == 'table':
+                    add_docx_table(doc, seg.asset, ds)
+                elif seg.kind == 'chart':
+                    add_docx_chart(doc, seg.asset, ds)
+                elif seg.kind == 'hint':
+                    add_docx_hint(doc, seg.asset, ds)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Asset non renderizzabile nel DOCX: {e}")
+                try:
+                    add_docx_hint(doc, HintAsset(
+                        text=f"Elemento non renderizzabile: {format_caption(seg.asset) or 'elemento visivo'}"
+                    ), ds)
+                except Exception:  # noqa: BLE001
+                    pass
 
         doc.save(str(file_path))
 
@@ -3519,6 +3654,33 @@ async def export_thesis(
 
                 y += 5  # Spazio tra capitoli
 
+            # ── Indici delle tabelle/figure (solo se presenti) ──
+            for idx_title, idx_entries in (("INDICE DELLE TABELLE", tables_index),
+                                           ("INDICE DELLE FIGURE", figures_index)):
+                if not idx_entries:
+                    continue
+                if y + font_section_size + line_height * 2 > page_height - margin_bottom:
+                    current_page = new_pdf_page()
+                    y = margin_top
+                y += 10
+                current_page.insert_text((margin_left, y), idx_title,
+                                         fontsize=font_section_size, fontname=font_body)
+                y += font_section_size + 8
+                for idx_label, idx_caption in idx_entries:
+                    entry_text = strip_italic_markers(f"{idx_label} - {idx_caption}")
+                    entry_lines = wrap_text_to_width(
+                        entry_text, content_width - 20,
+                        lambda s: fitz.get_text_length(s, fontname=font_body, fontsize=font_size - 1)
+                    )
+                    for entry_line in entry_lines:
+                        if y + line_height > page_height - margin_bottom:
+                            current_page = new_pdf_page()
+                            y = margin_top
+                        current_page.insert_text((margin_left + 20, y), entry_line,
+                                                 fontsize=font_size - 1, fontname=font_body)
+                        y += line_height * 0.9
+                y += 5
+
             # Separatore dopo indice
             y += 15
             current_page.draw_line(
@@ -3621,8 +3783,176 @@ async def export_thesis(
                 current_page = new_pdf_page()
                 y = margin_top
 
+        # ── Renderer asset (tabelle / grafici / riquadri HINT) ──
+        _bold_font_map = {'helv': 'hebo', 'tiro': 'tibo', 'cour': 'cobo'}
+        font_body_bold = _bold_font_map.get(font_body, font_body)
+        # capacità verticale di una pagina vuota (per troncare contenuti monstre)
+        page_capacity = page_height - margin_top - margin_bottom - fn_separator_space
+
+        def _pdf_safe(s):
+            """I font base-14 non coprono tutti i glifi Unicode: normalizza i più comuni."""
+            return (str(s).replace('–', '-').replace('—', '-')
+                    .replace('‘', "'").replace('’', "'")
+                    .replace('“', '"').replace('”', '"')
+                    .replace('…', '...').replace('⚠', '').replace('️', '').strip())
+
+        def render_pdf_caption(text):
+            """Didascalia centrata in grigio sotto/sopra un asset."""
+            nonlocal y
+            cap_size = max(8, font_size - 1)
+            cap_lines = wrap_text_to_width(
+                _pdf_safe(strip_italic_markers(text)), content_width,
+                lambda s: fitz.get_text_length(s, fontname=font_body, fontsize=cap_size))
+            for cap_line in cap_lines:
+                check_new_page_needed(cap_size + 4)
+                cl_w = fitz.get_text_length(cap_line, fontname=font_body, fontsize=cap_size)
+                current_page.insert_text((margin_left + (content_width - cl_w) / 2, y), cap_line,
+                                         fontsize=cap_size, fontname=font_body, color=(0.25, 0.25, 0.25))
+                y += cap_size + 3
+            y += 6
+
+        def render_pdf_table(table):
+            """Tabella a griglia: header ripetuto ai salti pagina, celle wrappate."""
+            nonlocal y
+            n = max(1, len(table.header))
+            cell_size = max(7.0, font_size - 1.5)
+            cell_lh = cell_size * 1.25
+            pad = 4
+            col_w = content_width / n
+            inner_w = max(10.0, col_w - 2 * pad)
+            grid_color = (0.35, 0.35, 0.35)
+            max_cell_lines = max(1, int((page_capacity - 2 * pad) / cell_lh) - 2)
+
+            def cell_lines(cells, fname):
+                wrapped = [wrap_text_to_width(
+                    _pdf_safe(strip_italic_markers(c)), inner_w,
+                    lambda s: fitz.get_text_length(s, fontname=fname, fontsize=cell_size))
+                    for c in cells]
+                out = []
+                for cl in wrapped:
+                    if len(cl) > max_cell_lines:
+                        logger.warning("Cella di tabella più alta di una pagina: contenuto troncato nel PDF")
+                        cl = cl[:max_cell_lines - 1] + [cl[max_cell_lines - 1] + '...']
+                    out.append(cl)
+                return out
+
+            def row_height(lines_per_cell):
+                return max(len(cl) for cl in lines_per_cell) * cell_lh + 2 * pad
+
+            def draw_row(lines_per_cell, fname, fill=None):
+                nonlocal y
+                rh = row_height(lines_per_cell)
+                if fill:
+                    current_page.draw_rect(
+                        fitz.Rect(margin_left, y, margin_left + content_width, y + rh),
+                        fill=fill, color=None)
+                for c in range(n + 1):
+                    grid_x = margin_left + c * col_w
+                    current_page.draw_line(fitz.Point(grid_x, y), fitz.Point(grid_x, y + rh),
+                                           color=grid_color, width=0.5)
+                current_page.draw_line(fitz.Point(margin_left, y + rh),
+                                       fitz.Point(margin_left + content_width, y + rh),
+                                       color=grid_color, width=0.5)
+                for c, cl in enumerate(lines_per_cell):
+                    ty = y + pad + cell_size
+                    for cell_line in cl:
+                        current_page.insert_text((margin_left + c * col_w + pad, ty), cell_line,
+                                                 fontsize=cell_size, fontname=fname)
+                        ty += cell_lh
+                y += rh
+
+            header_lines = cell_lines(table.header, font_body_bold)
+            header_h = row_height(header_lines)
+
+            def start_table_block():
+                nonlocal y
+                current_page.draw_line(fitz.Point(margin_left, y),
+                                       fitz.Point(margin_left + content_width, y),
+                                       color=grid_color, width=0.5)
+                draw_row(header_lines, font_body_bold, fill=(0.93, 0.93, 0.93))
+
+            # didascalia + header + prima riga restano insieme
+            first_row_h = row_height(cell_lines(table.rows[0], font_body)) if table.rows else 0
+            caption_est = (font_size + 2) * 2 + 6
+            check_new_page_needed(caption_est + header_h + first_row_h)
+
+            render_pdf_caption(format_caption(table))
+            start_table_block()
+            for row in table.rows:
+                lines_per_cell = cell_lines(row, font_body)
+                rh = row_height(lines_per_cell)
+                if y + rh > get_available_y():
+                    check_new_page_needed(rh)   # footnotes + nuova pagina
+                    start_table_block()          # header ripetuto
+                draw_row(lines_per_cell, font_body)
+
+            if table.source:
+                src_size = max(7, font_size - 2)
+                y += src_size + 3  # baseline sotto il bordo inferiore della tabella
+                src_lines = wrap_text_to_width(
+                    _pdf_safe(f"Fonte: {table.source}"), content_width,
+                    lambda s: fitz.get_text_length(s, fontname=font_body, fontsize=src_size))
+                for src_line in src_lines:
+                    check_new_page_needed(src_size + 3)
+                    sl_w = fitz.get_text_length(src_line, fontname=font_body, fontsize=src_size)
+                    current_page.insert_text((margin_left + (content_width - sl_w) / 2, y), src_line,
+                                             fontsize=src_size, fontname=font_body, color=(0.35, 0.35, 0.35))
+                    y += src_size + 3
+            y += 10
+
+        def render_pdf_hint(hint):
+            """Riquadro ambra ben visibile: segnaposto da sostituire manualmente."""
+            nonlocal y
+            h_size = max(8, font_size - 1)
+            h_lh = h_size * 1.35
+            pad = 8
+            body_lines = wrap_text_to_width(
+                _pdf_safe(hint.text), content_width - 2 * pad,
+                lambda s: fitz.get_text_length(s, fontname=font_body, fontsize=h_size))
+            max_hint_lines = max(1, int((page_capacity - 2 * pad) / h_lh) - 2)
+            if len(body_lines) > max_hint_lines:
+                body_lines = body_lines[:max_hint_lines - 1] + [body_lines[max_hint_lines - 1] + '...']
+            box_h = (len(body_lines) + 1) * h_lh + 2 * pad
+            check_new_page_needed(box_h + 8)
+            current_page.draw_rect(
+                fitz.Rect(margin_left, y, margin_left + content_width, y + box_h),
+                fill=(1.0, 0.953, 0.804), color=(0.72, 0.53, 0.04), width=1)
+            ty = y + pad + h_size
+            current_page.insert_text((margin_left + pad, ty), "SUGGERIMENTO - DA SOSTITUIRE:",
+                                     fontsize=h_size, fontname=font_body_bold, color=(0.45, 0.32, 0.02))
+            ty += h_lh
+            for body_line in body_lines:
+                current_page.insert_text((margin_left + pad, ty), body_line,
+                                         fontsize=h_size, fontname=font_body, color=(0.25, 0.2, 0.05))
+                ty += h_lh
+            y += box_h + 10
+
+        def render_pdf_chart(chart):
+            """Grafico PNG centrato con didascalia sotto; su errore → riquadro HINT."""
+            nonlocal y
+            try:
+                png = render_chart_png(chart)
+            except ChartRenderError as e:
+                logger.warning(f"Grafico '{(chart.caption or '')[:60]}' non renderizzato nel PDF: {e}")
+                render_pdf_hint(HintAsset(
+                    text=f"Grafico non generabile ({e}). Inserire manualmente: {chart.caption}"))
+                return
+            pix = fitz.Pixmap(png)
+            aspect = (pix.height / pix.width) if pix.width else 0.62
+            disp_w = min(content_width, 430)
+            disp_h = disp_w * aspect
+            if disp_h > page_capacity - 60:
+                disp_h = page_capacity - 60
+                disp_w = disp_h / aspect
+            check_new_page_needed(disp_h + 10 + (font_size + 2) * 2)
+            img_x = margin_left + (content_width - disp_w) / 2
+            current_page.insert_image(fitz.Rect(img_x, y, img_x + disp_w, y + disp_h), stream=png)
+            y += disp_h + 8
+            render_pdf_caption(format_caption(chart))
+
         # Contenuto con footnotes
-        for line in content.split('\n'):
+        def render_pdf_text_line(line):
+            nonlocal y
             check_new_page_needed(line_height)
 
             # Gestisci titoli
@@ -3727,6 +4057,29 @@ async def export_thesis(
                     y += paragraph_spacing
             else:
                 y += line_height * 0.5
+
+        for seg in segments:
+            if seg.kind == 'text':
+                for line in seg.text.split('\n'):
+                    render_pdf_text_line(line)
+                continue
+            # Un asset malformato non deve MAI far fallire l'export:
+            # degrada a riquadro HINT.
+            try:
+                if seg.kind == 'table':
+                    render_pdf_table(seg.asset)
+                elif seg.kind == 'chart':
+                    render_pdf_chart(seg.asset)
+                elif seg.kind == 'hint':
+                    render_pdf_hint(seg.asset)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Asset non renderizzabile nel PDF: {e}")
+                try:
+                    render_pdf_hint(HintAsset(
+                        text=f"Elemento non renderizzabile: {format_caption(seg.asset) or 'elemento visivo'}"
+                    ))
+                except Exception:  # noqa: BLE001
+                    pass
 
         # Renderizza le ultime footnotes
         render_page_footnotes()
@@ -3843,7 +4196,8 @@ async def export_thesis(
                     color=(0.5, 0.5, 0.5)
                 )
 
-        pdf_doc.save(file_path)
+        # deflate: comprime gli stream (i PNG dei grafici altrimenti restano raw)
+        pdf_doc.save(file_path, deflate=True)
         pdf_doc.close()
 
         return FileResponse(
