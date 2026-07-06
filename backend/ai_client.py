@@ -654,6 +654,7 @@ DA PRESERVARE OBBLIGATORIAMENTE
 - CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni nel formato [n] (es. [1], [2]) e tutte le note nel formato {{nota: ...}}. Non rimuoverle, non rinumerarle, non modificarne il contenuto, non spostarle fuori dalla frase cui appartengono.
 - Dati, numeri, percentuali, nomi propri, titoli di opere e termini tecnici vanno mantenuti identici.
 - SEGNAPOSTO ZZASSETnZZ: se compaiono token come ZZASSET0ZZ, ZZASSET1ZZ (segnaposto di tabelle/figure), mantienili INTATTI su riga isolata, nella stessa posizione logica del discorso: non rimuoverli, non duplicarli, non spostarli in fondo.
+- FORMULE: i token ZZMATHnZZ (es. ZZMATH0ZZ) sono segnaposto di formule matematiche: mantienili INTATTI, senza rimuoverli né duplicarli; quelli dentro una frase restano nella stessa posizione sintattica della frase, quelli su riga isolata restano isolati. Eventuali formule LaTeX esplicite ($...$ o $$...$$) vanno copiate INVARIATE carattere per carattere.
 
 ═══════════════════════════════════════════════════════════════
 TESTO DA RISCRIVERE (__WORDCOUNT__ parole)
@@ -750,6 +751,7 @@ DA PRESERVARE OBBLIGATORIAMENTE
 - CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni [n] (es. [1], [2]) e le note {{nota: ...}}: non rimuoverle, non rinumerarle, non modificarle.
 - Numeri, percentuali, date, nomi propri, titoli di opere e termini tecnici: identici.
 - SEGNAPOSTO ZZASSETnZZ: se compaiono token come ZZASSET0ZZ, ZZASSET1ZZ (segnaposto di tabelle/figure), mantienili INTATTI su riga isolata, nella stessa posizione logica del discorso: non rimuoverli, non duplicarli, non spostarli in fondo.
+- FORMULE: i token ZZMATHnZZ (es. ZZMATH0ZZ) sono segnaposto di formule matematiche: mantienili INTATTI, senza rimuoverli né duplicarli; quelli dentro una frase restano nella stessa posizione sintattica della frase, quelli su riga isolata restano isolati. Eventuali formule LaTeX esplicite ($...$ o $$...$$) vanno copiate INVARIATE carattere per carattere.
 
 ═══════════════════════════════════════════════════════════════
 TESTO DA PARAFRASARE (__WORDCOUNT__ parole)
@@ -789,6 +791,7 @@ DA PRESERVARE OBBLIGATORIAMENTE
 - CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni [n] (es. [1], [2]) e le note {{nota: ...}}: non rimuoverle, non rinumerarle, non modificarle.
 - Numeri, percentuali, date, nomi propri, titoli di opere e termini tecnici: identici.
 - SEGNAPOSTO ZZASSETnZZ: se compaiono token come ZZASSET0ZZ, ZZASSET1ZZ (segnaposto di tabelle/figure), mantienili INTATTI su riga isolata, nella stessa posizione logica del discorso: non rimuoverli, non duplicarli, non spostarli in fondo.
+- FORMULE: i token ZZMATHnZZ (es. ZZMATH0ZZ) sono segnaposto di formule matematiche: mantienili INTATTI, senza rimuoverli né duplicarli; quelli dentro una frase restano nella stessa posizione sintattica della frase, quelli su riga isolata restano isolati. Eventuali formule LaTeX esplicite ($...$ o $$...$$) vanno copiate INVARIATE carattere per carattere.
 
 ═══════════════════════════════════════════════════════════════
 TESTO DA PARAFRASARE (__WORDCOUNT__ parole)

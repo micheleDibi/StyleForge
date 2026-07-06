@@ -2048,9 +2048,10 @@ che hai appreso durante l'addestramento. Mantieni il registro formale e accademi
 NON aggiungere incisi informali, trattini, parentetiche colloquiali o espressioni come
 "almeno", "diciamo", "va detto", "cioè". Il testo deve restare professionale.
 Mantieni INTATTE tutte le citazioni e i riferimenti bibliografici.
-Se compaiono token ZZASSETnZZ (segnaposto di tabelle/figure), mantienili INTATTI,
-su riga isolata, nella stessa posizione logica del discorso: non rimuoverli,
-non duplicarli, non spostarli in fondo.
+Se compaiono token ZZASSETnZZ o ZZMATHnZZ (segnaposto di tabelle/figure/formule),
+mantienili INTATTI: quelli su riga isolata restano su riga isolata, quelli in
+mezzo a una frase restano ESATTAMENTE nella stessa posizione sintattica della
+frase; non rimuoverli, non duplicarli, non spostarli in fondo.
 Output SOLO il testo riscritto.
 
 ---
@@ -2148,6 +2149,8 @@ REGOLE:
 - Se il testo contiene citazioni [x], mantienile e puoi aggiungerne di nuove (solo fonti REALI)
 - Se il testo contiene blocchi [TABELLA]/[GRAFICO] o righe HINT, NON riprodurli
   né aggiungerne di nuovi nella continuazione: scrivi solo prosa
+- Se il testo contiene formule tra $...$ o $$...$$, NON riprodurle nella
+  continuazione; nuove formule solo se davvero necessarie al discorso
 
 TESTO ESISTENTE DA CONTINUARE:
 
@@ -2320,8 +2323,10 @@ def generate_content_task(thesis_id: str, user_id: str):
                 )
 
                 # Normalizza gli asset generati (tabelle pareggiate, grafici con
-                # JSON rotto degradati a HINT, marcatori orfani rimossi)
+                # JSON rotto degradati a HINT, marcatori orfani rimossi) e la
+                # matematica (\(..\)/\[..\] → $/$$, display su riga isolata)
                 raw_content = sanitize_generated_assets(raw_content)
+                raw_content = sanitize_generated_math(raw_content)
 
                 # Verifica word count e richiedi continuazione se troppo corto
                 section_label = f"Cap. {chapter.get('chapter_index', '?')} - {section.get('title', 'Sezione')}"
@@ -2330,19 +2335,24 @@ def generate_content_task(thesis_id: str, user_id: str):
                     section_label, dynamic_max_tokens
                 )
                 raw_content = sanitize_generated_assets(raw_content)
+                raw_content = sanitize_generated_math(raw_content)
 
                 # Salva contenuto raw per la bibliografia (con citazioni [x] intatte)
                 raw_chapter_content += f"\n{raw_content}\n"
 
-                # Proteggi tabelle/grafici/HINT con sentinelle: le riscritture
-                # LLM (stile autore + anti-AI) non devono toccarli
+                # Proteggi tabelle/grafici/HINT e formule con sentinelle: le
+                # riscritture LLM (stile autore + anti-AI) non devono toccarli.
+                # Prima gli asset (la matematica nelle celle è già sequestrata),
+                # poi le formule del testo.
                 protected_content, section_asset_map = protect_asset_blocks(raw_content)
+                protected_content, section_math_map = protect_math_spans(protected_content)
 
                 # Applica umanizzazione (stile autore, solo se sessione addestrata)
                 content = _humanize_content(protected_content, trained_session_client, section.get('title', 'Sezione'))
                 # Anti-AI come ultimo layer: riscrittura de-AI accademica + pass algoritmico
                 content = _apply_anti_ai(content, section_label, target_words=words_per_section)
-                # Ripristina gli asset al posto delle sentinelle (mai persi)
+                # Ripristina formule e asset al posto delle sentinelle (mai persi)
+                content = restore_math_spans(content, section_math_map)
                 content = restore_asset_blocks(content, section_asset_map)
 
                 section_text = f"\n## {section.get('title', 'Sezione')}\n\n{content}\n"
@@ -2375,14 +2385,17 @@ def generate_content_task(thesis_id: str, user_id: str):
         )
         intro_content = client.generate_text(intro_prompt, max_tokens=dynamic_max_tokens)
         intro_content = sanitize_generated_assets(intro_content)
+        intro_content = sanitize_generated_math(intro_content)
         intro_content = _ensure_word_count(
             client, intro_content, words_per_section, "Introduzione", dynamic_max_tokens
         )
         # Protezione difensiva: l'introduzione non dovrebbe contenere asset,
         # ma se il modello ne emette non devono essere mangiati dalle riscritture
         protected_intro, intro_asset_map = protect_asset_blocks(intro_content)
+        protected_intro, intro_math_map = protect_math_spans(protected_intro)
         intro_content = _humanize_content(protected_intro, trained_session_client, "Introduzione")
         intro_content = _apply_anti_ai(intro_content, "Introduzione", target_words=words_per_section)
+        intro_content = restore_math_spans(intro_content, intro_math_map)
         intro_content = restore_asset_blocks(intro_content, intro_asset_map)
 
         completed_sections += 1
@@ -2405,12 +2418,15 @@ def generate_content_task(thesis_id: str, user_id: str):
         )
         conclusion_content = client.generate_text(conclusion_prompt, max_tokens=dynamic_max_tokens)
         conclusion_content = sanitize_generated_assets(conclusion_content)
+        conclusion_content = sanitize_generated_math(conclusion_content)
         conclusion_content = _ensure_word_count(
             client, conclusion_content, words_per_section, "Conclusione", dynamic_max_tokens
         )
         protected_conclusion, conclusion_asset_map = protect_asset_blocks(conclusion_content)
+        protected_conclusion, conclusion_math_map = protect_math_spans(protected_conclusion)
         conclusion_content = _humanize_content(protected_conclusion, trained_session_client, "Conclusione")
         conclusion_content = _apply_anti_ai(conclusion_content, "Conclusione", target_words=words_per_section)
+        conclusion_content = restore_math_spans(conclusion_content, conclusion_math_map)
         conclusion_content = restore_asset_blocks(conclusion_content, conclusion_asset_map)
 
         completed_sections += 1
@@ -2425,15 +2441,17 @@ def generate_content_task(thesis_id: str, user_id: str):
         logger.info("Generazione Bibliografia...")
         # Usa il contenuto RAW (pre-umanizzazione) per trovare le citazioni [x]
         # perché l'umanizzazione potrebbe averle alterate.
-        # I blocchi asset vengono esclusi: i JSON dei grafici contengono
-        # liste di numeri ([180, 245]) che falserebbero la regex delle citazioni.
+        # I blocchi asset e le formule vengono esclusi: i JSON dei grafici e i
+        # pedici LaTeX contengono [numeri] che falserebbero la regex citazioni.
         all_raw_text, _ = protect_asset_blocks("\n".join(raw_chapters_content))
+        all_raw_text, _ = protect_math_spans(all_raw_text)
         # Fallback: se il raw non ha citazioni, prova anche con il contenuto umanizzato
         import re as _re
         raw_citations = _re.findall(r'\[\d+\]', all_raw_text)
         if not raw_citations:
             # Prova con il contenuto umanizzato (l'anti-AI ora preserva le citazioni)
             all_raw_text, _ = protect_asset_blocks("\n".join(generated_chapters_content))
+            all_raw_text, _ = protect_math_spans(all_raw_text)
         bibliography_prompt = build_bibliography_prompt(
             thesis_data=thesis_data,
             all_content=all_raw_text
