@@ -130,6 +130,54 @@ def _get_assets_instructions(citation_style: str = "footnotes") -> str:
      mostra la tabella seguente, ..."), mai lasciarlo orfano."""
 
 
+def _get_math_instructions() -> str:
+    """
+    Istruzioni per le formule matematiche LaTeX ($...$ / $$...$$) nel contenuto
+    di sezione. La sintassi è quella riconosciuta da thesis_math (subset comune
+    a OMML/mathtext/KaTeX). Ritorna stringa vuota se THESIS_MATH_ENABLED è False.
+    """
+    if not getattr(config, 'THESIS_MATH_ENABLED', True):
+        return ""
+    # Stringa NON-f: contiene graffe LaTeX letterali.
+    return r"""9. FORMULE MATEMATICHE (solo se la disciplina le richiede DAVVERO):
+
+   QUANDO USARLE (e quando NO):
+   - Solo in tesi tecnico-scientifiche o quantitative (ingegneria, fisica,
+     matematica, statistica, economia quantitativa) e solo dove una formula
+     esprime il concetto meglio della prosa. Nelle tesi umanistiche o
+     discorsive: NESSUNA formula.
+   - Mai decorative: ogni formula va introdotta e commentata nel testo
+     circostante, mai lasciata orfana.
+
+   SINTASSI (ECCEZIONE ESPLICITA alla regola "niente markdown": i
+   delimitatori $ per la matematica sono AMMESSI):
+   - Inline, dentro la frase, per simboli ed espressioni brevi:
+     ... il rapporto $\beta = \omega / \omega_n$ tra le frequenze ...
+     (nessuno spazio subito dopo il $ di apertura né prima di quello di
+     chiusura; mai a cavallo di due righe)
+   - Display, su riga ISOLATA con una riga vuota prima e dopo, solo per le
+     equazioni importanti da mettere in evidenza:
+
+     $$D = \frac{1}{\sqrt{(1 - \beta^2)^2 + (2\xi\beta)^2}}$$
+
+   COMANDI AMMESSI (subset LaTeX renderizzabile ovunque): lettere greche,
+   apici/pedici (^ e _), \frac, \sqrt, \sum, \int, \lim, \cdot (mai *),
+   \times, \pm, \leq, \geq, \neq, \approx, \to, \infty, \partial, \mathrm{},
+   \mathbf{}, \left( \right), \sin \cos \tan \log \ln \exp.
+   VIETATI: ambienti \begin{...}...\end{...} (matrix, align, cases), \label,
+   \ref, \tag, \text{} (usa \mathrm{}), interruzioni \\ e formule multi-riga:
+   una formula = una sola espressione.
+
+   REGOLE:
+   - NON numerare le equazioni ("(1)", "eq. 2.3") e NON citarne i numeri nel
+     testo: la numerazione "(N.M)" viene aggiunta automaticamente. Richiamale
+     in modo discorsivo ("l'equazione precedente", "la relazione appena
+     introdotta").
+   - Niente formule nei titoli, nelle celle delle tabelle o dentro le note.
+   - Gli importi monetari si scrivono in parole o con "euro"/"EUR", MAI col
+     simbolo $."""
+
+
 def build_chapters_prompt(thesis_data: Dict[str, Any], attachments_context: str = "") -> str:
     """
     Costruisce il prompt per la FASE 1: Generazione titoli capitoli.
@@ -378,6 +426,7 @@ def build_section_content_prompt(
     key_points_text = "\n".join([f"• {point}" for point in key_points]) if key_points else "Non specificati"
 
     assets_block = _get_assets_instructions(thesis_data.get('citation_style', 'footnotes'))
+    math_block = _get_math_instructions()
     hint_exception = (
         ' — UNICA ECCEZIONE ammessa: la riga HINT: "..." descritta al punto 8'
         if assets_block else ""
@@ -542,6 +591,8 @@ ISTRUZIONI DI SCRITTURA
    - Varia il ritmo: dopo 2-3 paragrafi densi, inserisci uno piu' leggero
 
 {assets_block}
+
+{math_block}
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT
