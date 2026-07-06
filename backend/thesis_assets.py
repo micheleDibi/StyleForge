@@ -49,6 +49,8 @@ from thesis_math import (
     DISPLAY_LINE_RE as MATH_DISPLAY_LINE_RE,
     MathAsset,
     MathRenderError,
+    inline_math_to_unicode,
+    iter_inline_math,
     latex_to_omml,
     latex_to_unicode,
     protect_math_spans,
@@ -704,8 +706,12 @@ def table_to_markdown(table: TableAsset) -> str:
 
 
 def table_to_plain_lines(table: TableAsset, max_col_width: int = 28) -> list:
-    """Tabella come testo allineato a colonne (per l'export txt)."""
-    all_rows = [table.header] + table.rows
+    """Tabella come testo allineato a colonne (per l'export txt).
+
+    Le formule $...$ nelle celle diventano Unicode (β, ω, √), come nel corpo.
+    """
+    all_rows = [[inline_math_to_unicode(str(c)) for c in r]
+                for r in [table.header] + table.rows]
     n = len(table.header)
     widths = [
         min(max_col_width, max(len(str(r[c])) for r in all_rows))
@@ -722,7 +728,7 @@ def table_to_plain_lines(table: TableAsset, max_col_width: int = 28) -> list:
         return '  '.join(cells).rstrip()
 
     sep = '  '.join('-' * w for w in widths)
-    return [fmt(table.header), sep] + [fmt(r) for r in table.rows]
+    return [fmt(all_rows[0]), sep] + [fmt(r) for r in all_rows[1:]]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -777,6 +783,29 @@ def _set_table_borders(table, color: str = '666666', size: int = 4):
     tbl_pr.append(borders)
 
 
+def _cell_runs_with_math(para, text: str, font_name: str, size, bold: bool = False):
+    """Run di una cella: le formule $...$ diventano equazioni OMML native.
+
+    Fallback per formula non convertibile: testo Unicode corsivo (niente PNG
+    nelle celle, terrebbero in ostaggio l'altezza riga).
+    """
+    for kind, latex, raw in iter_inline_math(str(text)):
+        if kind == 'math':
+            try:
+                para._p.append(latex_to_omml(latex))
+                continue
+            except MathRenderError as e:
+                logger.warning(f"Formula in cella non convertita in OMML: {e}")
+            run = para.add_run(latex_to_unicode(latex))
+            run.font.italic = True
+        else:
+            run = para.add_run(raw)
+        run.font.name = font_name
+        run.font.size = size
+        if bold:
+            run.font.bold = True
+
+
 def add_docx_table(doc, table: TableAsset, ds: dict):
     """Tabella accademica: didascalia sopra, bordi sottili, header in evidenza."""
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -800,18 +829,13 @@ def add_docx_table(doc, table: TableAsset, ds: dict):
     for c, text in enumerate(table.header):
         cell = t.rows[0].cells[c]
         cell.text = ''
-        run = cell.paragraphs[0].add_run(text)
-        run.font.name = font_name
-        run.font.size = cell_size
-        run.font.bold = True
+        _cell_runs_with_math(cell.paragraphs[0], text, font_name, cell_size, bold=True)
         _set_cell_shading(cell, header_fill)
     for r, row in enumerate(table.rows):
         for c, text in enumerate(row):
             cell = t.rows[r + 1].cells[c]
             cell.text = ''
-            run = cell.paragraphs[0].add_run(text)
-            run.font.name = font_name
-            run.font.size = cell_size
+            _cell_runs_with_math(cell.paragraphs[0], text, font_name, cell_size)
 
     if table.source:
         p = doc.add_paragraph()

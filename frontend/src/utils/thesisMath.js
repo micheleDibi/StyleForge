@@ -5,7 +5,8 @@
  *   inline:  $\beta = \omega / \omega_n$   (mai attraverso newline)
  *   display: $$D = \frac{1}{\sqrt{...}}$$  su riga isolata (o blocco $$ ... $$)
  * Guardie anti-valuta: niente cifra adiacente ai delimitatori, niente spazio
- * subito dentro, contenuto solo-numerico rifiutato ("$50$" resta testo).
+ * subito dentro ("$50" mai chiuso, "50$", "tra $5 e $10" restano testo;
+ * il contenuto solo-numerico "$1$" invece È matematica valida).
  */
 
 // NOTA PARITÀ: classi esplicite [0-9] e [ \t] (mai \d o \s) perché la loro
@@ -17,12 +18,10 @@ export const DISPLAY_LINE_RE = /^\s*\$\$((?:\\\$|[^$\n])+?)\$\$\s*$/;
 export const DISPLAY_FENCE_RE = /^\s*\$\$\s*$/;
 
 const MAX_INLINE_LATEX_LEN = 200;
-const PURE_NUMBER_RE = /^[0-9]+(?:[.,][0-9]+)*$/;
 
 export function isValidInline(content) {
   const c = (content || '').trim();
   if (!c || c.length > MAX_INLINE_LATEX_LEN) return false;
-  if (PURE_NUMBER_RE.test(c)) return false;
   return true;
 }
 

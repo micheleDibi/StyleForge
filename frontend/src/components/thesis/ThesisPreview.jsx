@@ -536,7 +536,7 @@ const ThesisPreview = ({ thesis, content }) => {
                                   <thead>
                                     <tr className="bg-slate-100">
                                       {seg.table.header.map((h, i) => (
-                                        <th key={i} className="border border-slate-300 px-3 py-1.5 text-left font-semibold text-slate-800">{h}</th>
+                                        <th key={i} className="border border-slate-300 px-3 py-1.5 text-left font-semibold text-slate-800"><MathText text={h} /></th>
                                       ))}
                                     </tr>
                                   </thead>
@@ -544,7 +544,7 @@ const ThesisPreview = ({ thesis, content }) => {
                                     {seg.table.rows.map((row, r) => (
                                       <tr key={r}>
                                         {row.map((cell, c) => (
-                                          <td key={c} className="border border-slate-300 px-3 py-1.5 text-slate-700">{cell}</td>
+                                          <td key={c} className="border border-slate-300 px-3 py-1.5 text-slate-700"><MathText text={cell} /></td>
                                         ))}
                                       </tr>
                                     ))}

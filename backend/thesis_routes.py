@@ -3949,21 +3949,107 @@ async def export_thesis(
             grid_color = (0.35, 0.35, 0.35)
             max_cell_lines = max(1, int((page_capacity - 2 * pad) / cell_lh) - 2)
 
-            def cell_lines(cells, fname):
-                wrapped = [wrap_text_to_width(
-                    _pdf_safe(strip_italic_markers(c)), inner_w,
-                    lambda s: fitz.get_text_length(s, fontname=fname, fontsize=cell_size))
-                    for c in cells]
+            cell_space_w = fitz.get_text_length(' ', fontname=font_body, fontsize=cell_size)
+
+            def _cell_lines_one(text, fname):
+                """Righe di una cella: liste di [(item, spazio_prima)] con altezza
+                e ascendente propri. Item ('t', parola, w) | ('m', MathPng, w, h, d):
+                le formule $...$ diventano PNG mathtext allineati al baseline."""
+                def _t(word):
+                    return ('t', word, fitz.get_text_length(
+                        word, fontname=fname, fontsize=cell_size))
+
+                text = str(text)
+                if not has_inline_math(text):
+                    wrapped = wrap_text_to_width(
+                        _pdf_safe(strip_italic_markers(text)), inner_w,
+                        lambda s: fitz.get_text_length(s, fontname=fname, fontsize=cell_size))
+                    return [([(_t(ln), False)], cell_lh, cell_size) for ln in wrapped]
+
+                # Cluster = item senza spazio interno nel sorgente: la
+                # punteggiatura resta attaccata alla formula (come nel corpo)
+                glued_clusters = []
+
+                def add_item(item, glued):
+                    if glued and glued_clusters:
+                        glued_clusters[-1].append(item)
+                    else:
+                        glued_clusters.append([item])
+
+                last_ends_nospace = False
+                for kind, latex, raw in iter_inline_math(text):
+                    if kind == 'math':
+                        try:
+                            mp = render_math_png(latex, fontsize=cell_size, dpi=300)
+                            scale = min(1.0, inner_w / mp.width_pt) if mp.width_pt else 1.0
+                            add_item(('m', mp, mp.width_pt * scale,
+                                      mp.height_pt * scale, mp.depth_pt * scale),
+                                     last_ends_nospace)
+                            last_ends_nospace = True
+                            continue
+                        except MathRenderError as e:
+                            logger.warning(f"Formula non renderizzata in cella PDF: {e}")
+                            raw = _latin1_math(raw)  # sorgente/Unicode come testo
+                    starts_ws = raw[:1].isspace()
+                    words = _pdf_safe(strip_italic_markers(raw)).split()
+                    if not words:
+                        if raw:
+                            last_ends_nospace = False  # soli spazi: separa
+                        continue
+                    for wi, w_ in enumerate(words):
+                        add_item(_t(w_), glued=(wi == 0 and not starts_ws
+                                                and last_ends_nospace))
+                    last_ends_nospace = not raw[-1:].isspace()
+
+                def cluster_w(cluster):
+                    return sum(it[2] for it in cluster)
+
+                # cluster più largo della cella: meglio spezzarlo che sbordare
+                clusters = [c for cluster in glued_clusters
+                            for c in ([[it] for it in cluster]
+                                      if len(cluster) > 1 and cluster_w(cluster) > inner_w
+                                      else [cluster])]
+                wrapped, cur, cur_w = [], [], 0.0
+                for cluster in clusters:
+                    cw = cluster_w(cluster)
+                    needed = cw if not cur else cur_w + cell_space_w + cw
+                    if cur and needed > inner_w:
+                        wrapped.append(cur)
+                        cur, cur_w = [cluster], cw
+                    else:
+                        cur.append(cluster)
+                        cur_w = needed
+                if cur:
+                    wrapped.append(cur)
+
                 out = []
-                for cl in wrapped:
+                for ln_clusters in wrapped:
+                    flat = [(it, ci > 0 and ii == 0)
+                            for ci, cluster in enumerate(ln_clusters)
+                            for ii, it in enumerate(cluster)]
+                    asc, desc = cell_size, cell_size * 0.25
+                    for it, _sp in flat:
+                        if it[0] == 'm':
+                            asc = max(asc, it[3] - it[4])
+                            desc = max(desc, it[4])
+                    out.append((flat, max(cell_lh, asc + desc + 2), asc))
+                return out
+
+            def cell_lines(cells, fname):
+                out = []
+                for ctext in cells:
+                    cl = _cell_lines_one(ctext, fname)
                     if len(cl) > max_cell_lines:
                         logger.warning("Cella di tabella più alta di una pagina: contenuto troncato nel PDF")
-                        cl = cl[:max_cell_lines - 1] + [cl[max_cell_lines - 1] + '...']
+                        cl = cl[:max_cell_lines]
+                        flat, lh, asc = cl[-1]
+                        cl[-1] = (flat + [(('t', '...', fitz.get_text_length(
+                            '...', fontname=fname, fontsize=cell_size)), True)], lh, asc)
                     out.append(cl)
                 return out
 
             def row_height(lines_per_cell):
-                return max(len(cl) for cl in lines_per_cell) * cell_lh + 2 * pad
+                return max(sum(lh for _, lh, _ in cl) for cl in lines_per_cell) + 2 * pad
 
             def draw_row(lines_per_cell, fname, fill=None):
                 nonlocal y
@@ -3980,11 +4066,24 @@ async def export_thesis(
                                        fitz.Point(margin_left + content_width, y + rh),
                                        color=grid_color, width=0.5)
                 for c, cl in enumerate(lines_per_cell):
-                    ty = y + pad + cell_size
-                    for cell_line in cl:
-                        current_page.insert_text((margin_left + c * col_w + pad, ty), cell_line,
-                                                 fontsize=cell_size, fontname=fname)
-                        ty += cell_lh
+                    slot_top = y + pad
+                    for flat, lh, asc in cl:
+                        baseline = slot_top + asc
+                        tx = margin_left + c * col_w + pad
+                        for it, spaced in flat:
+                            if spaced:
+                                tx += cell_space_w
+                            if it[0] == 't':
+                                current_page.insert_text((tx, baseline), it[1],
+                                                         fontsize=cell_size, fontname=fname)
+                            else:
+                                mp_h, mp_d = it[3], it[4]
+                                current_page.insert_image(
+                                    fitz.Rect(tx, baseline - (mp_h - mp_d),
+                                              tx + it[2], baseline + mp_d),
+                                    stream=it[1].png)
+                            tx += it[2]
+                        slot_top += lh
                 y += rh
 
             header_lines = cell_lines(table.header, font_body_bold)

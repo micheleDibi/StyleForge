@@ -82,9 +82,17 @@ class TestInlineTokenizer:
         assert out[1][1] == DISPLAY_D
 
     def test_currency_amounts_stay_text(self):
-        for s in ("costa $50$", "tra $5 e $10", "il prezzo è 100$ al giorno",
-                  "budget di $1.500$ euro", "paga 5$ e 10$"):
+        # Guardie posizionali: cifra adiacente ai $, spazi dentro i
+        # delimitatori, $ mai chiuso. ("$50$" col doppio dollaro invece è
+        # accettato come matematica: nessuno scrive la valuta così.)
+        for s in ("costa $50 al mese", "tra $5 e $10", "il prezzo è 100$ al giorno",
+                  "paga 5$ e 10$"):
             assert kinds(s) == ['text'], s
+
+    def test_pure_number_is_math(self):
+        out = spans("la trasformata è semplicemente $1$, mentre")
+        assert [k for k, _, _ in out] == ['text', 'math', 'text']
+        assert out[1][1] == "1"
 
     def test_escaped_dollar_not_delimiter(self):
         assert kinds(r"il simbolo \$ resta letterale \$") == ['text']
@@ -104,7 +112,7 @@ class TestInlineTokenizer:
     def test_has_inline_math(self):
         assert has_inline_math(r"con $\beta$ si vede")
         assert not has_inline_math("nessuna formula qui")
-        assert not has_inline_math("costa $50$")
+        assert not has_inline_math("costa 50$ e tra $5 e $10")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -82,15 +82,12 @@ MATH_SENTINEL_RE = re.compile(r'ZZMATH(\d+)ZZ')
 MAX_INLINE_LATEX_LEN = 200
 # Cap difensivo per le display (KaTeX/mathtext/OMML su input patologici)
 MAX_DISPLAY_LATEX_LEN = 2000
-# Contenuto solo numerico ("$50$", "$ 1.500 $"): valuta, non matematica
-_PURE_NUMBER_RE = re.compile(r'^[0-9]+(?:[.,][0-9]+)*$')
-
-
 def _is_valid_inline(content: str) -> bool:
+    # Il contenuto solo-numerico ("$1$") È matematica valida: le valute reali
+    # non superano comunque le guardie posizionali ("$50" mai chiuso, "50$"
+    # con cifra adiacente, "tra $5 e $10" con spazi dentro i delimitatori).
     content = content.strip()
     if not content or len(content) > MAX_INLINE_LATEX_LEN:
-        return False
-    if _PURE_NUMBER_RE.match(content):
         return False
     return True
 

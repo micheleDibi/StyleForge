@@ -483,3 +483,52 @@ def test_sanitize_math_outside_assets_preserves_table_cells():
     lines = out.split('\n')
     assert "| Risonanza | $$D = 1/(2\\zeta)$$ |" in lines  # cella MAI esplosa
     assert "$$E = mc^2$$" in lines  # prosa canonicalizzata su riga isolata
+
+
+def test_docx_table_cells_render_math_as_omml(tmp_path):
+    from docx import Document
+    from thesis_assets import add_docx_table
+
+    doc = Document()
+    ds = {"font_name": "Times New Roman", "font_size": 12}
+    t = TableAsset(
+        caption="Trasformate di Laplace",
+        header=["Funzione $f(t)$", "Trasformata $F(s)$", "Dominio"],
+        rows=[
+            ["$u(t)$, costante 1", "$1/s$", "$\\mathrm{Re}(s) > 0$"],
+            ["$\\delta(t)$", "$1$", "tutto il piano"],
+        ],
+        label="Tabella 1.1",
+    )
+    add_docx_table(doc, t, ds)
+
+    tbl = doc.tables[-1]
+    # header: formula OMML + testo attorno preservato
+    hdr_xml = tbl.rows[0].cells[0]._tc.xml
+    assert 'oMath' in hdr_xml
+    assert tbl.rows[0].cells[0].text.startswith('Funzione')
+    # cella con testo dopo la formula: ", costante 1" resta come run
+    c00 = tbl.rows[1].cells[0]
+    assert 'oMath' in c00._tc.xml
+    assert ', costante 1' in c00.text
+    # $1$ (solo-numerico) e \mathrm{Re} diventano equazioni, non testo grezzo
+    assert 'oMath' in tbl.rows[2].cells[1]._tc.xml
+    assert '$' not in tbl.rows[1].cells[2].text
+    # cella senza formule: run di testo semplice, nessun dollaro fantasma
+    assert tbl.rows[2].cells[2].text == 'tutto il piano'
+
+    out = tmp_path / "table_math.docx"
+    doc.save(str(out))
+    assert 'oMath' in Document(str(out)).element.xml
+
+
+def test_table_to_plain_lines_math_unicode():
+    t = TableAsset(
+        caption="Trasformate",
+        header=["Funzione", "Trasformata"],
+        rows=[["$\\sin(\\omega t)$", "$\\omega/(s^2+\\omega^2)$"]],
+    )
+    lines = table_to_plain_lines(t, max_col_width=30)
+    joined = '\n'.join(lines)
+    assert '$' not in joined          # niente LaTeX grezzo nel txt
+    assert 'ω' in joined              # greco convertito in Unicode
