@@ -62,6 +62,12 @@ THESIS_GEN_TOP_P = float(os.getenv("THESIS_GEN_TOP_P", "0.95"))
 THESIS_ASSETS_ENABLED = os.getenv("THESIS_ASSETS_ENABLED", "true").lower() == "true"
 THESIS_CHARTS_ENABLED = os.getenv("THESIS_CHARTS_ENABLED", "true").lower() == "true"
 
+# Formule matematiche LaTeX nella tesi ($...$ inline, $$...$$ display).
+# THESIS_MATH_ENABLED inietta le istruzioni nel prompt di sezione (producer);
+# renderer e protezione sentinelle riconoscono comunque la sintassi anche a
+# flag spento (le tesi già generate con formule si sistemano all'export).
+THESIS_MATH_ENABLED = os.getenv("THESIS_MATH_ENABLED", "true").lower() == "true"
+
 # ----------------------------------------------------------------------------
 # Anti-AI per Genera/Umanizza (stesso meccanismo della Tesi, applicato alle
 # funzioni di generazione e umanizzazione su sessione addestrata).
