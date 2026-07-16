@@ -4,7 +4,7 @@ import {
   Film, ArrowLeft, Plus, Trash2, Play, Download, AlertCircle,
   Loader2, CheckCircle2, XCircle, Clock, Settings2, ImagePlus, Info, Zap, Sparkles
 } from 'lucide-react';
-import { generateVideos, getVideoTasksStatus, getVideoProxyUrl } from '../services/api';
+import { generateVideos, getVideoTasksStatus, fetchVideoBlob, readBlobErrorDetail } from '../services/api';
 import { useTranslation } from 'react-i18next';
 
 // ── Models ──────────────────────────────────────────────────────────────────
@@ -132,6 +132,13 @@ const ImageToVideo = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [showSettings, setShowSettings] = useState(true);
+  // Il video arriva come Blob (il proxy vuole l'Authorization in header, che un
+  // <video src> non puo' mandare). I blob URL stanno anche in una ref perche' il
+  // cleanup di unmount ha dep [] e da uno state leggerebbe il valore iniziale.
+  const [blobUrls, setBlobUrls] = useState({});
+  const [videoErrors, setVideoErrors] = useState({});
+  const blobUrlsRef = useRef({});
+  const fetchingRef = useRef(new Set());
 
   const selectedModel = useMemo(() => MODELS.find(m => m.value === model) || MODELS[0], [model]);
   const availableResolutions = useMemo(() => Object.keys(selectedModel.resolutions), [selectedModel]);
@@ -178,7 +185,9 @@ const ImageToVideo = () => {
               return {
                 ...task,
                 status: updated.status,
-                video_url: updated.video_url || task.video_url,
+                // Il backend restituisce file_id da sempre, ma qui veniva
+                // scartato: e' l'unica cosa che serve al proxy.
+                file_id: updated.file_id || task.file_id,
                 error: updated.error || task.error,
               };
             })
@@ -191,6 +200,52 @@ const ImageToVideo = () => {
 
     return () => clearInterval(interval);
   }, [tasks]);
+
+  // Chiave primitiva stabile: agganciare il fetch del blob all'effect di polling
+  // (dep [tasks]) lo farebbe ripartire a ogni tick, riscaricando il video ogni
+  // 5 secondi.
+  const readyIds = tasks
+    .filter(task => task.status === 'Success' && task.file_id)
+    .map(task => task.file_id)
+    .join(',');
+
+  useEffect(() => {
+    if (!readyIds) return;
+    let annullato = false;
+
+    readyIds.split(',').forEach(async (fileId) => {
+      // Guardia idempotente: in StrictMode l'effect parte due volte, e una
+      // stringa stabile non basta a evitare il doppio download.
+      if (fetchingRef.current.has(fileId) || blobUrlsRef.current[fileId]) return;
+      fetchingRef.current.add(fileId);
+      try {
+        const blob = await fetchVideoBlob(fileId);
+        if (annullato) return;
+        const url = URL.createObjectURL(blob);
+        blobUrlsRef.current[fileId] = url;
+        setBlobUrls(prev => ({ ...prev, [fileId]: url }));
+      } catch (err) {
+        if (annullato) return;
+        const detail = await readBlobErrorDetail(err);
+        setVideoErrors(prev => ({
+          ...prev,
+          [fileId]: detail || t('Errore nel caricamento del video'),
+        }));
+      } finally {
+        fetchingRef.current.delete(fileId);
+      }
+    });
+
+    return () => { annullato = true; };
+  }, [readyIds, t]);
+
+  // Un blob URL resta in memoria finche' non lo si revoca: qui si legge dalla
+  // ref, non dallo state, perche' la closure di un effect con dep [] catturerebbe
+  // il valore iniziale (cioe' nulla da revocare).
+  useEffect(() => () => {
+    Object.values(blobUrlsRef.current).forEach(URL.revokeObjectURL);
+    blobUrlsRef.current = {};
+  }, []);
 
   const formatFileSize = (bytes) => {
     if (bytes < 1024) return bytes + ' B';
@@ -262,7 +317,7 @@ const ImageToVideo = () => {
         task_id: task.task_id,
         prompt: task.prompt,
         status: task.error ? 'Fail' : 'Processing',
-        video_url: null,
+        file_id: null,
         error: task.error || null,
       }));
       setTasks(newTasks);
@@ -274,10 +329,13 @@ const ImageToVideo = () => {
   };
 
   const handleDownload = (task) => {
-    if (!task.video_url) return;
-    const proxyUrl = getVideoProxyUrl(task.video_url);
+    // Si riusa il blob URL del player e NON lo si revoca: e' lo stesso oggetto
+    // che <video src> sta usando, revocarlo qui spegnerebbe il video. Se ne
+    // occupa il cleanup di unmount.
+    const url = blobUrls[task.file_id];
+    if (!url) return;
     const link = document.createElement('a');
-    link.href = proxyUrl;
+    link.href = url;
     link.download = `video_${task.task_id}.mp4`;
     document.body.appendChild(link);
     link.click();
@@ -286,6 +344,11 @@ const ImageToVideo = () => {
 
   const handleReset = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    // I task se ne vanno: senza questo i loro blob URL resterebbero appesi.
+    Object.values(blobUrlsRef.current).forEach(URL.revokeObjectURL);
+    blobUrlsRef.current = {};
+    setBlobUrls({});
+    setVideoErrors({});
     setFile(null);
     setPreviewUrl(null);
     setPrompts(['']);
@@ -602,20 +665,34 @@ const ImageToVideo = () => {
 
                   <p className="text-sm text-slate-600 mb-3 line-clamp-2">{task.prompt}</p>
 
-                  {task.status === 'Success' && task.video_url && (
+                  {task.status === 'Success' && task.file_id && (
                     <div className="space-y-3">
-                      <video
-                        controls
-                        loop
-                        className="w-full rounded-lg bg-black"
-                        src={getVideoProxyUrl(task.video_url)}
-                      />
-                      <button
-                        onClick={() => handleDownload(task)}
-                        className="btn btn-secondary btn-sm w-full gap-2"
-                      >
-                        <Download className="w-4 h-4" /> {t('Scarica Video')}
-                      </button>
+                      {blobUrls[task.file_id] ? (
+                        <>
+                          <video
+                            controls
+                            loop
+                            className="w-full rounded-lg bg-black"
+                            src={blobUrls[task.file_id]}
+                          />
+                          <button
+                            onClick={() => handleDownload(task)}
+                            className="btn btn-secondary btn-sm w-full gap-2"
+                          >
+                            <Download className="w-4 h-4" /> {t('Scarica Video')}
+                          </button>
+                        </>
+                      ) : videoErrors[task.file_id] ? (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 text-red-600 text-sm">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          {videoErrors[task.file_id]}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-2 py-8 text-slate-500 text-sm">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          {t('Caricamento video...')}
+                        </div>
+                      )}
                     </div>
                   )}
 

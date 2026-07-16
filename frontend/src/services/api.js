@@ -1118,10 +1118,34 @@ export const getVideoTasksStatus = async (taskIds) => {
   return response.data;
 };
 
-export const getVideoProxyUrl = (videoUrl) => {
-  const token = getAccessToken();
-  const params = new URLSearchParams({ url: videoUrl, token });
-  return `${API_URL}/api/video/proxy?${params.toString()}`;
+// Scarica il video come Blob passando dall'istanza `api`: eredita l'interceptor
+// che mette il Bearer e quello che rinnova il token sul 401. Con fetch() nudo si
+// perderebbero entrambi, e qui un token che scade DURANTE la generazione (3-5
+// minuti) e' lo scenario normale, non l'eccezione.
+//
+// Prima si costruiva un URL con il JWT in query string, da dare a <video src>.
+// Il token finiva in access log, Referer e cronologia, e il parametro `url`
+// libero rendeva l'endpoint una SSRF: ora si passa solo il file_id.
+export const fetchVideoBlob = async (fileId) => {
+  const response = await api.get('/api/video/proxy', {
+    params: { file_id: fileId },
+    responseType: 'blob',
+    timeout: 180000,
+  });
+  return response.data;
+};
+
+// Con responseType 'blob' anche il body d'errore arriva come Blob, quindi
+// `err.response.data.detail` diventa undefined in silenzio: senza questo helper
+// ogni errore del proxy si legge come un generico "errore" e non si debugga.
+export const readBlobErrorDetail = async (err) => {
+  const data = err?.response?.data;
+  if (!(data instanceof Blob)) return data?.detail || null;
+  try {
+    return JSON.parse(await data.text())?.detail || null;
+  } catch {
+    return null;
+  }
 };
 
 // ============================================================================

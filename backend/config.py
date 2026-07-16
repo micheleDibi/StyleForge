@@ -275,6 +275,11 @@ MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimaxi.chat/v1")
 MINIMAX_DEFAULT_MODEL = os.getenv("MINIMAX_DEFAULT_MODEL", "MiniMax-Hailuo-2.3")
 VIDEO_MAX_UPLOAD_SIZE = int(os.getenv("VIDEO_MAX_UPLOAD_SIZE", "10")) * 1024 * 1024
 VIDEO_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+# Tetto sul video scaricato dal proxy: prima non c'era alcun limite e il body
+# finiva intero in RAM (resp.content).
+VIDEO_MAX_PROXY_BYTES = int(os.getenv("VIDEO_MAX_PROXY_MB", "200")) * 1024 * 1024
+# Time budget del proxy: era il timeout httpx dell'implementazione precedente.
+VIDEO_PROXY_TIMEOUT = int(os.getenv("VIDEO_PROXY_TIMEOUT", "120"))
 
 # API Pricing (Claude Opus 4.8) — per stima costi admin
 CLAUDE_OPUS_INPUT_PRICE_USD = 5.0    # $ per 1M input tokens
