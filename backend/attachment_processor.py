@@ -58,6 +58,27 @@ def get_mime_type(filename: str) -> str:
     return mime_type or "application/octet-stream"
 
 
+def sanitize_text_for_db(text: str) -> str:
+    """
+    Rimuove i caratteri non rappresentabili nei TEXT/VARCHAR di PostgreSQL.
+
+    Postgres rifiuta byte NUL (0x00) nelle stringhe. PyMuPDF e PyPDF2 a volte
+    restituiscono testo con NUL inseriti dalle font/encoding del PDF originale.
+    Rimuoviamo anche altri caratteri di controllo che non hanno senso nel testo
+    estratto (eccetto \t, \n, \r).
+    """
+    if not text:
+        return text
+    # Rimuovi sempre i NUL (causa principale del crash Postgres)
+    cleaned = text.replace("\x00", "")
+    # Rimuovi altri control char C0 tranne \t \n \r
+    cleaned = "".join(
+        c for c in cleaned
+        if c in ("\t", "\n", "\r") or ord(c) >= 32
+    )
+    return cleaned
+
+
 def extract_text_from_pdf(file_path: Path, max_pages: int = 100) -> str:
     """
     Estrae il testo da un file PDF.
@@ -67,7 +88,7 @@ def extract_text_from_pdf(file_path: Path, max_pages: int = 100) -> str:
         max_pages: Numero massimo di pagine da leggere
 
     Returns:
-        Testo estratto dal PDF
+        Testo estratto dal PDF (sanitizzato per PostgreSQL)
     """
     try:
         doc = fitz.open(file_path)
@@ -83,7 +104,7 @@ def extract_text_from_pdf(file_path: Path, max_pages: int = 100) -> str:
 
         doc.close()
 
-        return "\n\n".join(text_parts)
+        return sanitize_text_for_db("\n\n".join(text_parts))
 
     except Exception as e:
         raise RuntimeError(f"Errore nell'estrazione del testo dal PDF: {str(e)}")
@@ -97,7 +118,7 @@ def extract_text_from_docx(file_path: Path) -> str:
         file_path: Percorso del file DOCX
 
     Returns:
-        Testo estratto dal documento
+        Testo estratto dal documento (sanitizzato per PostgreSQL)
     """
     if not DOCX_AVAILABLE:
         raise RuntimeError(
@@ -107,7 +128,7 @@ def extract_text_from_docx(file_path: Path) -> str:
     try:
         doc = DocxDocument(file_path)
         paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-        return "\n\n".join(paragraphs)
+        return sanitize_text_for_db("\n\n".join(paragraphs))
 
     except Exception as e:
         raise RuntimeError(f"Errore nell'estrazione del testo dal DOCX: {str(e)}")
@@ -121,13 +142,13 @@ def extract_text_from_txt(file_path: Path) -> str:
         file_path: Percorso del file TXT
 
     Returns:
-        Contenuto del file
+        Contenuto del file (sanitizzato per PostgreSQL)
     """
     try:
         # Prova diversi encoding
         for encoding in ['utf-8', 'latin-1', 'cp1252']:
             try:
-                return file_path.read_text(encoding=encoding)
+                return sanitize_text_for_db(file_path.read_text(encoding=encoding))
             except UnicodeDecodeError:
                 continue
 

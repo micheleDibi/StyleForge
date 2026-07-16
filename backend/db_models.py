@@ -20,6 +20,7 @@ pg_job_status = PG_ENUM(
 
 pg_job_type = PG_ENUM(
     'training', 'generation', 'humanization', 'thesis_generation', 'compilatio_scan',
+    'wiki_ingest', 'wiki_lint',
     name='job_type',
     create_type=False
 )
@@ -29,6 +30,13 @@ pg_thesis_status = PG_ENUM(
     'draft', 'chapters_pending', 'chapters_confirmed', 'sections_pending',
     'sections_confirmed', 'generating', 'completed', 'failed',
     name='thesis_status',
+    create_type=False
+)
+
+# ENUM per lo stato del wiki (LLM Wiki, second-brain) di una tesi
+pg_thesis_wiki_status = PG_ENUM(
+    'none', 'ingesting', 'ingested', 'linting', 'linted', 'failed',
+    name='thesis_wiki_status',
     create_type=False
 )
 
@@ -44,14 +52,25 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(255), nullable=False)
+    # Nullable: gli utenti creati dall'admin impostano la password via invito email.
+    hashed_password = Column(String(255), nullable=True)
     full_name = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
+    # Verifica email: l'utente deve confermare l'email prima di poter accedere.
+    email_verified = Column(Boolean, default=False, nullable=False)
+    email_verified_at = Column(DateTime, nullable=True)
     is_admin = Column(Boolean, default=False)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
     credits = Column(Integer, default=0, nullable=False)
-    # Tipo ente cliente: 'private' (default, costo tesi pieno) o 'training' (costo ridotto)
-    entity_type = Column(String(20), default='private', nullable=False)
+    # Sottotipo dell'utente normale: 'distributore' | 'rivenditore' | 'privato'
+    # (default). Determina i pacchetti crediti acquistabili. Asse indipendente dal Role.
+    entity_type = Column(String(20), default='privato', nullable=False)
+    # Genitore nell'albero di distribuzione (1:1): per un rivenditore è il suo
+    # distributore, per un privato il suo rivenditore o distributore. È il link
+    # canonico "appartiene a". I distributori hanno parent_id NULL (sotto l'admin).
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    # DEPRECATO: sostituito da parent_id (mantenuto per compatibilità, droppato in migration 33).
+    distributor_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     # Dati anagrafici per pagamenti PagoPA (opzionali, salvati al primo acquisto se l'utente sceglie di memorizzarli).
     codice_fiscale = Column(String(16), nullable=True)
     partita_iva = Column(String(11), nullable=True)
@@ -67,7 +86,10 @@ class User(Base):
     user_permissions = relationship("UserPermission", back_populates="user", cascade="all, delete-orphan")
     credit_transactions = relationship("CreditTransaction", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
-    payment_orders = relationship("PaymentOrder", back_populates="user", cascade="all, delete-orphan")
+    # Albero di distribuzione (self-referential su parent_id).
+    parent = relationship(
+        "User", remote_side=[id], foreign_keys=[parent_id], backref="children"
+    )
 
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"
@@ -153,6 +175,26 @@ class RefreshToken(Base):
 
     def __repr__(self):
         return f"<RefreshToken(id={self.id}, user_id={self.user_id}, revoked={self.revoked})>"
+
+
+class EmailToken(Base):
+    """Token monouso per email: verifica registrazione, reset password, invito (set password).
+    Si memorizza solo lo SHA-256 del token grezzo (il raw viene inviato nel link)."""
+    __tablename__ = "email_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(64), nullable=False, index=True)
+    purpose = Column(String(20), nullable=False)  # 'verify' | 'reset' | 'set_password'
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relazioni
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<EmailToken(user_id={self.user_id}, purpose={self.purpose}, used={self.used_at is not None})>"
 
 
 # ============================================================================
@@ -264,7 +306,7 @@ class CreditTransaction(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     amount = Column(Integer, nullable=False)  # positivo=aggiunta, negativo=consumo
     balance_after = Column(Integer, nullable=False)
-    transaction_type = Column(String(50), nullable=False)  # 'purchase', 'consumption', 'admin_adjustment', 'refund'
+    transaction_type = Column(String(50), nullable=False)  # 'consumption', 'admin_adjustment', 'refund', 'transfer'
     description = Column(Text, nullable=True)
     related_job_id = Column(String(50), nullable=True)
     operation_type = Column(String(50), nullable=True)  # 'train', 'generate', 'humanize', 'thesis_chapters', etc.
@@ -287,6 +329,108 @@ class CreditTransaction(Base):
             "related_job_id": self.related_job_id,
             "operation_type": self.operation_type,
             "created_at": self.created_at
+        }
+
+
+class CreditRequest(Base):
+    """
+    Richiesta di crediti: un utente "acquista" scegliendo un pacchetto del listino
+    e la richiesta viene inoltrata al referente (genitore) o all'admin.
+    L'approvazione esegue l'accredito (trasferimento dal referente, o add_credits
+    se l'approvatore è admin).
+    """
+    __tablename__ = "credit_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    requester_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Approvatore specifico (genitore). NULL per le richieste verso l'admin pool.
+    approver_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    approver_is_admin = Column(Boolean, default=False, nullable=False)
+    # Pacchetto richiesto + snapshot (il listino può cambiare/disattivarsi dopo).
+    package_id = Column(Integer, ForeignKey("credit_packages.id", ondelete="SET NULL"), nullable=True)
+    package_name = Column(String(100), nullable=False)
+    package_credits = Column(Integer, nullable=False)
+    package_price_cents = Column(Integer, nullable=False)
+    status = Column(String(20), default='pending', nullable=False)  # pending|approved|rejected|canceled
+    note = Column(Text, nullable=True)
+    resolver_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
+
+    requester = relationship("User", foreign_keys=[requester_id])
+    approver = relationship("User", foreign_keys=[approver_id])
+
+    def __repr__(self):
+        return f"<CreditRequest(id={self.id}, requester={self.requester_id}, status={self.status}, credits={self.package_credits})>"
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "requester_id": str(self.requester_id),
+            "approver_id": str(self.approver_id) if self.approver_id else None,
+            "approver_is_admin": bool(self.approver_is_admin),
+            "package_id": self.package_id,
+            "package_name": self.package_name,
+            "package_credits": self.package_credits,
+            "package_price_cents": self.package_price_cents,
+            "package_price_eur": round(self.package_price_cents / 100.0, 2),
+            "status": self.status,
+            "note": self.note,
+            "resolver_id": str(self.resolver_id) if self.resolver_id else None,
+            "created_at": self.created_at,
+            "resolved_at": self.resolved_at,
+        }
+
+
+class ParentMoveInvitation(Base):
+    """
+    Invito di spostamento di un privato esistente da un genitore all'altro.
+    Il privato accetta/rifiuta via link email (token monouso, hash SHA-256).
+    """
+    __tablename__ = "parent_move_invitations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    privato_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    from_parent_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    to_parent_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)  # l'invitante
+    token_hash = Column(String(64), nullable=False, index=True)
+    status = Column(String(20), default='pending', nullable=False)  # pending|accepted|rejected|expired|canceled
+    expires_at = Column(DateTime, nullable=False)
+    resolved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<ParentMoveInvitation(privato={self.privato_id}, to={self.to_parent_id}, status={self.status})>"
+
+
+class Notification(Base):
+    """Notifica in-app per un utente (centro notifiche / campanella)."""
+    __tablename__ = "notifications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # es. 'request_received' | 'request_approved' | 'request_rejected' | 'credits_assigned'
+    type = Column(String(40), nullable=False)
+    title = Column(String(160), nullable=False)
+    message = Column(Text, nullable=True)
+    link = Column(String(255), nullable=True)   # rotta frontend opzionale (es. /credits/buy)
+    is_read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    read_at = Column(DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"<Notification(user={self.user_id}, type={self.type}, read={self.is_read})>"
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "type": self.type,
+            "title": self.title,
+            "message": self.message,
+            "link": self.link,
+            "is_read": bool(self.is_read),
+            "created_at": self.created_at,
+            "read_at": self.read_at,
         }
 
 
@@ -481,9 +625,36 @@ class Thesis(Base):
     # File allegati
     attachments_path = Column(Text, nullable=True)
 
-    # Flag tariffazione: True se la tesi ha già pagato il flat thesis_total alla creazione
-    # (modello introdotto post-deploy 2026-05). Le tesi pre-deploy hanno False e usano il vecchio pay-per-step.
+    # Flag tariffazione "tutto pagato / gratis": True per admin e per le vecchie
+    # tesi a tariffa flat (hanno già pagato 1000 in un colpo) -> nessun addebito per step.
+    # False per le tesi nuove non-admin: si paga PER STEP (vedi flag sotto).
     credits_charged = Column(Boolean, default=False, nullable=False)
+
+    # Idempotenza dell'addebito per step (quote fisse che sommano a 1000): evita
+    # doppi addebiti su rigenerazioni/retry. Azzerati in caso di rimborso su errore.
+    chapters_charged = Column(Boolean, default=False, nullable=False)
+    sections_charged = Column(Boolean, default=False, nullable=False)
+    content_charged = Column(Boolean, default=False, nullable=False)
+    # Analisi documenti/paper (ingest Knowledge Base): addebitata una sola volta.
+    wiki_charged = Column(Boolean, default=False, nullable=False)
+
+    # LLM Wiki (second-brain per-tesi). Se restrict_to_sources=True la generazione
+    # si attiene SOLO alle fonti caricate (paper + upload). wiki_path e' la cartella
+    # thesis_uploads/{thesis_id}/llm_wiki/ una volta materializzata.
+    restrict_to_sources = Column(Boolean, default=True, nullable=False)
+    wiki_status = Column(pg_thesis_wiki_status, default='none', nullable=False)
+    wiki_path = Column(Text, nullable=True)
+    wiki_lint_report = Column(JSONB, nullable=True)
+    # Progresso granulare dell'ingest in corso (fase, %, messaggio, documenti).
+    wiki_progress = Column(JSONB, nullable=True)
+    wiki_ingested_at = Column(DateTime, nullable=True)
+    wiki_linted_at = Column(DateTime, nullable=True)
+
+    # Custom outline: se True, l'utente ha fornito direttamente l'indice
+    # (capitoli + sezioni). generate_chapters/sections bypassano l'AI e
+    # popolano chapters_structure da custom_outline senza addebito crediti.
+    use_custom_outline = Column(Boolean, default=False, nullable=False)
+    custom_outline = Column(JSONB, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -526,15 +697,76 @@ class Thesis(Base):
             "ai_provider": self.ai_provider or "openai",
             "citation_style": self.citation_style or "footnotes",
             "credits_charged": bool(self.credits_charged),
+            "chapters_charged": bool(self.chapters_charged),
+            "sections_charged": bool(self.sections_charged),
+            "content_charged": bool(self.content_charged),
+            "wiki_charged": bool(self.wiki_charged),
             "chapters_structure": self.chapters_structure,
             "generated_content": self.generated_content,
             "status": self.status,
             "current_phase": self.current_phase,
             "generation_progress": self.generation_progress,
             "total_words_generated": self.total_words_generated,
+            "restrict_to_sources": bool(self.restrict_to_sources) if self.restrict_to_sources is not None else True,
+            "wiki_status": self.wiki_status or "none",
+            "wiki_path": self.wiki_path,
+            "wiki_lint_report": self.wiki_lint_report,
+            "wiki_ingested_at": self.wiki_ingested_at,
+            "wiki_linted_at": self.wiki_linted_at,
+            "use_custom_outline": bool(self.use_custom_outline) if self.use_custom_outline is not None else False,
+            "custom_outline": self.custom_outline,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "completed_at": self.completed_at
+        }
+
+    def to_summary_dict(self) -> dict:
+        """
+        Versione leggera per la LISTA tesi (dashboard): esclude i campi pesanti
+        (generated_content, chapters_structure, custom_outline, wiki_lint_report),
+        che da soli costituiscono la quasi totalità del payload. Usato con il
+        deferimento di quelle colonne nella query per non caricarle nemmeno dal DB.
+        """
+        return {
+            "id": str(self.id),
+            "user_id": str(self.user_id),
+            "session_id": str(self.session_id) if self.session_id else None,
+            "title": self.title,
+            "description": self.description,
+            "key_topics": self.key_topics or [],
+            "writing_style_id": self.writing_style_id,
+            "content_depth_id": self.content_depth_id,
+            "num_chapters": self.num_chapters,
+            "sections_per_chapter": self.sections_per_chapter,
+            "words_per_section": self.words_per_section,
+            "knowledge_level_id": self.knowledge_level_id,
+            "audience_size_id": self.audience_size_id,
+            "industry_id": self.industry_id,
+            "target_audience_id": self.target_audience_id,
+            "ai_provider": self.ai_provider or "openai",
+            "citation_style": self.citation_style or "footnotes",
+            "credits_charged": bool(self.credits_charged),
+            "chapters_charged": bool(self.chapters_charged),
+            "sections_charged": bool(self.sections_charged),
+            "content_charged": bool(self.content_charged),
+            "wiki_charged": bool(self.wiki_charged),
+            "chapters_structure": None,
+            "generated_content": None,
+            "status": self.status,
+            "current_phase": self.current_phase,
+            "generation_progress": self.generation_progress,
+            "total_words_generated": self.total_words_generated,
+            "restrict_to_sources": bool(self.restrict_to_sources) if self.restrict_to_sources is not None else True,
+            "wiki_status": self.wiki_status or "none",
+            "wiki_path": self.wiki_path,
+            "wiki_lint_report": None,
+            "wiki_ingested_at": self.wiki_ingested_at,
+            "wiki_linted_at": self.wiki_linted_at,
+            "use_custom_outline": bool(self.use_custom_outline) if self.use_custom_outline is not None else False,
+            "custom_outline": None,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "completed_at": self.completed_at,
         }
 
 
@@ -704,11 +936,11 @@ class SystemSetting(Base):
 
 
 # ============================================================================
-# PAGOPA / SOLUTIONPA: pacchetti, ordini, audit log
+# PACCHETTI CREDITI (listino, editabile dall'admin)
 # ============================================================================
 
 class CreditPackage(Base):
-    """Pacchetto di crediti acquistabile via PagoPA. Editabile dall'admin."""
+    """Pacchetto di crediti del listino. Editabile dall'admin."""
     __tablename__ = "credit_packages"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -718,6 +950,8 @@ class CreditPackage(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     sort_order = Column(Integer, default=0, nullable=False)
     description = Column(Text, nullable=True)
+    # Sottotipo destinatario: 'distributore' | 'rivenditore' | 'privato'
+    entity_type = Column(String(20), default='privato', nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -734,127 +968,55 @@ class CreditPackage(Base):
             "is_active": bool(self.is_active),
             "sort_order": self.sort_order,
             "description": self.description,
+            "entity_type": self.entity_type,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
 
 
-class PaymentOrder(Base):
-    """Ordine di pagamento PagoPA. Tracciato dalla creazione al completamento (o cancel/expired)."""
-    __tablename__ = "payment_orders"
+# ============================================================================
+# i18n: lingue + traduzioni
+# ============================================================================
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    package_id = Column(Integer, ForeignKey("credit_packages.id", ondelete="SET NULL"), nullable=True)
+class Language(Base):
+    """Lingua disponibile nell'app (gestita dall'admin)."""
+    __tablename__ = "languages"
 
-    # Snapshot del taglio scelto (immutabile dopo creazione ordine)
-    credits = Column(Integer, nullable=False)
-    amount_cents = Column(Integer, nullable=False)
-    causale = Column(String(140), nullable=False)
-
-    # Identificativi PagoPA
-    iuv = Column(String(35), unique=True, nullable=True)
-    context_id = Column(String(35), nullable=True)
-    checkout_url = Column(Text, nullable=True)
-
-    # Snapshot dati pagatore
-    payer_codice_fiscale = Column(String(16), nullable=False)
-    payer_partita_iva = Column(String(11), nullable=True)
-    payer_ragione_sociale = Column(String(255), nullable=True)
-    payer_email = Column(String(255), nullable=True)
-
-    # Stato workflow: PENDING | AWAITING_PAYMENT | PAID | FAILED | CANCELED | EXPIRED | REFUNDED
-    status = Column(String(30), default='PENDING', nullable=False)
-
-    # Notifica esito (push)
-    notify_received_at = Column(DateTime, nullable=True)
-    notify_payload = Column(JSONB, nullable=True)
-    amount_paid_cents = Column(Integer, nullable=True)
-    paid_at = Column(DateTime, nullable=True)
-
-    # Riconciliazione
-    reconciliation_id = Column(String(100), nullable=True)
-    identificativo_flusso = Column(String(100), nullable=True)
-
-    # Audit
+    code = Column(String(10), primary_key=True)              # es. 'it', 'en', 'fr'
+    name = Column(String(100), nullable=False)               # es. 'Inglese'
+    native_name = Column(String(100), nullable=False)        # es. 'English'
+    flag_country_code = Column(String(8), nullable=False)    # codice ISO paese (flag-icons)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_default = Column(Boolean, default=False, nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=False)
-
-    # Tracciamento accredito crediti
-    credits_granted_at = Column(DateTime, nullable=True)
-    credits_transaction_id = Column(UUID(as_uuid=True), ForeignKey("credit_transactions.id", ondelete="SET NULL"), nullable=True)
-
-    # Relazioni
-    user = relationship("User", back_populates="payment_orders")
-    package = relationship("CreditPackage")
-    credits_transaction = relationship("CreditTransaction", foreign_keys=[credits_transaction_id])
-
-    def __repr__(self):
-        return f"<PaymentOrder(id={self.id}, status={self.status}, iuv={self.iuv}, amount={self.amount_cents}c)>"
 
     def to_dict(self) -> dict:
         return {
-            "id": str(self.id),
-            "user_id": str(self.user_id),
-            "package_id": self.package_id,
-            "credits": self.credits,
-            "amount_cents": self.amount_cents,
-            "amount_eur": round(self.amount_cents / 100.0, 2),
-            "causale": self.causale,
-            "iuv": self.iuv,
-            "context_id": self.context_id,
-            "checkout_url": self.checkout_url,
-            "payer_codice_fiscale": self.payer_codice_fiscale,
-            "payer_partita_iva": self.payer_partita_iva,
-            "payer_ragione_sociale": self.payer_ragione_sociale,
-            "payer_email": self.payer_email,
-            "status": self.status,
-            "notify_received_at": self.notify_received_at,
-            "amount_paid_cents": self.amount_paid_cents,
-            "amount_paid_eur": round(self.amount_paid_cents / 100.0, 2) if self.amount_paid_cents else None,
-            "paid_at": self.paid_at,
-            "reconciliation_id": self.reconciliation_id,
-            "identificativo_flusso": self.identificativo_flusso,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-            "expires_at": self.expires_at,
-            "credits_granted_at": self.credits_granted_at,
-            "credits_transaction_id": str(self.credits_transaction_id) if self.credits_transaction_id else None,
+            "code": self.code,
+            "name": self.name,
+            "native_name": self.native_name,
+            "flag_country_code": self.flag_country_code,
+            "is_active": bool(self.is_active),
+            "is_default": bool(self.is_default),
+            "sort_order": self.sort_order,
         }
 
 
-class PagoPAEvent(Base):
-    """Audit log degli eventi PagoPA: push esito, RPT, riconciliazioni."""
-    __tablename__ = "pagopa_events"
+class Translation(Base):
+    """Traduzione di una label per una lingua. key = stringa italiana (chiave naturale)."""
+    __tablename__ = "translations"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    order_id = Column(UUID(as_uuid=True), ForeignKey("payment_orders.id", ondelete="SET NULL"), nullable=True)
-    iuv = Column(String(35), nullable=True)
-
-    # ESITO_PUSH | RECONCILIATION_FILE | RPT_ACTIVATED | POSITION_LOADED | POSITION_CANCELED
-    event_type = Column(String(30), nullable=False)
-    # soap | rest | sftp | manual | system
-    source = Column(String(20), nullable=False)
-
-    payload = Column(JSONB, nullable=False)
-    processed = Column(Boolean, default=False, nullable=False)
-    error = Column(Text, nullable=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    def __repr__(self):
-        return f"<PagoPAEvent(type={self.event_type}, iuv={self.iuv}, source={self.source})>"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    language_code = Column(String(10), ForeignKey("languages.code", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(Text, nullable=False)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self) -> dict:
         return {
-            "id": str(self.id),
-            "order_id": str(self.order_id) if self.order_id else None,
-            "iuv": self.iuv,
-            "event_type": self.event_type,
-            "source": self.source,
-            "payload": self.payload,
-            "processed": bool(self.processed),
-            "error": self.error,
-            "created_at": self.created_at,
+            "language_code": self.language_code,
+            "key": self.key,
+            "value": self.value,
         }

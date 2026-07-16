@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Sparkles, Download, Copy, Check, RefreshCw, AlertTriangle, Shield, FileText, Loader } from 'lucide-react';
+import { ArrowLeft, Sparkles, Download, Copy, Check, RefreshCw, AlertTriangle, Shield, FileText, Loader, GraduationCap } from 'lucide-react';
 import { getSessions, generateContent, pollJobStatus, getResultText, estimateCredits, startCompilatioScan, downloadCompilatioReport } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import CreditConfirmDialog from '../components/CreditConfirmDialog';
@@ -9,6 +10,7 @@ import CreditEstimatePreview from '../components/CreditEstimatePreview';
 import { jsPDF } from 'jspdf';
 
 const Generate = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { isAdmin, credits, refreshUser, hasPermission } = useAuth();
   const [searchParams] = useSearchParams();
@@ -17,6 +19,7 @@ const Generate = () => {
   const [argomento, setArgomento] = useState('');
   const [numeroParole, setNumeroParole] = useState(1000);
   const [destinatario, setDestinatario] = useState('Pubblico Generale');
+  const [profile, setProfile] = useState('academic');
   const [generating, setGenerating] = useState(false);
   const [jobStatus, setJobStatus] = useState(null);
   const [result, setResult] = useState('');
@@ -75,7 +78,7 @@ const Generate = () => {
     setGenerating(true);
 
     try {
-      const response = await generateContent(selectedSession, argomento, numeroParole, destinatario);
+      const response = await generateContent(selectedSession, argomento, numeroParole, destinatario, profile);
       setJobStatus({ ...response, status: 'pending', progress: 0 });
 
       const finalStatus = await pollJobStatus(
@@ -94,9 +97,9 @@ const Generate = () => {
     } catch (error) {
       console.error('Errore nella generazione:', error);
       if (error.response?.status === 402) {
-        alert('Crediti insufficienti per questa operazione.');
+        alert(t('Crediti insufficienti per questa operazione.'));
       } else {
-        alert('Errore nella generazione del contenuto');
+        alert(t('Errore nella generazione del contenuto'));
       }
     } finally {
       setGenerating(false);
@@ -179,11 +182,11 @@ const Generate = () => {
           setCompilatioResult(finalStatus.result);
         }
       } else if (finalStatus.status === 'failed') {
-        setCompilatioError(finalStatus.error || 'Scansione fallita');
+        setCompilatioError(finalStatus.error || t('Scansione fallita'));
       }
     } catch (error) {
       console.error('Errore scansione Compilatio:', error);
-      setCompilatioError(error.response?.data?.detail || 'Errore durante la scansione');
+      setCompilatioError(error.response?.data?.detail || t('Errore durante la scansione'));
     } finally {
       setCompilatioScanning(false);
     }
@@ -195,7 +198,7 @@ const Generate = () => {
         await downloadCompilatioReport(compilatioResult.scan_id);
       } catch (error) {
         console.error('Errore download report:', error);
-        alert('Errore nel download del report');
+        alert(t('Errore nel download del report'));
       }
     }
   };
@@ -212,16 +215,16 @@ const Generate = () => {
         <div className="card max-w-md text-center">
           <Sparkles className="w-16 h-16 text-slate-300 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-slate-900 mb-2">
-            Nessuna sessione addestrata
+            {t('Nessuna sessione addestrata')}
           </h2>
           <p className="text-slate-600 mb-6">
-            Devi prima addestrare una sessione prima di poter generare contenuti
+            {t('Devi prima addestrare una sessione prima di poter generare contenuti')}
           </p>
           <button
             onClick={() => navigate('/train')}
             className="btn btn-primary"
           >
-            Avvia Training
+            {t('Avvia Training')}
           </button>
         </div>
       </div>
@@ -236,23 +239,23 @@ const Generate = () => {
           className="btn btn-secondary gap-2 mb-6"
         >
           <ArrowLeft className="w-4 h-4" />
-          Torna alla Dashboard
+          {t('Torna alla Dashboard')}
         </button>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Form */}
           <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">
-              Genera Contenuto
+              {t('Genera Contenuto')}
             </h1>
             <p className="text-slate-600 mb-6">
-              Crea contenuti basati sullo stile appreso
+              {t('Crea contenuti basati sullo stile appreso')}
             </p>
 
             <form onSubmit={handleSubmit} className="card space-y-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Sessione
+                  {t('Sessione')}
                 </label>
                 <select
                   value={selectedSession}
@@ -270,21 +273,21 @@ const Generate = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Argomento
+                  {t('Argomento')}
                 </label>
                 <input
                   type="text"
                   value={argomento}
                   onChange={(e) => setArgomento(e.target.value)}
                   className="input w-full"
-                  placeholder="es. Intelligenza emotiva"
+                  placeholder={t('es. Intelligenza emotiva')}
                   required
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Numero di parole
+                  {t('Numero di parole')}
                 </label>
                 <input
                   type="number"
@@ -299,15 +302,53 @@ const Generate = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Destinatario
+                  {t('Destinatario')}
                 </label>
                 <input
                   type="text"
                   value={destinatario}
                   onChange={(e) => setDestinatario(e.target.value)}
                   className="input w-full"
-                  placeholder="Pubblico Generale"
+                  placeholder={t('Pubblico Generale')}
                 />
+              </div>
+
+              {/* Profilo anti-AI */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  {t('Profilo anti-AI')}
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProfile('informal')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                      profile === 'informal'
+                        ? 'bg-orange-50 border-orange-400 text-orange-700'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {t('Informale')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProfile('academic')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                      profile === 'academic'
+                        ? 'bg-blue-50 border-blue-400 text-blue-700'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <GraduationCap className="w-4 h-4" />
+                    {t('Accademico')}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  {profile === 'academic'
+                    ? t('Registro formale: rispetta lo stile dell\'autore, nessun colloquialismo.')
+                    : t('Piu aggressivo: introduce colloquialismi e variazioni piu marcate.')}
+                </p>
               </div>
 
               {selectedSession && argomento.trim() && (
@@ -336,12 +377,12 @@ const Generate = () => {
                       <span></span>
                       <span></span>
                     </div>
-                    Generazione in corso...
+                    {t('Generazione in corso...')}
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-5 h-5" />
-                    Genera Contenuto
+                    {t('Genera Contenuto')}
                   </>
                 )}
               </button>
@@ -351,14 +392,14 @@ const Generate = () => {
           {/* Result */}
           <div>
             <h2 className="text-xl font-semibold text-slate-900 mb-4">
-              Risultato
+              {t('Risultato')}
             </h2>
 
             {jobStatus && jobStatus.status !== 'completed' && (
               <div className="card">
                 <div className="text-center py-8">
                   <Sparkles className="w-12 h-12 text-blue-600 animate-pulse mx-auto mb-4" />
-                  <p className="text-slate-600 mb-2">Generazione in corso...</p>
+                  <p className="text-slate-600 mb-2">{t('Generazione in corso...')}</p>
                   {jobStatus.progress > 0 && (
                     <div className="max-w-xs mx-auto">
                       <div className="w-full bg-slate-200 rounded-full h-2 mt-4">
@@ -377,7 +418,7 @@ const Generate = () => {
               <div className="card">
                 <div className="flex justify-between items-center mb-4">
                   <p className="text-sm text-slate-600">
-                    {result.split(' ').length} parole
+                    {t('{{n}} parole', { n: result.split(' ').length })}
                   </p>
                   <div className="flex gap-2">
                     <button
@@ -385,14 +426,14 @@ const Generate = () => {
                       className="btn btn-secondary gap-2 text-sm"
                     >
                       {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      {copied ? 'Copiato!' : 'Copia'}
+                      {copied ? t('Copiato!') : t('Copia')}
                     </button>
                     <button
                       onClick={handleDownload}
                       className="btn btn-primary gap-2 text-sm"
                     >
                       <Download className="w-4 h-4" />
-                      Scarica
+                      {t('Scarica')}
                     </button>
                   </div>
                 </div>
@@ -414,7 +455,7 @@ const Generate = () => {
                     className="w-full btn gap-2 text-sm bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 h-10"
                   >
                     <Shield className="w-4 h-4" />
-                    Scansione Detector AI (AI Detection + Plagio)
+                    {t('Scansione Detector AI (AI Detection + Plagio)')}
                   </button>
                 )}
 
@@ -422,7 +463,7 @@ const Generate = () => {
                   <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
                     <div className="flex items-center gap-3 mb-2">
                       <Loader className="w-5 h-5 text-purple-600 animate-spin" />
-                      <span className="text-purple-700 font-medium text-sm">Scansione Detector AI in corso...</span>
+                      <span className="text-purple-700 font-medium text-sm">{t('Scansione Detector AI in corso...')}</span>
                     </div>
                     <div className="w-full bg-purple-200 rounded-full h-2">
                       <div
@@ -430,7 +471,7 @@ const Generate = () => {
                         style={{ width: `${compilatioProgress}%` }}
                       ></div>
                     </div>
-                    <p className="text-xs text-purple-500 mt-1">L'analisi puo' richiedere alcuni minuti</p>
+                    <p className="text-xs text-purple-500 mt-1">{t("L'analisi puo' richiedere alcuni minuti")}</p>
                   </div>
                 )}
 
@@ -439,7 +480,7 @@ const Generate = () => {
                     <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
                     <span className="text-red-700 text-sm">{compilatioError}</span>
                     <button onClick={handleCompilatioScan} className="ml-auto text-red-600 hover:text-red-800 text-sm underline">
-                      Riprova
+                      {t('Riprova')}
                     </button>
                   </div>
                 )}
@@ -449,7 +490,7 @@ const Generate = () => {
                     <div className="flex items-center justify-between">
                       <h4 className="font-semibold text-slate-800 flex items-center gap-2">
                         <Shield className="w-4 h-4 text-purple-600" />
-                        Risultati Detector AI
+                        {t('Risultati Detector AI')}
                       </h4>
                       {compilatioResult.has_report && (
                         <button
@@ -457,7 +498,7 @@ const Generate = () => {
                           className="btn btn-secondary gap-1 text-xs h-8"
                         >
                           <FileText className="w-3 h-3" />
-                          Report PDF
+                          {t('Report PDF')}
                         </button>
                       )}
                     </div>
@@ -465,19 +506,19 @@ const Generate = () => {
                     <div className="grid grid-cols-2 gap-2">
                       <div className={`rounded-lg p-3 border ${getAIScoreColor(compilatioResult.ai_generated_percent)}`}>
                         <div className="text-2xl font-bold">{compilatioResult.ai_generated_percent?.toFixed(1)}%</div>
-                        <div className="text-xs font-medium opacity-80">AI Generato</div>
+                        <div className="text-xs font-medium opacity-80">{t('AI Generato')}</div>
                       </div>
                       <div className="rounded-lg p-3 border bg-blue-50 border-blue-200 text-blue-600">
                         <div className="text-2xl font-bold">{compilatioResult.similarity_percent?.toFixed(1)}%</div>
-                        <div className="text-xs font-medium opacity-80">Similarita</div>
+                        <div className="text-xs font-medium opacity-80">{t('Similarita')}</div>
                       </div>
                       <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
                         <div className="text-lg font-bold">{compilatioResult.global_score_percent?.toFixed(1)}%</div>
-                        <div className="text-xs font-medium opacity-80">Score Globale</div>
+                        <div className="text-xs font-medium opacity-80">{t('Score Globale')}</div>
                       </div>
                       <div className="rounded-lg p-3 border bg-slate-50 border-slate-200 text-slate-600">
                         <div className="text-lg font-bold">{compilatioResult.exact_percent?.toFixed(1)}%</div>
-                        <div className="text-xs font-medium opacity-80">Match Esatti</div>
+                        <div className="text-xs font-medium opacity-80">{t('Match Esatti')}</div>
                       </div>
                     </div>
                   </div>
@@ -489,7 +530,7 @@ const Generate = () => {
               <div className="card text-center py-12">
                 <Sparkles className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                 <p className="text-slate-600">
-                  Il contenuto generato apparirà qui
+                  {t('Il contenuto generato apparirà qui')}
                 </p>
               </div>
             )}
@@ -502,7 +543,7 @@ const Generate = () => {
         isOpen={showCreditDialog}
         onConfirm={handleConfirmedGeneration}
         onCancel={() => setShowCreditDialog(false)}
-        operationName="Genera Contenuto"
+        operationName={t('Genera Contenuto')}
         estimatedCredits={creditEstimate?.credits_needed || 0}
         breakdown={creditEstimate?.breakdown || {}}
         currentBalance={isAdmin ? -1 : (creditEstimate?.current_balance ?? credits)}

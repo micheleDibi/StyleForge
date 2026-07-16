@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BookOpen, ExternalLink, Quote, Users, Calendar, Sparkles, ChevronDown, ChevronUp, Loader, Database, Check } from 'lucide-react';
 import { summarizePaper as apiSummarizePaper } from '../../services/api';
 import PaperSummary from './PaperSummary';
@@ -28,6 +29,7 @@ const PaperCard = ({
   onSummaryGenerated,
   summarizeFn = apiSummarizePaper,
 }) => {
+  const { t } = useTranslation();
   const [abstractOpen, setAbstractOpen] = useState(false);
   const [summary, setSummary] = useState(initialSummary);
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -43,9 +45,9 @@ const PaperCard = ({
       if (onCreditsChanged) onCreditsChanged();
     } catch (e) {
       if (e.isInsufficientCredits) {
-        setSummaryError(e.creditErrorMessage || 'Crediti insufficienti.');
+        setSummaryError(e.creditErrorMessage || t('Crediti insufficienti.'));
       } else {
-        setSummaryError('Errore nella generazione del riassunto.');
+        setSummaryError(t('Errore nella generazione del riassunto.'));
       }
     } finally {
       setLoadingSummary(false);
@@ -70,7 +72,7 @@ const PaperCard = ({
                   ? 'bg-orange-500 border-orange-500 text-white'
                   : 'bg-white border-slate-300 hover:border-orange-400'
               }`}
-              aria-label={selected ? 'Deseleziona paper' : 'Seleziona paper'}
+              aria-label={selected ? t('Deseleziona paper') : t('Seleziona paper')}
               aria-pressed={selected}
             >
               {selected && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
@@ -111,7 +113,7 @@ const PaperCard = ({
               )}
               {paper.citation_count != null && (
                 <span className="inline-flex items-center gap-1">
-                  <Quote className="w-3 h-3 text-slate-400" />{paper.citation_count.toLocaleString()} citazioni
+                  <Quote className="w-3 h-3 text-slate-400" />{t('{{count}} citazioni', { count: paper.citation_count.toLocaleString() })}
                 </span>
               )}
               {paper.doi && (
@@ -147,7 +149,7 @@ const PaperCard = ({
         {summary && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-orange-50 text-orange-700 border-orange-200">
             <Sparkles className="w-3 h-3" />
-            Riassunto AI pronto
+            {t('Riassunto AI pronto')}
           </span>
         )}
       </div>
@@ -160,7 +162,7 @@ const PaperCard = ({
             className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900"
           >
             {abstractOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            Abstract
+            {t('Abstract')}
           </button>
           {abstractOpen && (
             <p className="mt-2 text-sm text-slate-700 leading-relaxed whitespace-pre-line">
@@ -180,17 +182,17 @@ const PaperCard = ({
           {loadingSummary ? (
             <>
               <Loader className="w-4 h-4 animate-spin" />
-              Riassunto in corso...
+              {t('Riassunto in corso...')}
             </>
           ) : summary ? (
             <>
               <Sparkles className="w-4 h-4" />
-              Rigenera riassunto
+              {t('Rigenera riassunto')}
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              Genera riassunto AI
+              {t('Genera riassunto AI')}
             </>
           )}
         </button>
@@ -203,7 +205,7 @@ const PaperCard = ({
             className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-orange-600"
           >
             <ExternalLink className="w-4 h-4" />
-            Apri paper
+            {t('Apri paper')}
           </a>
         )}
       </div>

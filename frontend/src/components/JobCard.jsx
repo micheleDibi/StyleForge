@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, XCircle, Loader, Clock, Download, Trash2, FileText, Sparkles, Wand2, Pencil, Shield, RefreshCw } from 'lucide-react';
-import { getJobStatus, downloadResult, deleteJob, renameJob, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../services/api';
+import { getJobStatus, downloadResult, downloadDocumentResult, deleteJob, renameJob, startCompilatioScan, downloadCompilatioReport, pollJobStatus } from '../services/api';
 
 const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: initialScanResult, isAdmin = false, onScanComplete }) => {
+  const { t } = useTranslation();
   const [currentJob, setCurrentJob] = useState(job);
   const [polling, setPolling] = useState(false);
   const [estimatedTime, setEstimatedTime] = useState(null);
@@ -42,10 +44,16 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
 
   useEffect(() => { if (editing && editInputRef.current) { editInputRef.current.focus(); editInputRef.current.select(); } }, [editing]);
 
-  const handleDownload = async () => { try { await downloadResult(currentJob.job_id); } catch { alert('Errore nel download'); } };
+  const isDocResult = (currentJob.result || '').trim().toLowerCase().endsWith('.docx');
+  const handleDownload = async () => {
+    try {
+      if (isDocResult) await downloadDocumentResult(currentJob.job_id);
+      else await downloadResult(currentJob.job_id);
+    } catch { alert(t('Errore nel download')); }
+  };
   const handleDelete = async () => {
-    if (confirm('Eliminare questo job?')) {
-      try { await deleteJob(currentJob.job_id); if (onDelete) onDelete(currentJob.job_id); } catch { alert('Errore nell\'eliminazione'); }
+    if (confirm(t('Eliminare questo job?'))) {
+      try { await deleteJob(currentJob.job_id); if (onDelete) onDelete(currentJob.job_id); } catch { alert(t('Errore nell\'eliminazione')); }
     }
   };
 
@@ -72,8 +80,8 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
       if (finalStatus.status === 'completed' && finalStatus.result) {
         try { const parsed = JSON.parse(finalStatus.result); setScanResult(parsed); if (onScanComplete) onScanComplete(currentJob.job_id, parsed); }
         catch { setScanResult(finalStatus.result); }
-      } else if (finalStatus.status === 'failed') setScanError(finalStatus.error || 'Scansione fallita');
-    } catch (error) { setScanError(error.response?.data?.detail || 'Errore scansione'); }
+      } else if (finalStatus.status === 'failed') setScanError(finalStatus.error || t('Scansione fallita'));
+    } catch (error) { setScanError(error.response?.data?.detail || t('Errore scansione')); }
     finally { setScanScanning(false); }
   };
 
@@ -85,17 +93,17 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
   const formatDate = (d) => new Date(d).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const formatTime = (s) => { if (!s || s <= 0) return null; if (s < 60) return `~${s}s`; if (s < 3600) { const m = Math.floor(s/60); return `~${m}m`; } return `~${Math.floor(s/3600)}h`; };
 
-  const getJobTypeName = () => ({ training: 'Training PDF', generation: 'Generazione', humanization: 'Umanizzazione' }[currentJob.job_type] || currentJob.job_type);
+  const getJobTypeName = () => ({ training: t('Training PDF'), generation: t('Generazione'), humanization: t('Umanizzazione') }[currentJob.job_type] || currentJob.job_type);
   const getJobTypeIcon = () => ({ training: FileText, generation: Sparkles, humanization: Wand2 }[currentJob.job_type]);
   const getJobTypeGradient = () => ({ training: 'from-blue-400 to-blue-600', generation: 'from-orange-400 to-orange-600', humanization: 'from-purple-400 to-purple-600' }[currentJob.job_type] || 'from-gray-400 to-gray-500');
   const getStatusBorder = () => ({ completed: 'border-l-green-500', failed: 'border-l-red-500', pending: 'border-l-gray-300', training: 'border-l-orange-500', generating: 'border-l-orange-500' }[currentJob.status] || 'border-l-orange-500');
 
   const statusBadge = {
-    completed: <span className="badge badge-success"><CheckCircle className="w-3 h-3" />Completato</span>,
-    failed: <span className="badge badge-error"><XCircle className="w-3 h-3" />Fallito</span>,
-    pending: <span className="badge badge-neutral"><Clock className="w-3 h-3" />In coda</span>,
-    training: <span className="badge badge-warning"><Loader className="w-3 h-3 animate-spin" />Training</span>,
-    generating: <span className="badge badge-warning"><Loader className="w-3 h-3 animate-spin" />Generazione</span>,
+    completed: <span className="badge badge-success"><CheckCircle className="w-3 h-3" />{t('Completato')}</span>,
+    failed: <span className="badge badge-error"><XCircle className="w-3 h-3" />{t('Fallito')}</span>,
+    pending: <span className="badge badge-neutral"><Clock className="w-3 h-3" />{t('In coda')}</span>,
+    training: <span className="badge badge-warning"><Loader className="w-3 h-3 animate-spin" />{t('Training')}</span>,
+    generating: <span className="badge badge-warning"><Loader className="w-3 h-3 animate-spin" />{t('Generazione')}</span>,
   };
 
   const TypeIcon = getJobTypeIcon();
@@ -136,7 +144,7 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
         <div className="flex items-center gap-2 flex-shrink-0">
           {currentJob.status === 'completed' && (currentJob.job_type !== 'compilatio_scan') && (
             <button onClick={handleDownload} className="btn btn-primary btn-sm">
-              <Download className="w-3 h-3" /> Scarica
+              <Download className="w-3 h-3" /> {t('Scarica')}
             </button>
           )}
           <button onClick={handleDelete} className="btn btn-ghost text-gray-400 hover:text-red-500 hover:bg-red-50">
@@ -151,7 +159,7 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
           <div className="flex items-center justify-between text-xs mb-1.5">
             <span className="text-gray-500 flex items-center gap-1.5">
               {['training','generating'].includes(currentJob.status) && <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse"></span>}
-              {['training','generating'].includes(currentJob.status) ? 'Elaborazione...' : estimatedTime ? `Stimato: ${formatTime(estimatedTime)}` : 'In attesa...'}
+              {['training','generating'].includes(currentJob.status) ? t('Elaborazione...') : estimatedTime ? t('Stimato: {{time}}', { time: formatTime(estimatedTime) }) : t('In attesa...')}
             </span>
             <span className="font-bold text-orange-600">{currentJob.progress || 0}%</span>
           </div>
@@ -173,24 +181,28 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
       {/* Result */}
       {showResult && currentJob.result && currentJob.status === 'completed' && (
         <div className="mt-3 bg-green-50 rounded-xl p-3 border border-green-200">
-          <p className="text-[10px] text-green-700 font-bold uppercase tracking-wide mb-1">Risultato</p>
-          <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{currentJob.result}</p>
+          <p className="text-[10px] text-green-700 font-bold uppercase tracking-wide mb-1">{t('Risultato')}</p>
+          {isDocResult ? (
+            <p className="text-xs text-gray-700">{t('Documento .docx pronto: usa Scarica per ottenerlo col formato originale.')}</p>
+          ) : (
+            <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{currentJob.result}</p>
+          )}
         </div>
       )}
 
       {/* Scan */}
-      {isAdmin && currentJob.status === 'completed' && currentJob.result && ['generation','humanization'].includes(currentJob.job_type) && (
+      {isAdmin && currentJob.status === 'completed' && currentJob.result && !isDocResult && ['generation','humanization'].includes(currentJob.job_type) && (
         <div className="mt-3">
           {!scanResult && !scanScanning && !scanError && (
             <button onClick={handleStartScan} className="btn btn-secondary btn-sm">
-              <Shield className="w-3.5 h-3.5" /> Scansione Detector AI
+              <Shield className="w-3.5 h-3.5" /> {t('Scansione Detector AI')}
             </button>
           )}
           {scanScanning && (
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
               <div className="flex items-center gap-2 mb-1.5">
                 <Loader className="w-3.5 h-3.5 text-purple-600 animate-spin" />
-                <span className="text-purple-700 text-xs font-medium">Scansione...</span>
+                <span className="text-purple-700 text-xs font-medium">{t('Scansione...')}</span>
               </div>
               <div className="progress-bar">
                 <div className="progress-bar-fill" style={{ width: `${scanProgress}%` }}></div>
@@ -201,15 +213,15 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 text-xs">
               <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
               <span className="text-red-700">{scanError}</span>
-              <button onClick={handleStartScan} className="ml-auto text-red-600 hover:text-red-800 font-bold">Riprova</button>
+              <button onClick={handleStartScan} className="ml-auto text-red-600 hover:text-red-800 font-bold">{t('Riprova')}</button>
             </div>
           )}
           {scanResult && (
             <div className="bg-white rounded-xl p-4 border border-gray-100">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> Detector AI</span>
+                <span className="text-xs font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> {t('Detector AI')}</span>
                 {scanResult.has_report && (
-                  <button onClick={handleDownloadScanReport} className="btn btn-ghost btn-sm text-purple-600"><Download className="w-3 h-3" /> Report</button>
+                  <button onClick={handleDownloadScanReport} className="btn btn-ghost btn-sm text-purple-600"><Download className="w-3 h-3" /> {t('Report')}</button>
                 )}
               </div>
               <div className="grid grid-cols-4 gap-2">
@@ -219,15 +231,15 @@ const JobCard = ({ job, onUpdate, onDelete, showResult = false, scanResult: init
                 </div>
                 <div className="rounded-xl p-2.5 border bg-blue-50 border-blue-200 text-blue-700 text-center">
                   <div className="text-sm font-bold">{scanResult.similarity_percent?.toFixed(1)}%</div>
-                  <div className="text-[9px] font-medium opacity-70 uppercase">Simil.</div>
+                  <div className="text-[9px] font-medium opacity-70 uppercase">{t('Simil.')}</div>
                 </div>
                 <div className="rounded-xl p-2.5 border bg-gray-50 border-gray-200 text-gray-700 text-center">
                   <div className="text-sm font-bold">{scanResult.global_score_percent?.toFixed(1)}%</div>
-                  <div className="text-[9px] font-medium opacity-70 uppercase">Globale</div>
+                  <div className="text-[9px] font-medium opacity-70 uppercase">{t('Globale')}</div>
                 </div>
                 <div className="rounded-xl p-2.5 border bg-gray-50 border-gray-200 text-gray-700 text-center">
                   <div className="text-sm font-bold">{scanResult.exact_percent?.toFixed(1)}%</div>
-                  <div className="text-[9px] font-medium opacity-70 uppercase">Esatti</div>
+                  <div className="text-[9px] font-medium opacity-70 uppercase">{t('Esatti')}</div>
                 </div>
               </div>
             </div>

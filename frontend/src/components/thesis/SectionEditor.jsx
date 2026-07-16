@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { GripVertical, Plus, Trash2, Edit3, Check, X, Sparkles, Loader, ChevronDown, ChevronRight, Brain, FileText, ListTree, Download } from 'lucide-react';
 import exportThesisStructureToPdf from '../../utils/exportThesisStructure';
 
 const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenerating, thesisTitle = '', thesisDescription = '' }) => {
+  const { t } = useTranslation();
   // Assicurati che chapters sia sempre un array
   const safeChapters = Array.isArray(chapters) ? chapters : [];
 
@@ -32,8 +34,8 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
 
       let currentStep = 0;
       const messages = [
-        'Analisi della struttura del capitolo...',
-        'Definizione delle sezioni...',
+        t('Analisi della struttura del capitolo...'),
+        t('Definizione delle sezioni...'),
       ];
 
       const updateProgress = () => {
@@ -43,7 +45,7 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
 
         setCurrentChapterGen(Math.min(chapterNum, numChapters));
         setGenerationStep(currentStep);
-        setGenerationMessage(messages[stepInChapter] || 'Elaborazione...');
+        setGenerationMessage(messages[stepInChapter] || t('Elaborazione...'));
       };
 
       updateProgress();
@@ -123,7 +125,7 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
         const sections = ch.sections || [];
         const newSection = {
           index: sections.length + 1,
-          title: `Sezione ${sections.length + 1}`,
+          title: t('Sezione {{n}}', { n: sections.length + 1 }),
           key_points: []
         };
         return { ...ch, sections: [...sections, newSection] };
@@ -156,9 +158,9 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Generazione Sezioni</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Generazione Sezioni')}</h2>
           <p className="text-slate-600">
-            Stiamo generando le sezioni per ogni capitolo della tua tesi.
+            {t('Stiamo generando le sezioni per ogni capitolo della tua tesi.')}
           </p>
         </div>
 
@@ -169,13 +171,13 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
               <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
             </div>
             <div className="text-center">
-              <h3 className="text-lg font-semibold text-slate-800 mb-1">Generazione in corso...</h3>
+              <h3 className="text-lg font-semibold text-slate-800 mb-1">{t('Generazione in corso...')}</h3>
               <p className="text-sm text-slate-500">
-                {generationMessage || 'Elaborazione delle sezioni'}
+                {generationMessage || t('Elaborazione delle sezioni')}
               </p>
               {currentChapterGen > 0 && (
                 <p className="text-xs text-slate-400 mt-2">
-                  Capitolo {currentChapterGen} di {safeChapters.length || '...'}
+                  {t('Capitolo {{current}} di {{total}}', { current: currentChapterGen, total: safeChapters.length || '...' })}
                 </p>
               )}
             </div>
@@ -201,9 +203,9 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Struttura Sezioni</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Struttura Sezioni')}</h2>
           <p className="text-slate-600">
-            Rivedi e modifica le sezioni di ogni capitolo. Puoi aggiungere punti chiave per guidare la generazione.
+            {t('Rivedi e modifica le sezioni di ogni capitolo. Puoi aggiungere punti chiave per guidare la generazione.')}
           </p>
         </div>
         <button
@@ -211,10 +213,10 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
           onClick={handleExportPdf}
           disabled={safeChapters.length === 0}
           className="flex-shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Esporta la struttura corrente di capitoli e sezioni in PDF"
+          title={t('Esporta la struttura corrente di capitoli e sezioni in PDF')}
         >
           <Download className="w-4 h-4" />
-          Esporta PDF
+          {t('Esporta PDF')}
         </button>
       </div>
 
@@ -224,7 +226,7 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
           <div className="flex items-center gap-2 text-green-700">
             <Check className="w-5 h-5" />
             <span className="font-medium">
-              {totalSections} sezioni generate in {safeChapters.length} capitoli
+              {t('{{sections}} sezioni generate in {{chapters}} capitoli', { sections: totalSections, chapters: safeChapters.length })}
             </span>
           </div>
         </div>
@@ -234,7 +236,7 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
         {safeChapters.length === 0 ? (
           <div className="card text-center py-8 text-slate-500">
             <FileText className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-            <p>Nessun capitolo disponibile.</p>
+            <p>{t('Nessun capitolo disponibile.')}</p>
           </div>
         ) : (
           safeChapters.map((chapter) => (
@@ -249,7 +251,7 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                 </div>
                 <div className="flex-1 text-left">
                   <h3 className="font-semibold text-slate-900">{chapter.chapter_title}</h3>
-                  <p className="text-sm text-slate-500">{(chapter.sections || []).length} sezioni</p>
+                  <p className="text-sm text-slate-500">{t('{{count}} sezioni', { count: (chapter.sections || []).length })}</p>
                 </div>
                 {expandedChapters[chapter.chapter_index] ? (
                   <ChevronDown className="w-5 h-5 text-slate-400" />
@@ -281,14 +283,14 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
                               className="input w-full"
-                              placeholder="Titolo della sezione"
+                              placeholder={t('Titolo della sezione')}
                               autoFocus
                             />
 
                             {/* Key Points */}
                             <div className="space-y-2">
                               <label className="text-sm font-medium text-slate-700">
-                                Punti chiave (opzionali)
+                                {t('Punti chiave (opzionali)')}
                               </label>
                               {editKeyPoints.map((kp, i) => (
                                 <div key={i} className="flex gap-2">
@@ -297,7 +299,7 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                                     value={kp}
                                     onChange={(e) => handleKeyPointChange(i, e.target.value)}
                                     className="input flex-1"
-                                    placeholder={`Punto chiave ${i + 1}`}
+                                    placeholder={t('Punto chiave {{n}}', { n: i + 1 })}
                                   />
                                   <button
                                     onClick={() => handleRemoveKeyPoint(i)}
@@ -311,7 +313,7 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                                 onClick={handleAddKeyPoint}
                                 className="text-sm text-orange-600 hover:text-orange-700"
                               >
-                                + Aggiungi punto chiave
+                                {t('+ Aggiungi punto chiave')}
                               </button>
                             </div>
 
@@ -321,14 +323,14 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                                 className="btn-primary text-sm py-1.5 px-3"
                               >
                                 <Check className="w-4 h-4 mr-1" />
-                                Salva
+                                {t('Salva')}
                               </button>
                               <button
                                 onClick={handleCancel}
                                 className="btn-secondary text-sm py-1.5 px-3"
                               >
                                 <X className="w-4 h-4 mr-1" />
-                                Annulla
+                                {t('Annulla')}
                               </button>
                             </div>
                           </div>
@@ -352,14 +354,14 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                           <button
                             onClick={() => handleEdit(chapter.chapter_index, sectionIndex)}
                             className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
-                            title="Modifica"
+                            title={t('Modifica')}
                           >
                             <Edit3 className="w-4 h-4 text-slate-600" />
                           </button>
                           <button
                             onClick={() => handleDeleteSection(chapter.chapter_index, sectionIndex)}
                             className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Elimina"
+                            title={t('Elimina')}
                             disabled={(chapter.sections || []).length <= 1}
                           >
                             <Trash2 className="w-4 h-4 text-red-500" />
@@ -375,7 +377,7 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                     className="w-full p-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-orange-400 hover:text-orange-600 transition-colors flex items-center justify-center gap-2 text-sm"
                   >
                     <Plus className="w-4 h-4" />
-                    Aggiungi Sezione
+                    {t('Aggiungi Sezione')}
                   </button>
                 </div>
               )}
@@ -394,12 +396,12 @@ const SectionEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
           {isLoading ? (
             <>
               <Loader className="w-5 h-5 animate-spin" />
-              Salvataggio...
+              {t('Salvataggio...')}
             </>
           ) : (
             <>
               <Check className="w-5 h-5" />
-              Conferma Sezioni e Genera Contenuto
+              {t('Conferma Sezioni e Genera Contenuto')}
             </>
           )}
         </button>

@@ -5,19 +5,26 @@ Image-to-Video generation using MiniMax API.
 """
 
 import json
+import logging
+import re
 from typing import Optional
 
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, Query
-from fastapi.responses import Response, StreamingResponse
-from jose import JWTError, jwt
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi.responses import Response
 
-from auth import get_current_admin_user, SECRET_KEY, ALGORITHM
+import ssrf_guard
+from auth import get_current_admin_user
 from db_models import User
 from minimax_service import minimax_service
 import config
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/video", tags=["video"])
+
+# I file_id di MiniMax sono identificatori opachi: qui basta impedire che una
+# stringa arbitraria finisca nella query verso l'API.
+_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 ALLOWED_EXTENSIONS = config.VIDEO_ALLOWED_EXTENSIONS
 MAX_UPLOAD_SIZE = config.VIDEO_MAX_UPLOAD_SIZE
@@ -134,73 +141,60 @@ async def get_tasks_status(
 
 @router.get("/proxy")
 async def proxy_video(
-    url: str = Query(..., description="MiniMax video URL"),
-    token: str = Query(..., description="JWT token for auth"),
-    request: Request = None,
+    file_id: str = Query(..., description="MiniMax file id restituito da /status"),
+    current_user: User = Depends(get_current_admin_user),
 ):
     """
-    Stream video from MiniMax URL to avoid CORS issues.
-    Uses JWT token as query param since <video src> can't send headers.
-    Supports HTTP Range requests for Safari compatibility.
+    Scarica il video da MiniMax ed evita al frontend il problema CORS.
+
+    Accetta un `file_id`, MAI un URL: l'URL lo conosce gia' il server e glielo
+    faceva rimandare indietro dal browser, che non ci aggiungeva nulla. Il
+    risultato era una SSRF full-read (il body veniva restituito verbatim, quindi
+    bastava puntare ai metadata cloud), per giunta aperta a qualsiasi utente
+    autenticato: questa route faceva un jwt.decode a mano, saltando il lookup
+    sul DB, il check is_active e quello di admin che le altre tre hanno.
+
+    Il token non e' piu' un parametro di query (finiva in access log, Referer e
+    cronologia): il frontend chiama con Authorization e mostra il video da blob.
     """
-    # Verify JWT token
+    if not _FILE_ID_RE.match(file_id):
+        raise HTTPException(status_code=400, detail="file_id non valido")
+
+    if not config.MINIMAX_API_KEY:
+        raise HTTPException(status_code=500, detail="MINIMAX_API_KEY non configurata")
+
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        token_type = payload.get("type")
-        if not user_id or token_type != "access":
-            raise HTTPException(status_code=401, detail="Token non valido")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Token non valido o scaduto")
+        url = await minimax_service.retrieve_file_url(file_id)
+    except Exception as e:
+        logger.warning("Risoluzione file_id %s fallita: %s", file_id, e)
+        raise HTTPException(status_code=502, detail="Video non disponibile") from e
 
-    # Download video from MiniMax
+    # L'URL viene da MiniMax, non dall'utente: la guard e' difesa in profondita'
+    # (se un giorno quella risposta fosse manipolata, non diventa una SSRF).
     try:
-        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            video_data = resp.content
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Errore download video: {e}")
-
-    total_size = len(video_data)
-    range_header = request.headers.get("range") if request else None
-
-    if range_header:
-        # Parse Range header (e.g. "bytes=0-1023")
-        range_spec = range_header.strip().lower()
-        if not range_spec.startswith("bytes="):
-            raise HTTPException(status_code=416, detail="Invalid range")
-        byte_range = range_spec[6:]
-        parts = byte_range.split("-")
-        start = int(parts[0]) if parts[0] else 0
-        end = int(parts[1]) if parts[1] else total_size - 1
-        end = min(end, total_size - 1)
-
-        if start > end or start >= total_size:
-            raise HTTPException(status_code=416, detail="Range not satisfiable")
-
-        content_length = end - start + 1
-        return Response(
-            content=video_data[start:end + 1],
-            status_code=206,
-            media_type="video/mp4",
-            headers={
-                "Content-Range": f"bytes {start}-{end}/{total_size}",
-                "Content-Length": str(content_length),
-                "Accept-Ranges": "bytes",
-                "Content-Disposition": "inline",
-                "Cache-Control": "public, max-age=3600",
-            },
+        resp = await ssrf_guard.safe_get(
+            url,
+            max_bytes=config.VIDEO_MAX_PROXY_BYTES,
+            deadline_s=config.VIDEO_PROXY_TIMEOUT,
         )
+    except ssrf_guard.SsrfBlocked as e:
+        logger.error("Destinazione video bloccata dalla guard: %s", e)
+        raise HTTPException(status_code=502, detail="Destinazione video non consentita") from e
+    except ssrf_guard.GuardError as e:
+        logger.warning("Download video abortito: %s", e)
+        raise HTTPException(status_code=502, detail="Errore download video") from e
 
-    # Full response (no Range header)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Errore download video: {resp.status_code}")
+
     return Response(
-        content=video_data,
+        content=resp.content,
         media_type="video/mp4",
         headers={
-            "Content-Length": str(total_size),
-            "Accept-Ranges": "bytes",
+            "Content-Length": str(len(resp.content)),
             "Content-Disposition": "inline",
-            "Cache-Control": "public, max-age=3600",
+            # Era "public, max-age=3600" su una risposta autenticata: proxy e CDN
+            # potevano conservarla e riservirla a chiunque avesse l'URL.
+            "Cache-Control": "private, no-store",
         },
     )

@@ -1,26 +1,30 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Users, Shield, BarChart3, Search, RefreshCw,
+  ArrowLeft, Users, Shield, Tag, Search, RefreshCw,
   ChevronDown, ChevronUp, Edit3, Save, X, Plus, Minus,
   Coins, CheckCircle2, AlertCircle, Clock, User as UserIcon,
-  Sparkles, Settings, Eye, EyeOff, UserPlus, RotateCcw,
+  Settings, UserPlus, RotateCcw,
   AlertTriangle, FileText, HelpCircle, Copy, Trash2, Key, Check, Loader2, Upload, Image,
-  CreditCard
+  Mail, Calendar, Power, Globe, BookOpen, Brain, Wand2, Inbox
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   getAdminUsers, updateAdminUser, updateUserRole,
   updateUserPermissions, adjustUserCredits, getUserTransactions,
-  getAdminRoles, updateRolePermissions, getAdminStats,
-  adminCreateUser, getAdminCreditCosts, updateAdminCreditCosts,
-  resetAdminCreditCosts, getAdminEurPerCredit, updateAdminEurPerCredit,
+  getAdminRoles, updateRolePermissions,
+  adminCreateUser, adminResendInvite, getAdminCreditCosts, updateAdminCreditCosts,
+  resetAdminCreditCosts,
   getAdminTemplates, updateAdminTemplates,
   deleteAdminTemplate, uploadTemplateBackground, deleteTemplateBackground,
-  createApiKey, getApiKeys, revokeApiKey
+  createApiKey, getApiKeys, revokeApiKey,
+  getAdminCreditRequests, getAdminCreditRequestsHistory, adminApproveCreditRequest, adminRejectCreditRequest
 } from '../services/api';
 import Logo from '../components/Logo';
-import AdminPaymentsSection from '../components/admin/AdminPaymentsSection';
+import AdminLanguagesSection from '../components/admin/AdminLanguagesSection';
+import AdminListiniSection from '../components/admin/AdminListiniSection';
+import RequestsInbox from '../components/RequestsInbox';
 
 const PERMISSION_LABELS = {
   train: 'Addestra Modello',
@@ -34,20 +38,43 @@ const PERMISSION_LABELS = {
 
 const ALL_PERMISSIONS = ['train', 'generate', 'humanize', 'thesis', 'manage_templates', 'compilatio_scan', 'compilatio_scan_thesis'];
 
-// Labels per le operazioni dei costi crediti
+const ENTITY_TYPE_LABELS = {
+  distributore: 'Distributore',
+  rivenditore: 'Rivenditore',
+  privato: 'Privato',
+};
+
+// Aree dei costi crediti (per raggruppare le operazioni nella pagina impostazioni).
+const COST_GROUPS = [
+  { key: 'thesis', label: 'Tesi', icon: BookOpen, hint: 'Costo addebitato a ogni step del wizard tesi.' },
+  { key: 'wiki', label: 'Knowledge Base', icon: Brain, hint: 'Analisi dei documenti caricati e dei paper selezionati.' },
+  { key: 'research', label: 'Ricerca & Paper', icon: Search, hint: 'Ricerca e riassunto dei paper accademici nel wizard.' },
+  { key: 'tools', label: 'Altri strumenti', icon: Wand2, hint: 'Operazioni fuori dal flusso tesi.' },
+];
+
+// Operazioni con costo in crediti (niente emoji: icone per gruppo, layout pulito).
 const COST_OPERATION_LABELS = {
-  train: { label: 'Training', icon: '🎓', fields: { base: 'Costo base', per_page: 'Per pagina PDF' } },
-  generate: { label: 'Generazione Contenuto', icon: '✍️', fields: { base: 'Costo base', per_1000_words: 'Per 1000 parole' } },
-  humanize: { label: 'Umanizzazione', icon: '🤖', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
-  thesis_total: { label: 'Tesi - Tariffa flat per ente', icon: '🎯', description: 'Addebito unico alla creazione di una nuova tesi, in base al tipo di ente dell\'utente. Sostituisce i costi per step (capitoli/sezioni/contenuto) per le tesi nuove.', fields: { private: 'Ente privato', training: 'Ente di formazione' } },
-  thesis_chapters: { label: 'Tesi - Capitoli (legacy)', icon: '📚', fields: { base: 'Costo base', per_1000_attachment_chars: 'Per 1000 caratteri allegati' } },
-  thesis_sections: { label: 'Tesi - Sezioni (legacy)', icon: '📄', fields: { base: 'Costo base' } },
-  thesis_content: { label: 'Tesi - Contenuto (legacy)', icon: '📝', fields: { base: 'Costo base', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
-  compilatio_scan: { label: 'Detector AI - Scansione (manuale/generate/humanize)', icon: '🔍', description: 'Scansione AI/plagio. Costo variabile in base alla lunghezza del testo.', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
-  compilatio_scan_thesis: { label: 'Detector AI - Scansione tesi', icon: '🎓', description: 'Tariffa flat per la scansione AI/plagio dentro il wizard tesi. Indipendente dalla lunghezza del documento.', fields: { base: 'Costo base (flat)' } }
+  // Tesi
+  thesis_chapters: { group: 'thesis', label: 'Capitoli (Step 1)', description: 'Quota fissa + scaling sui caratteri degli allegati.', fields: { base: 'Quota fissa', per_1000_attachment_chars: 'Per 1000 caratteri allegati' } },
+  thesis_sections: { group: 'thesis', label: 'Sezioni (Step 2)', description: 'Quota fissa + scaling per capitolo.', fields: { base: 'Quota fissa', per_chapter: 'Per capitolo' } },
+  thesis_content: { group: 'thesis', label: 'Contenuto (Step 3)', description: 'Quota fissa + scaling per capitolo, sezione e parole.', fields: { base: 'Quota fissa', per_chapter: 'Per capitolo', per_section: 'Per sezione', per_1000_words_target: 'Per 1000 parole target' } },
+  // Knowledge Base
+  wiki_ingest: { group: 'wiki', label: 'Analisi documenti e paper', description: 'Quota fissa + per fonte analizzata. Copre ingest, controllo qualità e auto-fix.', fields: { base: 'Quota fissa', per_source: 'Per fonte' } },
+  wiki_lint: { group: 'wiki', label: 'Ricontrollo qualità', description: 'Rilancio del solo controllo qualità del wiki.', fields: { base: 'Costo base' } },
+  // Ricerca & Paper
+  research_search: { group: 'research', label: 'Ricerca paper', description: 'Costo base + per fonte interrogata.', fields: { base: 'Costo base', per_source: 'Per fonte' } },
+  research_summary: { group: 'research', label: 'Riassunto paper', description: 'Riassunto AI di un singolo paper.', fields: { base: 'Costo base' } },
+  paper_keyword_suggest: { group: 'research', label: 'Suggerimento keyword', description: 'Estrazione termini di ricerca dai documenti caricati.', fields: { base: 'Costo base', per_attachment: 'Per documento' } },
+  // Altri strumenti
+  train: { group: 'tools', label: 'Addestramento stile', description: 'Addestramento del modello sui PDF caricati.', fields: { base: 'Costo base', per_page: 'Per pagina PDF' } },
+  generate: { group: 'tools', label: 'Generazione contenuto', description: 'Generazione di testo con lo stile addestrato.', fields: { base: 'Costo base', per_1000_words: 'Per 1000 parole' } },
+  humanize: { group: 'tools', label: 'Umanizzazione', description: 'Riscrittura anti-AI del testo.', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
+  compilatio_scan: { group: 'tools', label: 'Detector AI - Scansione', description: 'Scansione AI/plagio. Costo variabile sulla lunghezza del testo.', fields: { base: 'Costo base', per_1000_chars: 'Per 1000 caratteri' } },
+  compilatio_scan_thesis: { group: 'tools', label: 'Detector AI - Scansione tesi', description: 'Tariffa fissa per la scansione AI/plagio dentro il wizard tesi.', fields: { base: 'Costo base (flat)' } },
 };
 
 const Admin = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('users');
@@ -62,9 +89,6 @@ const Admin = () => {
   // Roles state
   const [roles, setRoles] = useState([]);
 
-  // Stats state
-  const [stats, setStats] = useState(null);
-
   // Credit adjustment state
   const [creditAmount, setCreditAmount] = useState('');
   const [creditDescription, setCreditDescription] = useState('');
@@ -77,10 +101,11 @@ const Admin = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [resendingUser, setResendingUser] = useState(null);
   const [newUser, setNewUser] = useState({
-    email: '', username: '', password: '', full_name: '',
-    role_id: '', credits: 0, is_active: true
+    email: '', username: '', full_name: '',
+    role_id: '', credits: 0, is_active: true,
+    entity_type: 'privato', parent_id: ''
   });
 
   // Settings state
@@ -91,8 +116,10 @@ const Admin = () => {
   const [costsError, setCostsError] = useState('');
   const [costsSuccess, setCostsSuccess] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [eurPerCredit, setEurPerCredit] = useState(0.10);
-  const [eurPerCreditSaved, setEurPerCreditSaved] = useState(0.10);
+  // Elenchi per il selettore del referente (genitore nell'albero):
+  // i rivenditori scelgono tra i distributori; i privati tra rivenditori + distributori.
+  const [distributori, setDistributori] = useState([]);
+  const [rivenditori, setRivenditori] = useState([]);
 
   // Template state
   const [templates, setTemplates] = useState([]);
@@ -127,28 +154,36 @@ const Admin = () => {
     }
   }, []);
 
+  // Elenchi per i selettori del referente. Vanno ricaricati ogni volta che un
+  // utente viene promosso/declassato (cambia chi è selezionabile come genitore).
+  const loadParentOptions = async () => {
+    try {
+      const [d, r] = await Promise.all([
+        getAdminUsers(null, null, null, 'distributore'),
+        getAdminUsers(null, null, null, 'rivenditore'),
+      ]);
+      setDistributori(d.users || []);
+      setRivenditori(r.users || []);
+    } catch {
+      /* ignora: il selettore mostrerà solo "— nessuno —" */
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
       if (activeTab === 'users') {
         const data = await getAdminUsers(searchTerm || null);
         setUsers(data.users);
+        loadParentOptions();
       } else if (activeTab === 'roles') {
         const data = await getAdminRoles();
         setRoles(data.roles);
-      } else if (activeTab === 'stats') {
-        const data = await getAdminStats();
-        setStats(data);
       } else if (activeTab === 'settings') {
-        const [costsData, eurData] = await Promise.all([
-          getAdminCreditCosts(),
-          getAdminEurPerCredit().catch(() => ({ eur_per_credit: 0.10 }))
-        ]);
+        const costsData = await getAdminCreditCosts();
         setCreditCosts(costsData.costs);
         setEditedCosts(JSON.parse(JSON.stringify(costsData.costs)));
         setIsDefaultCosts(costsData.is_default);
-        setEurPerCredit(eurData.eur_per_credit);
-        setEurPerCreditSaved(eurData.eur_per_credit);
       } else if (activeTab === 'templates') {
         const data = await getAdminTemplates();
         setTemplates(data.templates || []);
@@ -196,11 +231,44 @@ const Admin = () => {
   };
 
   const handleEntityTypeChange = async (userId, entityType) => {
+    // Aggiornamento ottimistico: il campo "Distributore di riferimento" compare
+    // subito quando si sceglie "rivenditore", senza attendere il round-trip.
+    setUsers(prev => prev.map(u => u.id === userId
+      ? { ...u, entity_type: entityType, parent_id: entityType === 'distributore' ? null : u.parent_id }
+      : u));
     try {
       const updated = await updateAdminUser(userId, { entity_type: entityType });
-      setUsers(users.map(u => u.id === userId ? updated : u));
+      setUsers(prev => prev.map(u => u.id === userId ? updated : u));
+      // Promuovere/declassare un distributore cambia l'elenco selezionabile.
+      loadParentOptions();
     } catch (error) {
       console.error('Errore cambio tipo ente:', error);
+      // Rollback dallo stato server in caso di errore.
+      const data = await getAdminUsers(searchTerm || null).catch(() => null);
+      if (data) setUsers(data.users);
+      loadParentOptions();
+    }
+  };
+
+  const handleResendInvite = async (userId) => {
+    setResendingUser(userId);
+    try {
+      await adminResendInvite(userId);
+    } catch (error) {
+      console.error('Errore reinvio invito:', error);
+    } finally {
+      setResendingUser(null);
+    }
+  };
+
+  const handleParentChange = async (userId, parentId) => {
+    try {
+      // '' = azzera il referente
+      const updated = await updateAdminUser(userId, { parent_id: parentId });
+      setUsers(prev => prev.map(u => u.id === userId ? updated : u));
+    } catch (error) {
+      console.error('Errore assegnazione referente:', error);
+      alert(error?.response?.data?.detail || 'Errore assegnazione referente');
     }
   };
 
@@ -256,8 +324,8 @@ const Admin = () => {
 
   const handleCreateUser = async () => {
     setCreateError('');
-    if (!newUser.email || !newUser.username || !newUser.password) {
-      setCreateError('Email, username e password sono obbligatori.');
+    if (!newUser.email || !newUser.username) {
+      setCreateError(t('Email e username sono obbligatori.'));
       return;
     }
 
@@ -271,12 +339,13 @@ const Admin = () => {
       await adminCreateUser(userData);
 
       // Reset form e aggiorna lista
-      setNewUser({ email: '', username: '', password: '', full_name: '', role_id: '', credits: 0, is_active: true });
+      setNewUser({ email: '', username: '', full_name: '', role_id: '', credits: 0, is_active: true, entity_type: 'privato', parent_id: '' });
       setShowCreateForm(false);
+      loadParentOptions();
       const data = await getAdminUsers(searchTerm || null);
       setUsers(data.users);
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Errore durante la creazione dell\'utente.';
+      const detail = error.response?.data?.detail || t('Errore durante la creazione dell\'utente.');
       setCreateError(detail);
     } finally {
       setCreateLoading(false);
@@ -305,10 +374,10 @@ const Admin = () => {
       setCreditCosts(data.costs);
       setEditedCosts(JSON.parse(JSON.stringify(data.costs)));
       setIsDefaultCosts(data.is_default);
-      setCostsSuccess('Costi aggiornati con successo!');
+      setCostsSuccess(t('Costi aggiornati con successo!'));
       setTimeout(() => setCostsSuccess(''), 3000);
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Errore nel salvataggio dei costi.';
+      const detail = error.response?.data?.detail || t('Errore nel salvataggio dei costi.');
       setCostsError(detail);
     } finally {
       setCostsSaving(false);
@@ -325,10 +394,10 @@ const Admin = () => {
       setEditedCosts(JSON.parse(JSON.stringify(data.costs)));
       setIsDefaultCosts(data.is_default);
       setShowResetConfirm(false);
-      setCostsSuccess('Costi ripristinati ai valori default!');
+      setCostsSuccess(t('Costi ripristinati ai valori default!'));
       setTimeout(() => setCostsSuccess(''), 3000);
     } catch (error) {
-      setCostsError('Errore nel ripristino dei costi.');
+      setCostsError(t('Errore nel ripristino dei costi.'));
     } finally {
       setCostsSaving(false);
     }
@@ -377,10 +446,10 @@ const Admin = () => {
       setTemplates(data.templates || []);
       setEditingTemplate(null);
       setEditedTemplate(null);
-      setTemplateSuccess('Template salvato con successo!');
+      setTemplateSuccess(t('Template salvato con successo!'));
       setTimeout(() => setTemplateSuccess(''), 3000);
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Errore nel salvataggio del template.';
+      const detail = error.response?.data?.detail || t('Errore nel salvataggio del template.');
       setTemplateError(detail);
     } finally {
       setTemplateSaving(false);
@@ -396,17 +465,17 @@ const Admin = () => {
       const newTemplate = {
         ...JSON.parse(JSON.stringify(defaultTpl)),
         id: `tpl-${Date.now().toString(36)}`,
-        name: `Nuovo Template ${templates.length + 1}`,
+        name: t('Nuovo Template {{n}}', { n: templates.length + 1 }),
         is_default: false
       };
       const updatedTemplates = [...templates, newTemplate];
       const data = await updateAdminTemplates(updatedTemplates);
       setTemplates(data.templates || []);
       handleEditTemplate(newTemplate);
-      setTemplateSuccess('Nuovo template creato!');
+      setTemplateSuccess(t('Nuovo template creato!'));
       setTimeout(() => setTemplateSuccess(''), 3000);
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Errore nella creazione del template.';
+      const detail = error.response?.data?.detail || t('Errore nella creazione del template.');
       setTemplateError(detail);
     } finally {
       setTemplateSaving(false);
@@ -424,10 +493,10 @@ const Admin = () => {
         setEditingTemplate(null);
         setEditedTemplate(null);
       }
-      setTemplateSuccess('Template eliminato!');
+      setTemplateSuccess(t('Template eliminato!'));
       setTimeout(() => setTemplateSuccess(''), 3000);
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Errore nell\'eliminazione del template.';
+      const detail = error.response?.data?.detail || t('Errore nell\'eliminazione del template.');
       setTemplateError(detail);
     } finally {
       setTemplateSaving(false);
@@ -444,10 +513,10 @@ const Admin = () => {
       }));
       const data = await updateAdminTemplates(updatedTemplates);
       setTemplates(data.templates || []);
-      setTemplateSuccess('Template impostato come default!');
+      setTemplateSuccess(t('Template impostato come default!'));
       setTimeout(() => setTemplateSuccess(''), 3000);
     } catch (error) {
-      setTemplateError('Errore nell\'impostazione del template default.');
+      setTemplateError(t('Errore nell\'impostazione del template default.'));
     } finally {
       setTemplateSaving(false);
     }
@@ -468,7 +537,7 @@ const Admin = () => {
               type="button"
               onClick={() => setActiveTooltip(activeTooltip === tooltipId ? null : tooltipId)}
               className="text-gray-400 hover:text-orange-500 transition-colors"
-              title="Mostra info"
+              title={t('Mostra info')}
             >
               <HelpCircle className="w-4 h-4" />
             </button>
@@ -501,7 +570,7 @@ const Admin = () => {
                   : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
-              {value ? 'Attivo' : 'Disattivo'}
+              {value ? t('Attivo') : t('Disattivo')}
             </button>
           ) : help.type === 'text' ? (
             <input
@@ -517,7 +586,7 @@ const Admin = () => {
                 <div className="flex items-center gap-2">
                   <img
                     src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/admin/templates/backgrounds/${value}`}
-                    alt="Sfondo"
+                    alt={t('Sfondo')}
                     className="w-16 h-16 object-cover rounded-lg border border-gray-200"
                   />
                   <button
@@ -531,7 +600,7 @@ const Admin = () => {
                       }
                     }}
                     className="text-red-500 hover:text-red-700 p-1"
-                    title="Rimuovi immagine"
+                    title={t('Rimuovi immagine')}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -539,7 +608,7 @@ const Admin = () => {
               ) : (
                 <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors border border-dashed border-gray-300">
                   <Upload className="w-4 h-4 text-gray-500" />
-                  <span className="text-xs text-gray-600">Carica immagine</span>
+                  <span className="text-xs text-gray-600">{t('Carica immagine')}</span>
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
@@ -551,7 +620,7 @@ const Admin = () => {
                         const data = await uploadTemplateBackground(file);
                         handleTemplateFieldChange(section, fieldKey, data.filename);
                       } catch (err) {
-                        const detail = err.response?.data?.detail || 'Errore upload immagine';
+                        const detail = err.response?.data?.detail || t('Errore upload immagine');
                         setTemplateError(detail);
                       }
                       e.target.value = '';
@@ -585,7 +654,7 @@ const Admin = () => {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'Mai';
+    if (!dateString) return t('Mai');
     return new Date(dateString).toLocaleDateString('it-IT', {
       day: '2-digit', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit'
@@ -593,13 +662,14 @@ const Admin = () => {
   };
 
   const tabs = [
-    { id: 'users', label: 'Utenti', icon: Users },
-    { id: 'roles', label: 'Ruoli', icon: Shield },
-    { id: 'stats', label: 'Statistiche', icon: BarChart3 },
-    { id: 'settings', label: 'Impostazioni', icon: Settings },
-    { id: 'templates', label: 'Template Export', icon: FileText },
-    { id: 'api-keys', label: 'API Keys', icon: Key },
-    { id: 'payments', label: 'Pagamenti PagoPA', icon: CreditCard }
+    { id: 'users', label: t('Utenti'), icon: Users },
+    { id: 'roles', label: t('Ruoli'), icon: Shield },
+    { id: 'settings', label: t('Parametri'), icon: Settings },
+    { id: 'listini', label: t('Listini'), icon: Tag },
+    { id: 'requests', label: t('Richieste'), icon: Inbox },
+    { id: 'templates', label: t('Template Export'), icon: FileText },
+    { id: 'api-keys', label: t('API Keys'), icon: Key },
+    { id: 'languages', label: t('Lingue'), icon: Globe }
   ];
 
   return (
@@ -617,7 +687,7 @@ const Admin = () => {
             <div className="flex items-center gap-4">
               <button onClick={() => navigate('/')} className="btn btn-ghost">
                 <ArrowLeft className="w-4 h-4" />
-                Dashboard
+                {t('Dashboard')}
               </button>
               <div className="flex items-center gap-3">
                 <div className="relative">
@@ -626,9 +696,9 @@ const Admin = () => {
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">
-                    Pannello <span className="gradient-text">Admin</span>
+                    {t('Pannello')} <span className="gradient-text">{t('Admin')}</span>
                   </h1>
-                  <p className="text-gray-500 text-sm">Gestione utenti, ruoli, crediti e impostazioni</p>
+                  <p className="text-gray-500 text-sm">{t('Gestione utenti, ruoli, crediti e impostazioni')}</p>
                 </div>
               </div>
             </div>
@@ -639,7 +709,7 @@ const Admin = () => {
               disabled={refreshing}
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Aggiorna
+              {t('Aggiorna')}
             </button>
           </div>
         </div>
@@ -683,7 +753,7 @@ const Admin = () => {
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <input
                         type="text"
-                        placeholder="Cerca per username, email o nome..."
+                        placeholder={t('Cerca per username, email o nome...')}
                         className="input pl-10 w-full"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -692,16 +762,16 @@ const Admin = () => {
                     </div>
                     <button onClick={handleSearch} className="btn btn-secondary">
                       <Search className="w-4 h-4" />
-                      Cerca
+                      {t('Cerca')}
                     </button>
                     <button
-                      onClick={() => { setShowCreateForm(!showCreateForm); setCreateError(''); }}
+                      onClick={() => { setShowCreateForm(!showCreateForm); setCreateError(''); loadParentOptions(); }}
                       className={`btn ${showCreateForm ? 'btn-ghost' : 'btn-primary'}`}
                     >
                       {showCreateForm ? (
-                        <><X className="w-4 h-4" /> Chiudi</>
+                        <><X className="w-4 h-4" /> {t('Chiudi')}</>
                       ) : (
-                        <><UserPlus className="w-4 h-4" /> Crea Utente</>
+                        <><UserPlus className="w-4 h-4" /> {t('Crea Utente')}</>
                       )}
                     </button>
                   </div>
@@ -712,7 +782,7 @@ const Admin = () => {
                   <div className="glass rounded-2xl p-6 border-2 border-orange-200 bg-orange-50/30">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <UserPlus className="w-5 h-5 text-orange-500" />
-                      Crea Nuovo Utente
+                      {t('Crea Nuovo Utente')}
                     </h3>
 
                     {createError && (
@@ -724,7 +794,7 @@ const Admin = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Email *')}</label>
                         <input
                           type="email"
                           className="input w-full"
@@ -734,7 +804,7 @@ const Admin = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Username *')}</label>
                         <input
                           type="text"
                           className="input w-full"
@@ -743,50 +813,37 @@ const Admin = () => {
                           onChange={(e) => setNewUser(prev => ({ ...prev, username: e.target.value }))}
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                        <div className="relative">
-                          <input
-                            type={showPassword ? 'text' : 'password'}
-                            className="input w-full pr-10"
-                            placeholder="Minimo 6 caratteri"
-                            value={newUser.password}
-                            onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                          >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
+                      <div className="md:col-span-2">
+                        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-700">
+                          <Mail className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>{t("L'utente riceverà un'email per impostare la propria password e verificare l'indirizzo.")}</span>
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Nome Completo')}</label>
                         <input
                           type="text"
                           className="input w-full"
-                          placeholder="Nome e cognome"
+                          placeholder={t('Nome e cognome')}
                           value={newUser.full_name}
                           onChange={(e) => setNewUser(prev => ({ ...prev, full_name: e.target.value }))}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Ruolo</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Ruolo')}</label>
                         <select
                           className="input w-full"
                           value={newUser.role_id}
                           onChange={(e) => setNewUser(prev => ({ ...prev, role_id: e.target.value }))}
                         >
-                          <option value="">Ruolo Default (user)</option>
+                          <option value="">{t('Ruolo Default (user)')}</option>
                           {roles.map(r => (
-                            <option key={r.id} value={r.id}>{r.name} {r.is_default ? '(default)' : ''}</option>
+                            <option key={r.id} value={r.id}>{r.name} {r.is_default ? t('(default)') : ''}</option>
                           ))}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Crediti Iniziali</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Crediti Iniziali')}</label>
                         <input
                           type="number"
                           className="input w-full"
@@ -797,6 +854,41 @@ const Admin = () => {
                       </div>
                     </div>
 
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t('Tipo utente')}</label>
+                        <select
+                          className="input w-full"
+                          value={newUser.entity_type}
+                          onChange={(e) => setNewUser(prev => ({ ...prev, entity_type: e.target.value, parent_id: '' }))}
+                        >
+                          <option value="distributore">{t('Distributore')}</option>
+                          <option value="rivenditore">{t('Rivenditore')}</option>
+                          <option value="privato">{t('Privato')}</option>
+                        </select>
+                      </div>
+                      {(newUser.entity_type === 'rivenditore' || newUser.entity_type === 'privato') && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            {newUser.entity_type === 'rivenditore' ? t('Distributore di riferimento') : t('Referente (rivenditore o distributore)')}
+                          </label>
+                          <select
+                            className="input w-full"
+                            value={newUser.parent_id}
+                            onChange={(e) => setNewUser(prev => ({ ...prev, parent_id: e.target.value }))}
+                          >
+                            <option value="">{t('— nessuno —')}</option>
+                            {(newUser.entity_type === 'rivenditore' ? distributori : [...distributori, ...rivenditori]).map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {(p.full_name || p.username)}
+                                {p.entity_type ? ` · ${ENTITY_TYPE_LABELS[p.entity_type] ? t(ENTITY_TYPE_LABELS[p.entity_type]) : p.entity_type}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="flex items-center gap-4 mt-4">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -805,7 +897,7 @@ const Admin = () => {
                           onChange={(e) => setNewUser(prev => ({ ...prev, is_active: e.target.checked }))}
                           className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
                         />
-                        <span className="text-sm font-medium text-gray-700">Utente attivo</span>
+                        <span className="text-sm font-medium text-gray-700">{t('Utente attivo')}</span>
                       </label>
                     </div>
 
@@ -814,7 +906,7 @@ const Admin = () => {
                         onClick={() => { setShowCreateForm(false); setCreateError(''); }}
                         className="btn btn-ghost"
                       >
-                        Annulla
+                        {t('Annulla')}
                       </button>
                       <button
                         onClick={handleCreateUser}
@@ -822,9 +914,9 @@ const Admin = () => {
                         className="btn btn-primary"
                       >
                         {createLoading ? (
-                          <><RefreshCw className="w-4 h-4 animate-spin" /> Creazione...</>
+                          <><RefreshCw className="w-4 h-4 animate-spin" /> {t('Creazione...')}</>
                         ) : (
-                          <><UserPlus className="w-4 h-4" /> Crea Utente</>
+                          <><UserPlus className="w-4 h-4" /> {t('Crea Utente')}</>
                         )}
                       </button>
                     </div>
@@ -839,9 +931,12 @@ const Admin = () => {
                       <div
                         className="p-4 cursor-pointer hover:bg-white/50 transition-colors"
                         onClick={() => {
-                          setExpandedUser(expandedUser === u.id ? null : u.id);
-                          if (expandedUser !== u.id && !transactions[u.id]) {
-                            handleLoadTransactions(u.id);
+                          const willExpand = expandedUser !== u.id;
+                          setExpandedUser(willExpand ? u.id : null);
+                          if (willExpand) {
+                            if (!transactions[u.id]) handleLoadTransactions(u.id);
+                            // Lista distributori sempre fresca quando si apre una card
+                            loadParentOptions();
                           }
                         }}
                       >
@@ -859,16 +954,36 @@ const Admin = () => {
                           </div>
 
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-gray-900">{u.username}</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-gray-900 truncate">{u.full_name || u.username}</span>
                               <span className={`badge ${u.role_name === 'admin' ? 'badge-warning' : 'badge-info'}`}>
-                                {u.role_name || 'Nessun ruolo'}
+                                {u.role_name || t('Nessun ruolo')}
                               </span>
+                              {u.role_name !== 'admin' && u.entity_type && (
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+                                  {ENTITY_TYPE_LABELS[u.entity_type] ? t(ENTITY_TYPE_LABELS[u.entity_type]) : u.entity_type}
+                                </span>
+                              )}
                               {!u.is_active && (
-                                <span className="badge badge-error">Disabilitato</span>
+                                <span className="badge badge-error">{t('Disabilitato')}</span>
+                              )}
+                              {!u.email_verified && (
+                                <>
+                                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{t('Email non verificata')}</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleResendInvite(u.id); }}
+                                    disabled={resendingUser === u.id}
+                                    className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-60"
+                                  >
+                                    {resendingUser === u.id ? t('Invio…') : t('Reinvia')}
+                                  </button>
+                                </>
                               )}
                             </div>
-                            <div className="text-sm text-gray-500">{u.email}</div>
+                            {u.email !== (u.full_name || u.username) && (
+                              <div className="text-sm text-gray-500 truncate">{u.email}</div>
+                            )}
                           </div>
 
                           <div className="hidden md:flex items-center gap-6 text-sm">
@@ -876,11 +991,11 @@ const Admin = () => {
                               <p className="font-bold text-gray-900">
                                 {u.credits === -1 ? '∞' : u.credits}
                               </p>
-                              <p className="text-gray-500 text-xs">Crediti</p>
+                              <p className="text-gray-500 text-xs">{t('Crediti')}</p>
                             </div>
                             <div className="text-center">
                               <p className="text-gray-600 text-xs">{formatDate(u.last_login)}</p>
-                              <p className="text-gray-500 text-xs">Ultimo login</p>
+                              <p className="text-gray-500 text-xs">{t('Ultimo login')}</p>
                             </div>
                           </div>
 
@@ -894,109 +1009,151 @@ const Admin = () => {
 
                       {/* Expanded user details */}
                       {expandedUser === u.id && (
-                        <div className="border-t border-gray-200 p-4 bg-gray-50/50 space-y-4">
-                          {/* Info */}
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            <div className="bg-white rounded-xl p-3">
-                              <p className="text-xs text-gray-500">Nome completo</p>
-                              <p className="font-medium text-gray-900">{u.full_name || '-'}</p>
-                            </div>
-                            <div className="bg-white rounded-xl p-3">
-                              <p className="text-xs text-gray-500">Creato il</p>
-                              <p className="font-medium text-gray-900 text-sm">{formatDate(u.created_at)}</p>
-                            </div>
-                            <div className="bg-white rounded-xl p-3">
-                              <p className="text-xs text-gray-500">Ultimo aggiornamento</p>
-                              <p className="font-medium text-gray-900 text-sm">{formatDate(u.updated_at)}</p>
-                            </div>
-                            <div className="bg-white rounded-xl p-3">
-                              <p className="text-xs text-gray-500">Ultimo login</p>
-                              <p className="font-medium text-gray-900 text-sm">{formatDate(u.last_login)}</p>
-                            </div>
-                          </div>
-
-                          {/* Ruolo & Stato */}
-                          <div className="flex flex-wrap gap-3">
-                            <div className="bg-white rounded-xl p-3 flex items-center gap-3">
-                              <label className="text-sm font-medium text-gray-600">Ruolo:</label>
-                              <select
-                                className="input py-1 px-2 text-sm"
-                                value={u.role_id || ''}
-                                onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                              >
-                                {roles.length > 0 ? roles.map(r => (
-                                  <option key={r.id} value={r.id}>{r.name}</option>
-                                )) : (
-                                  <>
-                                    <option value="1">admin</option>
-                                    <option value="2">user</option>
-                                  </>
+                        <div className="border-t border-gray-200 p-4 sm:p-5 bg-gray-50/60 space-y-4">
+                          {/* Riga 1: impostazioni account + dettagli */}
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {/* Impostazioni account */}
+                            <div className="bg-white rounded-xl border border-gray-100 p-4">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-3 flex items-center gap-2">
+                                <Settings className="w-3.5 h-3.5" /> {t('Impostazioni account')}
+                              </h4>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('Ruolo')}</label>
+                                  <select
+                                    className="input w-full py-1.5 text-sm"
+                                    value={u.role_id || ''}
+                                    onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                                  >
+                                    {roles.length > 0 ? roles.map(r => (
+                                      <option key={r.id} value={r.id}>{r.name}</option>
+                                    )) : (
+                                      <>
+                                        <option value="1">admin</option>
+                                        <option value="2">user</option>
+                                      </>
+                                    )}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">{t('Stato')}</label>
+                                  <button
+                                    onClick={() => handleToggleActive(u.id, u.is_active)}
+                                    className={`w-full inline-flex items-center justify-center gap-2 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                                      u.is_active
+                                        ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                                        : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                    }`}
+                                  >
+                                    <Power className="w-4 h-4" />
+                                    {u.is_active ? t('Attivo') : t('Disattivato')}
+                                  </button>
+                                </div>
+                                {u.role_name !== 'admin' && (
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('Tipo utente')}</label>
+                                    <select
+                                      className="input w-full py-1.5 text-sm"
+                                      value={u.entity_type || 'privato'}
+                                      onChange={(e) => handleEntityTypeChange(u.id, e.target.value)}
+                                      title={t('Determina i pacchetti crediti acquistabili')}
+                                    >
+                                      <option value="distributore">{t('Distributore')}</option>
+                                      <option value="rivenditore">{t('Rivenditore')}</option>
+                                      <option value="privato">{t('Privato')}</option>
+                                    </select>
+                                  </div>
                                 )}
-                              </select>
-                            </div>
-
-                            <div className="bg-white rounded-xl p-3 flex items-center gap-3">
-                              <label className="text-sm font-medium text-gray-600">Attivo:</label>
-                              <button
-                                onClick={() => handleToggleActive(u.id, u.is_active)}
-                                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                                  u.is_active
-                                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                    : 'bg-red-100 text-red-700 hover:bg-red-200'
-                                }`}
-                              >
-                                {u.is_active ? 'Si' : 'No'}
-                              </button>
-                            </div>
-
-                            {u.role_name !== 'admin' && (
-                              <div className="bg-white rounded-xl p-3 flex items-center gap-3">
-                                <label className="text-sm font-medium text-gray-600">Tipo ente:</label>
-                                <select
-                                  className="input py-1 px-2 text-sm"
-                                  value={u.entity_type || 'private'}
-                                  onChange={(e) => handleEntityTypeChange(u.id, e.target.value)}
-                                  title="Determina la tariffa flat per la generazione tesi"
-                                >
-                                  <option value="private">Ente privato</option>
-                                  <option value="training">Ente di formazione</option>
-                                </select>
+                                {u.role_name !== 'admin' && (u.entity_type === 'rivenditore' || u.entity_type === 'privato') && (
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                                      {u.entity_type === 'rivenditore' ? t('Distributore di riferimento') : t('Referente (rivenditore o distributore)')}
+                                    </label>
+                                    <select
+                                      className="input w-full py-1.5 text-sm"
+                                      value={u.parent_id || ''}
+                                      onChange={(e) => handleParentChange(u.id, e.target.value)}
+                                      title={t('Referente del quale fa parte questo utente')}
+                                    >
+                                      <option value="">{t('— nessuno —')}</option>
+                                      {(u.entity_type === 'rivenditore' ? distributori : [...distributori, ...rivenditori])
+                                        .filter((p) => p.id !== u.id)
+                                        .map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {(p.full_name || p.username)}
+                                            {p.entity_type ? ` · ${ENTITY_TYPE_LABELS[p.entity_type] ? t(ENTITY_TYPE_LABELS[p.entity_type]) : p.entity_type}` : ''}
+                                          </option>
+                                        ))}
+                                    </select>
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            </div>
+
+                            {/* Dettagli */}
+                            <div className="bg-white rounded-xl border border-gray-100 p-4">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-3 flex items-center gap-2">
+                                <UserIcon className="w-3.5 h-3.5" /> {t('Dettagli')}
+                              </h4>
+                              <dl className="text-sm divide-y divide-gray-100">
+                                <div className="flex items-center justify-between gap-3 py-1.5">
+                                  <dt className="text-gray-500">{t('Nome completo')}</dt>
+                                  <dd className="font-medium text-gray-900 text-right truncate">{u.full_name || '—'}</dd>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 py-1.5">
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> {t('Email')}</dt>
+                                  <dd className="font-medium text-gray-900 text-right truncate">{u.email}</dd>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 py-1.5">
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {t('Creato il')}</dt>
+                                  <dd className="font-medium text-gray-900 text-right">{formatDate(u.created_at)}</dd>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 py-1.5">
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5" /> {t('Aggiornato')}</dt>
+                                  <dd className="font-medium text-gray-900 text-right">{formatDate(u.updated_at)}</dd>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 py-1.5">
+                                  <dt className="text-gray-500 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {t('Ultimo login')}</dt>
+                                  <dd className="font-medium text-gray-900 text-right">{formatDate(u.last_login)}</dd>
+                                </div>
+                              </dl>
+                            </div>
                           </div>
 
                           {/* Permessi */}
-                          <div className="bg-white rounded-xl p-4">
-                            <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                              <Shield className="w-4 h-4" />
-                              Permessi (click per ciclare: Eredita &rarr; Forza Si &rarr; Forza No)
-                            </h4>
-                            <div className="flex flex-wrap gap-2">
+                          <div className="bg-white rounded-xl border border-gray-100 p-4">
+                            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 flex items-center gap-2">
+                                <Shield className="w-3.5 h-3.5" /> {t('Permessi')}
+                              </h4>
+                              <p className="text-xs text-gray-400">{t('Click per ciclare: Eredita')} &rarr; {t('Forza Sì')} &rarr; {t('Forza No')}</p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                               {ALL_PERMISSIONS.map(perm => {
                                 const override = u.user_overrides[perm];
                                 const hasFromRole = u.permissions.includes(perm);
-                                let bgClass, label;
-
+                                const allowed = override === true || (override == null && hasFromRole);
+                                let stateText, stateCls, chipCls, Icon;
                                 if (override === true) {
-                                  bgClass = 'bg-green-100 text-green-800 border-green-300';
-                                  label = `${PERMISSION_LABELS[perm]} [Forzato SI]`;
+                                  stateText = t('Forza Sì'); stateCls = 'bg-green-200 text-green-900'; chipCls = 'bg-green-50 border-green-300'; Icon = Check;
                                 } else if (override === false) {
-                                  bgClass = 'bg-red-100 text-red-800 border-red-300';
-                                  label = `${PERMISSION_LABELS[perm]} [Forzato NO]`;
+                                  stateText = t('Forza No'); stateCls = 'bg-red-200 text-red-900'; chipCls = 'bg-red-50 border-red-300'; Icon = X;
+                                } else if (hasFromRole) {
+                                  stateText = t('Eredita'); stateCls = 'bg-blue-100 text-blue-700'; chipCls = 'bg-white border-blue-200'; Icon = Check;
                                 } else {
-                                  bgClass = hasFromRole
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                    : 'bg-gray-100 text-gray-500 border-gray-200';
-                                  label = `${PERMISSION_LABELS[perm]} [Ruolo: ${hasFromRole ? 'Si' : 'No'}]`;
+                                  stateText = t('Eredita'); stateCls = 'bg-gray-100 text-gray-500'; chipCls = 'bg-white border-gray-200'; Icon = Minus;
                                 }
-
                                 return (
                                   <button
                                     key={perm}
                                     onClick={() => handlePermissionToggle(u.id, perm, u.user_overrides)}
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all hover:shadow-sm ${bgClass}`}
+                                    className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all hover:shadow-sm ${chipCls}`}
                                   >
-                                    {label}
+                                    <span className="flex items-center gap-2 min-w-0">
+                                      <Icon className={`w-4 h-4 flex-shrink-0 ${allowed ? 'text-green-600' : 'text-gray-400'}`} />
+                                      <span className="text-gray-700 truncate">{t(PERMISSION_LABELS[perm])}</span>
+                                    </span>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${stateCls}`}>{stateText}</span>
                                   </button>
                                 );
                               })}
@@ -1004,46 +1161,50 @@ const Admin = () => {
                           </div>
 
                           {/* Crediti */}
-                          <div className="bg-white rounded-xl p-4">
-                            <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                              <Coins className="w-4 h-4" />
-                              Gestione Crediti (Saldo attuale: <span className="text-orange-600">{u.credits === -1 ? 'Infinito' : u.credits}</span>)
-                            </h4>
-                            <div className="flex gap-2">
+                          <div className="bg-white rounded-xl border border-gray-100 p-4">
+                            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 flex items-center gap-2">
+                                <Coins className="w-3.5 h-3.5" /> {t('Gestione crediti')}
+                              </h4>
+                              <span className="text-sm text-gray-500">
+                                {t('Saldo attuale:')} <span className="font-bold text-orange-600">{u.credits === -1 ? '∞' : u.credits}</span>
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-[11rem_1fr_auto] gap-2">
                               <input
                                 type="number"
-                                placeholder="Quantita (es. 100 o -50)"
-                                className="input flex-1"
+                                placeholder={t('Quantità (es. 100 o -50)')}
+                                className="input"
                                 value={creditAmount}
                                 onChange={(e) => setCreditAmount(e.target.value)}
                               />
                               <input
                                 type="text"
-                                placeholder="Motivazione..."
-                                className="input flex-1"
+                                placeholder={t('Motivazione...')}
+                                className="input"
                                 value={creditDescription}
                                 onChange={(e) => setCreditDescription(e.target.value)}
                               />
                               <button
                                 onClick={() => handleAdjustCredits(u.id)}
                                 disabled={!creditAmount || !creditDescription || creditLoading}
-                                className="btn btn-primary"
+                                className="btn btn-primary whitespace-nowrap justify-center"
                               >
                                 {creditLoading ? (
                                   <RefreshCw className="w-4 h-4 animate-spin" />
                                 ) : (
                                   <Coins className="w-4 h-4" />
                                 )}
-                                Applica
+                                {t('Applica')}
                               </button>
                             </div>
                           </div>
 
                           {/* Storico transazioni */}
                           {transactions[u.id] && transactions[u.id].length > 0 && (
-                            <div className="bg-white rounded-xl p-4">
-                              <h4 className="text-sm font-bold text-gray-700 mb-3">
-                                Ultime Transazioni
+                            <div className="bg-white rounded-xl border border-gray-100 p-4">
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-3 flex items-center gap-2">
+                                <Clock className="w-3.5 h-3.5" /> {t('Ultime transazioni')}
                               </h4>
                               <div className="space-y-2 max-h-60 overflow-y-auto">
                                 {transactions[u.id].slice(0, 10).map((tx, i) => (
@@ -1071,7 +1232,7 @@ const Admin = () => {
                   {users.length === 0 && (
                     <div className="glass rounded-2xl p-8 text-center">
                       <UserIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">Nessun utente trovato</p>
+                      <p className="text-gray-500">{t('Nessun utente trovato')}</p>
                     </div>
                   )}
                 </div>
@@ -1096,13 +1257,13 @@ const Admin = () => {
                           <h3 className="text-lg font-bold text-gray-900 capitalize">{role.name}</h3>
                           <p className="text-sm text-gray-500">{role.description}</p>
                           {role.is_default && (
-                            <span className="badge badge-success mt-1">Ruolo Default</span>
+                            <span className="badge badge-success mt-1">{t('Ruolo Default')}</span>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    <h4 className="text-sm font-medium text-gray-600 mb-3">Permessi assegnati:</h4>
+                    <h4 className="text-sm font-medium text-gray-600 mb-3">{t('Permessi assegnati:')}</h4>
                     <div className="flex flex-wrap gap-2">
                       {ALL_PERMISSIONS.map(perm => {
                         const hasIt = role.permissions.includes(perm);
@@ -1122,7 +1283,7 @@ const Admin = () => {
                             }`}
                           >
                             {hasIt ? <CheckCircle2 className="w-4 h-4 inline mr-1" /> : null}
-                            {PERMISSION_LABELS[perm]}
+                            {t(PERMISSION_LABELS[perm])}
                           </button>
                         );
                       })}
@@ -1132,84 +1293,7 @@ const Admin = () => {
               </div>
             )}
 
-            {/* ===================== TAB STATISTICHE ===================== */}
-            {activeTab === 'stats' && stats && (
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center">
-                      <Users className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Utenti Totali</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.total_users}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center">
-                      <CheckCircle2 className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Utenti Attivi</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.active_users}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center">
-                      <Coins className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Crediti Distribuiti</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.total_credits_distributed?.toLocaleString()}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-red-400 to-red-600 rounded-xl flex items-center justify-center">
-                      <Minus className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Crediti Consumati</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.total_credits_consumed?.toLocaleString()}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-purple-400 to-purple-600 rounded-xl flex items-center justify-center">
-                      <Sparkles className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Operazioni Oggi</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.operations_today}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass rounded-2xl p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-gradient-to-br from-teal-400 to-teal-600 rounded-xl flex items-center justify-center">
-                      <BarChart3 className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Operazioni Settimana</p>
-                      <p className="text-3xl font-bold text-gray-900">{stats.operations_this_week}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ===================== TAB IMPOSTAZIONI ===================== */}
+            {/* ===================== TAB PARAMETRI ===================== */}
             {activeTab === 'settings' && editedCosts && (
               <div className="space-y-6">
                 {/* Header */}
@@ -1218,20 +1302,20 @@ const Admin = () => {
                     <div>
                       <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                         <Coins className="w-6 h-6 text-orange-500" />
-                        Configurazione Costi Crediti
+                        {t('Configurazione Costi Crediti')}
                       </h2>
                       <p className="text-sm text-gray-500 mt-1">
-                        Personalizza i costi in crediti per ogni operazione della piattaforma.
+                        {t('Personalizza i costi in crediti per ogni operazione della piattaforma.')}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       {isDefaultCosts ? (
                         <span className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium">
-                          Valori Default
+                          {t('Valori Default')}
                         </span>
                       ) : (
                         <span className="px-3 py-1.5 bg-orange-50 text-orange-700 rounded-lg text-sm font-medium">
-                          Personalizzati
+                          {t('Personalizzati')}
                         </span>
                       )}
                     </div>
@@ -1252,80 +1336,55 @@ const Admin = () => {
                   </div>
                 )}
 
-                {/* EUR per credito */}
-                <div className="glass rounded-2xl p-5">
-                  <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                    <span className="text-xl">💶</span>
-                    Conversione EUR / Credito
-                  </h3>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 flex-1">
-                      <span className="text-sm text-gray-600">1 credito =</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="input w-28 text-center text-sm py-1.5"
-                        value={eurPerCredit}
-                        onChange={(e) => setEurPerCredit(parseFloat(e.target.value) || 0)}
-                      />
-                      <span className="text-sm text-gray-600">EUR</span>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        try {
-                          await updateAdminEurPerCredit(eurPerCredit);
-                          setEurPerCreditSaved(eurPerCredit);
-                          setCostsSuccess('Tasso EUR/credito aggiornato!');
-                          setTimeout(() => setCostsSuccess(''), 3000);
-                        } catch (e) {
-                          setCostsError('Errore nel salvataggio del tasso EUR/credito');
-                          setTimeout(() => setCostsError(''), 3000);
-                        }
-                      }}
-                      disabled={eurPerCredit === eurPerCreditSaved}
-                      className="btn btn-primary text-sm disabled:opacity-50"
-                    >
-                      Salva
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-2">
-                    Tasso di conversione per implementazioni future (pricing utenti, acquisto crediti).
-                  </p>
-                </div>
-
-                {/* Cost cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Object.entries(COST_OPERATION_LABELS).map(([opType, opConfig]) => (
-                    <div key={opType} className="glass rounded-2xl p-5">
-                      <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
-                        <span className="text-xl">{opConfig.icon}</span>
-                        {opConfig.label}
-                      </h3>
-                      {opConfig.description && (
-                        <p className="text-xs text-gray-500 mb-3">{opConfig.description}</p>
-                      )}
-                      <div className="space-y-3">
-                        {Object.entries(opConfig.fields).map(([field, fieldLabel]) => (
-                          <div key={field} className="flex items-center justify-between gap-4">
-                            <label className="text-sm text-gray-600 flex-1">{fieldLabel}</label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min="0"
-                                step="1"
-                                className="input w-24 text-center text-sm py-1.5"
-                                value={editedCosts[opType]?.[field] ?? 0}
-                                onChange={(e) => handleCostChange(opType, field, e.target.value)}
-                              />
-                              <span className="text-xs text-gray-400 w-12">crediti</span>
+                {/* Costi per area */}
+                {COST_GROUPS.map((group) => {
+                  const ops = Object.entries(COST_OPERATION_LABELS).filter(([, c]) => c.group === group.key);
+                  if (ops.length === 0) return null;
+                  const GIcon = group.icon;
+                  return (
+                    <div key={group.key} className="space-y-3">
+                      <div className="flex items-center gap-3 px-1 pt-1">
+                        <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0">
+                          <GIcon className="w-[18px] h-[18px]" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900 leading-tight">{t(group.label)}</h3>
+                          <p className="text-xs text-gray-400">{t(group.hint)}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {ops.map(([opType, opConfig]) => (
+                          <div key={opType} className="glass rounded-2xl p-5">
+                            <div className="mb-3">
+                              <h4 className="font-semibold text-gray-900">{t(opConfig.label)}</h4>
+                              {opConfig.description && (
+                                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{t(opConfig.description)}</p>
+                              )}
+                            </div>
+                            <div>
+                              {Object.entries(opConfig.fields).map(([field, fieldLabel]) => (
+                                <div key={field} className="flex items-center justify-between gap-4 py-2 border-t border-slate-100 first:border-t-0 first:pt-0">
+                                  <label className="text-sm text-gray-600 flex-1">{t(fieldLabel)}</label>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      className="input w-24 text-center text-sm py-1.5"
+                                      value={editedCosts[opType]?.[field] ?? 0}
+                                      onChange={(e) => handleCostChange(opType, field, e.target.value)}
+                                    />
+                                    <span className="text-xs text-gray-400 w-12">{t('crediti')}</span>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
 
                 {/* Actions */}
                 <div className="glass rounded-2xl p-4">
@@ -1338,13 +1397,13 @@ const Admin = () => {
                           className="btn btn-ghost text-orange-600 hover:bg-orange-50"
                         >
                           <RotateCcw className="w-4 h-4" />
-                          Ripristina Default
+                          {t('Ripristina Default')}
                         </button>
                       )}
                       {hasUnsavedCostChanges() && (
                         <span className="text-sm text-amber-600 flex items-center gap-1">
                           <AlertTriangle className="w-4 h-4" />
-                          Modifiche non salvate
+                          {t('Modifiche non salvate')}
                         </span>
                       )}
                     </div>
@@ -1354,9 +1413,9 @@ const Admin = () => {
                       className="btn btn-primary"
                     >
                       {costsSaving ? (
-                        <><RefreshCw className="w-4 h-4 animate-spin" /> Salvataggio...</>
+                        <><RefreshCw className="w-4 h-4 animate-spin" /> {t('Salvataggio...')}</>
                       ) : (
-                        <><Save className="w-4 h-4" /> Salva Modifiche</>
+                        <><Save className="w-4 h-4" /> {t('Salva Modifiche')}</>
                       )}
                     </button>
                   </div>
@@ -1371,19 +1430,19 @@ const Admin = () => {
                           <AlertTriangle className="w-6 h-6 text-amber-600" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-gray-900">Ripristina Valori Default</h3>
-                          <p className="text-sm text-gray-500">Questa azione non e' reversibile</p>
+                          <h3 className="font-bold text-gray-900">{t('Ripristina Valori Default')}</h3>
+                          <p className="text-sm text-gray-500">{t("Questa azione non e' reversibile")}</p>
                         </div>
                       </div>
                       <p className="text-sm text-gray-600 mb-6">
-                        Tutti i costi personalizzati verranno cancellati e ripristinati ai valori predefiniti del sistema. Sei sicuro?
+                        {t('Tutti i costi personalizzati verranno cancellati e ripristinati ai valori predefiniti del sistema. Sei sicuro?')}
                       </p>
                       <div className="flex justify-end gap-3">
                         <button
                           onClick={() => setShowResetConfirm(false)}
                           className="btn btn-ghost"
                         >
-                          Annulla
+                          {t('Annulla')}
                         </button>
                         <button
                           onClick={handleResetCosts}
@@ -1391,9 +1450,9 @@ const Admin = () => {
                           className="btn bg-amber-500 hover:bg-amber-600 text-white"
                         >
                           {costsSaving ? (
-                            <><RefreshCw className="w-4 h-4 animate-spin" /> Ripristino...</>
+                            <><RefreshCw className="w-4 h-4 animate-spin" /> {t('Ripristino...')}</>
                           ) : (
-                            <><RotateCcw className="w-4 h-4" /> Ripristina</>
+                            <><RotateCcw className="w-4 h-4" /> {t('Ripristina')}</>
                           )}
                         </button>
                       </div>
@@ -1412,10 +1471,10 @@ const Admin = () => {
                     <div>
                       <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                         <FileText className="w-6 h-6 text-orange-500" />
-                        Template di Esportazione
+                        {t('Template di Esportazione')}
                       </h2>
                       <p className="text-sm text-gray-500 mt-1">
-                        Crea e personalizza template per l'esportazione delle tesi in PDF e DOCX.
+                        {t("Crea e personalizza template per l'esportazione delle tesi in PDF e DOCX.")}
                       </p>
                     </div>
                     <button
@@ -1424,7 +1483,7 @@ const Admin = () => {
                       className="btn btn-primary"
                     >
                       <Plus className="w-4 h-4" />
-                      Nuovo Template
+                      {t('Nuovo Template')}
                     </button>
                   </div>
                 </div>
@@ -1450,7 +1509,7 @@ const Admin = () => {
                       <div key={tpl.id} className="glass rounded-2xl p-5 relative">
                         {tpl.is_default && (
                           <span className="absolute top-3 right-3 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
-                            Default
+                            {t('Default')}
                           </span>
                         )}
                         <div className="flex items-center gap-3 mb-4">
@@ -1482,21 +1541,21 @@ const Admin = () => {
                             className="btn btn-secondary flex-1 text-sm py-2"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
-                            Modifica
+                            {t('Modifica')}
                           </button>
                           {!tpl.is_default && (
                             <>
                               <button
                                 onClick={() => handleSetDefaultTemplate(tpl.id)}
                                 className="btn btn-ghost text-sm py-2"
-                                title="Imposta come default"
+                                title={t('Imposta come default')}
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => setShowDeleteTemplate(tpl.id)}
                                 className="btn btn-ghost text-red-500 hover:bg-red-50 text-sm py-2"
-                                title="Elimina"
+                                title={t('Elimina')}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1509,7 +1568,7 @@ const Admin = () => {
                     {templates.length === 0 && (
                       <div className="col-span-full glass rounded-2xl p-8 text-center">
                         <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-gray-500">Nessun template trovato. Crea il primo!</p>
+                        <p className="text-gray-500">{t('Nessun template trovato. Crea il primo!')}</p>
                       </div>
                     )}
                   </div>
@@ -1530,7 +1589,7 @@ const Admin = () => {
                             className="input text-lg font-bold py-1"
                             value={editedTemplate.name}
                             onChange={(e) => setEditedTemplate(prev => ({ ...prev, name: e.target.value }))}
-                            placeholder="Nome template"
+                            placeholder={t('Nome template')}
                           />
                         </div>
                       </div>
@@ -1540,7 +1599,7 @@ const Admin = () => {
                           className="btn btn-ghost"
                         >
                           <X className="w-4 h-4" />
-                          Annulla
+                          {t('Annulla')}
                         </button>
                         <button
                           onClick={handleSaveTemplate}
@@ -1548,9 +1607,9 @@ const Admin = () => {
                           className="btn btn-primary"
                         >
                           {templateSaving ? (
-                            <><RefreshCw className="w-4 h-4 animate-spin" /> Salvataggio...</>
+                            <><RefreshCw className="w-4 h-4 animate-spin" /> {t('Salvataggio...')}</>
                           ) : (
-                            <><Save className="w-4 h-4" /> Salva Template</>
+                            <><Save className="w-4 h-4" /> {t('Salva Template')}</>
                           )}
                         </button>
                       </div>
@@ -1567,7 +1626,7 @@ const Admin = () => {
                         }`}
                       >
                         <FileText className="w-4 h-4 inline-block mr-1.5" />
-                        Impostazioni PDF
+                        {t('Impostazioni PDF')}
                       </button>
                       <button
                         onClick={() => setTemplateSection('docx')}
@@ -1578,7 +1637,7 @@ const Admin = () => {
                         }`}
                       >
                         <FileText className="w-4 h-4 inline-block mr-1.5" />
-                        Impostazioni DOCX
+                        {t('Impostazioni DOCX')}
                       </button>
                     </div>
 
@@ -1591,7 +1650,7 @@ const Admin = () => {
                       ) : (
                         <div className="text-center py-8 text-gray-400">
                           <HelpCircle className="w-8 h-8 mx-auto mb-2" />
-                          <p>Caricamento parametri...</p>
+                          <p>{t('Caricamento parametri...')}</p>
                         </div>
                       )}
                     </div>
@@ -1607,19 +1666,19 @@ const Admin = () => {
                           <Trash2 className="w-6 h-6 text-red-600" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-gray-900">Elimina Template</h3>
-                          <p className="text-sm text-gray-500">Questa azione non e' reversibile</p>
+                          <h3 className="font-bold text-gray-900">{t('Elimina Template')}</h3>
+                          <p className="text-sm text-gray-500">{t("Questa azione non e' reversibile")}</p>
                         </div>
                       </div>
                       <p className="text-sm text-gray-600 mb-6">
-                        Il template verra' eliminato definitivamente. Gli utenti che lo utilizzavano passeranno al template default. Sei sicuro?
+                        {t("Il template verra' eliminato definitivamente. Gli utenti che lo utilizzavano passeranno al template default. Sei sicuro?")}
                       </p>
                       <div className="flex justify-end gap-3">
                         <button
                           onClick={() => setShowDeleteTemplate(null)}
                           className="btn btn-ghost"
                         >
-                          Annulla
+                          {t('Annulla')}
                         </button>
                         <button
                           onClick={() => handleDeleteTemplate(showDeleteTemplate)}
@@ -1627,9 +1686,9 @@ const Admin = () => {
                           className="btn bg-red-500 hover:bg-red-600 text-white"
                         >
                           {templateSaving ? (
-                            <><RefreshCw className="w-4 h-4 animate-spin" /> Eliminazione...</>
+                            <><RefreshCw className="w-4 h-4 animate-spin" /> {t('Eliminazione...')}</>
                           ) : (
-                            <><Trash2 className="w-4 h-4" /> Elimina</>
+                            <><Trash2 className="w-4 h-4" /> {t('Elimina')}</>
                           )}
                         </button>
                       </div>
@@ -1644,12 +1703,12 @@ const Admin = () => {
               <div className="space-y-4">
                 {/* Header + Create button */}
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-gray-800">API Keys</h2>
+                  <h2 className="text-lg font-semibold text-gray-800">{t('API Keys')}</h2>
                   <button
                     onClick={() => { setShowCreateKey(true); setNewKeyResult(null); setNewKeyForm({ user_id: '', name: '', expires_in_days: '', rate_limit_per_minute: 30 }); }}
                     className="btn-primary flex items-center gap-2"
                   >
-                    <Plus className="w-4 h-4" /> Crea API Key
+                    <Plus className="w-4 h-4" /> {t('Crea API Key')}
                   </button>
                 </div>
 
@@ -1660,7 +1719,7 @@ const Admin = () => {
                       <div className="space-y-3">
                         <div className="flex items-center gap-2 text-green-700">
                           <CheckCircle2 className="w-5 h-5" />
-                          <span className="font-semibold">API Key creata!</span>
+                          <span className="font-semibold">{t('API Key creata!')}</span>
                         </div>
                         <div className="bg-gray-900 text-green-400 rounded-xl p-4 font-mono text-sm break-all">
                           {newKeyResult.key}
@@ -1671,48 +1730,48 @@ const Admin = () => {
                             className="btn-secondary flex items-center gap-1.5"
                           >
                             {keyCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                            {keyCopied ? 'Copiata!' : 'Copia chiave'}
+                            {keyCopied ? t('Copiata!') : t('Copia chiave')}
                           </button>
                         </div>
                         <p className="text-xs text-red-600 font-medium">
-                          Salva questa chiave ora. Non verra' mai piu' mostrata.
+                          {t("Salva questa chiave ora. Non verra' mai piu' mostrata.")}
                         </p>
                         <button
                           onClick={() => { setShowCreateKey(false); setNewKeyResult(null); loadData(); }}
                           className="btn-ghost text-sm"
                         >
-                          Chiudi
+                          {t('Chiudi')}
                         </button>
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        <h3 className="font-semibold text-gray-800">Nuova API Key</h3>
+                        <h3 className="font-semibold text-gray-800">{t('Nuova API Key')}</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Utente</label>
+                            <label className="block text-xs text-gray-500 mb-1">{t('Utente')}</label>
                             <select
                               value={newKeyForm.user_id}
                               onChange={e => setNewKeyForm(f => ({ ...f, user_id: e.target.value }))}
                               className="input w-full"
                             >
-                              <option value="">Seleziona utente...</option>
+                              <option value="">{t('Seleziona utente...')}</option>
                               {users.map(u => (
                                 <option key={u.id} value={u.id}>{u.email} ({u.username})</option>
                               ))}
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Nome</label>
+                            <label className="block text-xs text-gray-500 mb-1">{t('Nome')}</label>
                             <input
                               type="text"
                               value={newKeyForm.name}
                               onChange={e => setNewKeyForm(f => ({ ...f, name: e.target.value }))}
                               className="input w-full"
-                              placeholder="Es. Produzione, Test..."
+                              placeholder={t('Es. Produzione, Test...')}
                             />
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Scadenza (giorni, vuoto = mai)</label>
+                            <label className="block text-xs text-gray-500 mb-1">{t('Scadenza (giorni, vuoto = mai)')}</label>
                             <input
                               type="number"
                               value={newKeyForm.expires_in_days}
@@ -1724,7 +1783,7 @@ const Admin = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">Rate limit (req/min)</label>
+                            <label className="block text-xs text-gray-500 mb-1">{t('Rate limit (req/min)')}</label>
                             <input
                               type="number"
                               value={newKeyForm.rate_limit_per_minute}
@@ -1756,10 +1815,10 @@ const Admin = () => {
                             className="btn-primary flex items-center gap-1.5"
                           >
                             {keyCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
-                            Crea
+                            {t('Crea')}
                           </button>
                           <button onClick={() => setShowCreateKey(false)} className="btn-ghost">
-                            <X className="w-4 h-4" /> Annulla
+                            <X className="w-4 h-4" /> {t('Annulla')}
                           </button>
                         </div>
                       </div>
@@ -1771,7 +1830,7 @@ const Admin = () => {
                 {apiKeys.length === 0 ? (
                   <div className="card p-8 text-center text-gray-400">
                     <Key className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                    <p>Nessuna API key creata</p>
+                    <p>{t('Nessuna API key creata')}</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1785,21 +1844,21 @@ const Admin = () => {
                                 ? (k.expires_at && new Date(k.expires_at) < new Date() ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700')
                                 : 'bg-red-100 text-red-700'
                             }`}>
-                              {!k.is_active ? 'Revocata' : (k.expires_at && new Date(k.expires_at) < new Date() ? 'Scaduta' : 'Attiva')}
+                              {!k.is_active ? t('Revocata') : (k.expires_at && new Date(k.expires_at) < new Date() ? t('Scaduta') : t('Attiva'))}
                             </span>
                           </div>
                           <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                             <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{k.key_prefix}...</span>
                             <span>{k.user_email}</span>
-                            <span>{k.rate_limit_per_minute} req/min</span>
-                            {k.last_used_at && <span>Ultimo uso: {new Date(k.last_used_at).toLocaleDateString('it-IT')}</span>}
-                            {k.expires_at && <span>Scade: {new Date(k.expires_at).toLocaleDateString('it-IT')}</span>}
+                            <span>{t('{{n}} req/min', { n: k.rate_limit_per_minute })}</span>
+                            {k.last_used_at && <span>{t('Ultimo uso:')} {new Date(k.last_used_at).toLocaleDateString('it-IT')}</span>}
+                            {k.expires_at && <span>{t('Scade:')} {new Date(k.expires_at).toLocaleDateString('it-IT')}</span>}
                           </div>
                         </div>
                         {k.is_active && (
                           <button
                             onClick={async () => {
-                              if (!confirm(`Revocare la key "${k.name}"?`)) return;
+                              if (!confirm(t('Revocare la key "{{name}}"?', { name: k.name }))) return;
                               try {
                                 await revokeApiKey(k.id);
                                 loadData();
@@ -1809,7 +1868,7 @@ const Admin = () => {
                             }}
                             className="btn-ghost text-red-500 hover:text-red-700 flex items-center gap-1 text-sm ml-3"
                           >
-                            <Trash2 className="w-4 h-4" /> Revoca
+                            <Trash2 className="w-4 h-4" /> {t('Revoca')}
                           </button>
                         )}
                       </div>
@@ -1819,9 +1878,35 @@ const Admin = () => {
               </div>
             )}
 
-            {/* ===================== TAB PAGAMENTI PAGOPA ===================== */}
-            {activeTab === 'payments' && (
-              <AdminPaymentsSection />
+            {/* ===================== TAB LISTINI ===================== */}
+            {activeTab === 'listini' && (
+              <AdminListiniSection />
+            )}
+
+            {/* ===================== TAB RICHIESTE ===================== */}
+            {activeTab === 'requests' && (
+              <div className="space-y-4">
+                <div className="glass rounded-2xl p-6">
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <Inbox className="w-6 h-6 text-orange-500" />
+                    {t('Richieste crediti')}
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {t('Richieste dei distributori. Approvandole accrediti i crediti (hai saldo illimitato).')}
+                  </p>
+                </div>
+                <RequestsInbox
+                  fetchFn={getAdminCreditRequests}
+                  historyFn={getAdminCreditRequestsHistory}
+                  approveFn={adminApproveCreditRequest}
+                  rejectFn={adminRejectCreditRequest}
+                  availableCredits={-1}
+                />
+              </div>
+            )}
+
+            {activeTab === 'languages' && (
+              <AdminLanguagesSection />
             )}
           </>
         )}

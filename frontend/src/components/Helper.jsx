@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { X, MessageCircle, Send, Lightbulb, ChevronDown } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { chatWithCalcifer } from '../services/api';
 
 // Import delle immagini di Calcifer
@@ -61,6 +62,7 @@ const renderMessage = (text) => {
 };
 
 const Helper = () => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -80,7 +82,7 @@ const Helper = () => {
       const pageName = getPageName(location.pathname);
       setChatMessages([{
         role: 'assistant',
-        content: `Ciao! Sono Calcifer, il tuo assistente. Sei nella pagina **${pageName}**. Come posso aiutarti?`
+        content: t('Ciao! Sono Calcifer, il tuo assistente. Sei nella pagina **{{pageName}}**. Come posso aiutarti?', { pageName: t(pageName) })
       }]);
     }
   }, [isOpen]);
@@ -131,7 +133,7 @@ const Helper = () => {
       console.error('Errore Calcifer:', error);
       setChatMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Mi dispiace, ho avuto un problema tecnico. Riprova tra poco!'
+        content: t('Mi dispiace, ho avuto un problema tecnico. Riprova tra poco!')
       }]);
     } finally {
       setIsLoading(false);
@@ -158,7 +160,7 @@ const Helper = () => {
       <button
         onClick={handleToggle}
         className="fixed bottom-6 right-6 w-24 h-24 group z-50"
-        title="Ciao! Sono Calcifer, il tuo assistente!"
+        title={t('Ciao! Sono Calcifer, il tuo assistente!')}
       >
         <div className="relative w-full h-full transform hover:scale-110 transition-all duration-300 hover:-translate-y-1">
           {/* Glow statico */}
@@ -186,7 +188,7 @@ const Helper = () => {
             </div>
             <div>
               <span className="font-bold text-slate-900 text-sm block leading-tight">Calcifer</span>
-              <span className="text-[10px] text-slate-500">{pageName}</span>
+              <span className="text-[10px] text-slate-500">{t(pageName)}</span>
             </div>
           </div>
           <button
@@ -251,7 +253,7 @@ const Helper = () => {
                   onClick={() => handleSendMessage(s)}
                   className="text-xs px-3 py-1.5 bg-white border border-orange-200 text-orange-700 rounded-full hover:bg-orange-50 hover:border-orange-300 transition-colors"
                 >
-                  {s}
+                  {t(s)}
                 </button>
               ))}
             </div>
@@ -279,7 +281,7 @@ const Helper = () => {
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={handleKeyPress}
-              placeholder="Scrivi un messaggio..."
+              placeholder={t('Scrivi un messaggio...')}
               className="flex-1 px-3.5 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400/30 bg-slate-50"
               disabled={isLoading}
               maxLength={500}
@@ -299,7 +301,7 @@ const Helper = () => {
       <button
         onClick={handleToggle}
         className="w-24 h-24 group relative"
-        title="Clicca per chiudere"
+        title={t('Clicca per chiudere')}
       >
         <div className="relative w-full h-full transform hover:scale-110 transition-all duration-300 hover:-translate-y-1">
           <div className="absolute inset-2 bg-gradient-to-br from-orange-400/40 via-yellow-500/30 to-red-500/40 rounded-full blur-2xl"></div>

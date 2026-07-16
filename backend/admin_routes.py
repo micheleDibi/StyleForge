@@ -7,16 +7,16 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
 from database import get_db
-from auth import get_current_admin_user, get_effective_permissions, get_password_hash
+from auth import get_current_admin_user, get_effective_permissions
 from db_models import (
     User, Role, RolePermission, UserPermission, CreditTransaction, SystemSetting, APIKey,
-    CreditPackage, PaymentOrder, PagoPAEvent
+    CreditPackage, CreditRequest
 )
 from credits import (
     add_credits, get_user_transactions, PERMISSION_CODES,
@@ -32,14 +32,10 @@ from models import (
     AdminCreateUserRequest, CreditCostsResponse, CreditCostsUpdateRequest,
     ExportTemplateListResponse, ExportTemplateUpdateRequest,
     CreditPackageResponse, CreditPackageListResponse, AdminCreditPackageRequest,
-    AdminPaymentListItem, AdminPaymentListResponse,
-    AdminPaymentDailyPoint, AdminPaymentStatsResponse,
-    AdminCancelPaymentResponse, AdminRefundCreditsRequest,
-    AdminPagopaConfigResponse, AdminPagopaConfigUpdateRequest,
-    AdminEstrccUploadResponse, PaymentOrderResponse,
+    CreditRequestItem, CreditRequestListResponse, ResolveRequestRequest,
 )
 import config
-import pagopa_client as pgc
+from notifications import notify
 from template_service import (
     get_export_templates, save_export_templates, delete_template,
     TEMPLATE_PARAM_HELP, generate_template_id
@@ -74,7 +70,10 @@ def build_admin_user_response(user: User, db: Session) -> AdminUserResponse:
         credits=user.credits,
         permissions=permissions,
         user_overrides=user_overrides,
-        entity_type=getattr(user, 'entity_type', None) or 'private',
+        email_verified=bool(getattr(user, 'email_verified', False)),
+        entity_type=getattr(user, 'entity_type', None) or 'privato',
+        parent_id=str(user.parent_id) if getattr(user, 'parent_id', None) else None,
+        distributor_id=str(user.distributor_id) if getattr(user, 'distributor_id', None) else None,
         codice_fiscale=getattr(user, 'codice_fiscale', None),
         partita_iva=getattr(user, 'partita_iva', None),
         ragione_sociale=getattr(user, 'ragione_sociale', None),
@@ -83,6 +82,37 @@ def build_admin_user_response(user: User, db: Session) -> AdminUserResponse:
         updated_at=user.updated_at,
         last_login=user.last_login
     )
+
+
+def _set_user_parent(user: User, parent_value, db: Session) -> None:
+    """
+    Imposta/azzera il genitore (parent_id) di `user` con validazione di coerenza
+    entity_type + protezione anti-ciclo. `parent_value`: '' azzera, UUID stringa imposta.
+    Mantiene allineato il legacy distributor_id (per i rivenditori) finché esiste.
+    """
+    pv = (parent_value or "").strip()
+    if pv == "":
+        user.parent_id = None
+        user.distributor_id = None
+        return
+    child_et = (user.entity_type or 'privato').strip().lower()
+    if child_et == 'distributore':
+        raise HTTPException(status_code=400, detail="Un distributore non può avere un genitore.")
+    try:
+        parent = db.query(User).filter(User.id == UUID(pv)).first()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="parent_id non valido")
+    if not parent:
+        raise HTTPException(status_code=404, detail="Genitore non trovato")
+    parent_et = (parent.entity_type or 'privato').strip().lower()
+    if child_et == 'rivenditore' and parent_et != 'distributore':
+        raise HTTPException(status_code=400, detail="Il genitore di un rivenditore deve essere un distributore.")
+    if child_et == 'privato' and parent_et not in ('rivenditore', 'distributore'):
+        raise HTTPException(status_code=400, detail="Il genitore di un privato deve essere un rivenditore o un distributore.")
+    from hierarchy import assert_no_cycle
+    assert_no_cycle(user, parent, db)
+    user.parent_id = parent.id
+    user.distributor_id = parent.id if child_et == 'rivenditore' else None
 
 
 # ============================================================================
@@ -94,6 +124,7 @@ async def list_users(
     search: Optional[str] = None,
     role_id: Optional[int] = None,
     is_active: Optional[bool] = None,
+    entity_type: Optional[str] = None,
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -113,6 +144,9 @@ async def list_users(
 
     if is_active is not None:
         query = query.filter(User.is_active == is_active)
+
+    if entity_type is not None:
+        query = query.filter(User.entity_type == entity_type)
 
     users = query.order_by(User.created_at.desc()).all()
 
@@ -143,7 +177,7 @@ async def update_user(
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
-    """Aggiorna dati utente (is_active, full_name, entity_type)."""
+    """Aggiorna dati utente (is_active, full_name, entity_type, distributor_id)."""
     user = db.query(User).options(joinedload(User.role)).filter(User.id == UUID(user_id)).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utente non trovato")
@@ -154,12 +188,21 @@ async def update_user(
         user.full_name = request.full_name
     if request.entity_type is not None:
         et = request.entity_type.strip().lower()
-        if et not in ('private', 'training'):
+        if et not in ('distributore', 'rivenditore', 'privato'):
             raise HTTPException(
                 status_code=400,
-                detail="entity_type deve essere 'private' o 'training'",
+                detail="entity_type deve essere 'distributore', 'rivenditore' o 'privato'",
             )
         user.entity_type = et
+        # I distributori sono la radice dell'albero: nessun genitore.
+        if et == 'distributore':
+            user.parent_id = None
+            user.distributor_id = None
+    # Assegnazione/azzeramento del genitore nell'albero. Si accetta `parent_id`
+    # (canonico) oppure il legacy `distributor_id` come alias.
+    parent_value = request.parent_id if request.parent_id is not None else request.distributor_id
+    if parent_value is not None:
+        _set_user_parent(user, parent_value, db)
     if request.codice_fiscale is not None:
         user.codice_fiscale = (request.codice_fiscale or "").upper().strip() or None
     if request.partita_iva is not None:
@@ -317,6 +360,12 @@ async def adjust_user_credits(
     )
 
     db.refresh(user)
+    if request.amount > 0:
+        notify(db, user.id, 'credits_assigned', "Crediti ricevuti",
+               f"L'amministratore ti ha accreditato {request.amount} crediti.", link='/')
+    elif request.amount < 0:
+        notify(db, user.id, 'credits_removed', "Crediti rimossi",
+               f"L'amministratore ha rimosso {abs(request.amount)} crediti dal tuo saldo.", link='/')
     return build_admin_user_response(user, db)
 
 
@@ -475,10 +524,12 @@ async def get_admin_stats(
 @router.post("/users", response_model=AdminUserResponse)
 async def create_user(
     request: AdminCreateUserRequest,
+    background_tasks: BackgroundTasks,
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
-    """Crea un nuovo utente dal pannello admin."""
+    """Crea un nuovo utente dal pannello admin.
+    L'utente NON ha password: riceve un'email di invito per impostarla (e verificare l'email)."""
     # Verifica email duplicata
     existing_email = db.query(User).filter(User.email == request.email).first()
     if existing_email:
@@ -508,21 +559,33 @@ async def create_user(
         role_id = default_role.id if default_role else None
         is_admin = False
 
-    # Crea utente
-    hashed_password = get_password_hash(request.password)
+    # Crea utente SENZA password ed email NON verificata: l'invito imposterà
+    # la password e verificherà/attiverà l'account.
+    entity_type = (request.entity_type or 'privato').strip().lower()
+    if entity_type not in ('distributore', 'rivenditore', 'privato'):
+        raise HTTPException(status_code=400, detail="entity_type non valido")
+
     new_user = User(
         email=request.email,
         username=request.username,
-        hashed_password=hashed_password,
+        hashed_password=None,
         full_name=request.full_name,
         role_id=role_id,
         is_admin=is_admin,
         credits=request.credits,
-        is_active=request.is_active
+        is_active=request.is_active,
+        email_verified=False,
+        entity_type=entity_type,
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # Genitore opzionale nell'albero (l'admin può creare chiunque sotto chiunque).
+    if request.parent_id:
+        _set_user_parent(new_user, request.parent_id, db)
+        db.commit()
+        db.refresh(new_user)
 
     # Se crediti > 0, registra transazione
     if request.credits > 0:
@@ -536,7 +599,39 @@ async def create_user(
             admin_user=admin_user
         )
 
+    # Invia l'email di invito (imposta password + verifica) in background.
+    from email_service import create_email_token, build_link, send_invite_email
+    raw = create_email_token(db, new_user.id, 'set_password')
+    link = build_link('set_password', raw)
+    background_tasks.add_task(send_invite_email, new_user.email, new_user.full_name or new_user.username, link)
+
     return build_admin_user_response(new_user, db)
+
+
+@router.post("/users/{user_id}/resend-invite")
+async def resend_invite(
+    user_id: str,
+    background_tasks: BackgroundTasks,
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Reinvia l'email di invito/verifica a un utente non ancora verificato."""
+    user = db.query(User).filter(User.id == UUID(user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    if user.email_verified:
+        raise HTTPException(status_code=400, detail="L'utente ha già verificato l'email")
+
+    from email_service import create_email_token, build_link, send_invite_email, send_verification_email
+    if not user.hashed_password:
+        # Utente invitato che non ha ancora impostato la password.
+        raw = create_email_token(db, user.id, 'set_password')
+        background_tasks.add_task(send_invite_email, user.email, user.full_name or user.username, build_link('set_password', raw))
+    else:
+        # Utente registrato che non ha ancora confermato l'email.
+        raw = create_email_token(db, user.id, 'verify')
+        background_tasks.add_task(send_verification_email, user.email, user.full_name or user.username, build_link('verify', raw))
+    return {"message": "Email reinviata"}
 
 
 # ============================================================================
@@ -866,234 +961,6 @@ async def revoke_api_key(
     return {"message": f"API key '{db_key.name}' revocata", "id": str(db_key.id)}
 
 
-# ============================================================================
-# PAGOPA — ORDINI, PACCHETTI, CONFIG, RICONCILIAZIONE
-# ============================================================================
-
-# ---- Ordini di pagamento ----------------------------------------------------
-
-@router.get("/payments", response_model=AdminPaymentListResponse)
-async def admin_list_payments(
-    status: Optional[str] = None,
-    user_id: Optional[str] = None,
-    q: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
-    admin_user: User = Depends(get_current_admin_user),
-    db: Session = Depends(get_db),
-):
-    """Lista ordini PagoPA con filtri (status, user, range date, search su CF/IUV)."""
-    query = db.query(PaymentOrder, User).join(User, PaymentOrder.user_id == User.id)
-
-    if status:
-        query = query.filter(PaymentOrder.status == status.upper())
-    if user_id:
-        try:
-            query = query.filter(PaymentOrder.user_id == UUID(user_id))
-        except ValueError:
-            raise HTTPException(status_code=400, detail="user_id non valido")
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            (PaymentOrder.iuv.ilike(like))
-            | (PaymentOrder.payer_codice_fiscale.ilike(like))
-            | (PaymentOrder.payer_ragione_sociale.ilike(like))
-        )
-    if date_from:
-        try:
-            d = datetime.fromisoformat(date_from)
-            query = query.filter(PaymentOrder.created_at >= d)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="date_from non valida (atteso ISO8601)")
-    if date_to:
-        try:
-            d = datetime.fromisoformat(date_to)
-            query = query.filter(PaymentOrder.created_at <= d)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="date_to non valida (atteso ISO8601)")
-
-    total = query.count()
-    rows = query.order_by(PaymentOrder.created_at.desc()).limit(limit).offset(offset).all()
-
-    items = []
-    for order, user in rows:
-        items.append(AdminPaymentListItem(
-            id=str(order.id),
-            user_id=str(order.user_id),
-            user_email=user.email if user else None,
-            user_username=user.username if user else None,
-            package_id=order.package_id,
-            credits=order.credits,
-            amount_cents=order.amount_cents,
-            amount_eur=round(order.amount_cents / 100.0, 2),
-            iuv=order.iuv,
-            payer_codice_fiscale=order.payer_codice_fiscale,
-            payer_ragione_sociale=order.payer_ragione_sociale,
-            status=order.status,
-            paid_at=order.paid_at,
-            created_at=order.created_at,
-            expires_at=order.expires_at,
-        ))
-
-    return AdminPaymentListResponse(orders=items, total=total)
-
-
-@router.get("/payments/stats", response_model=AdminPaymentStatsResponse)
-async def admin_payment_stats(
-    admin_user: User = Depends(get_current_admin_user),
-    db: Session = Depends(get_db),
-):
-    """KPI cruscotto pagamenti: revenue, count, success rate, serie temporale 30gg."""
-    # Aggregati totali
-    revenue_total = db.query(func.coalesce(func.sum(PaymentOrder.amount_paid_cents), 0)).filter(
-        PaymentOrder.status == "PAID"
-    ).scalar() or 0
-    count_total = db.query(func.count(PaymentOrder.id)).scalar() or 0
-    count_paid = db.query(func.count(PaymentOrder.id)).filter(
-        PaymentOrder.status == "PAID"
-    ).scalar() or 0
-
-    # Aggregati ultimo mese
-    one_month_ago = datetime.utcnow() - timedelta(days=30)
-    revenue_month = db.query(func.coalesce(func.sum(PaymentOrder.amount_paid_cents), 0)).filter(
-        PaymentOrder.status == "PAID", PaymentOrder.paid_at >= one_month_ago
-    ).scalar() or 0
-    count_month = db.query(func.count(PaymentOrder.id)).filter(
-        PaymentOrder.created_at >= one_month_ago
-    ).scalar() or 0
-
-    # Count by status
-    status_rows = db.query(PaymentOrder.status, func.count(PaymentOrder.id)).group_by(PaymentOrder.status).all()
-    count_by_status = {s: int(c) for s, c in status_rows}
-
-    success_rate = (count_paid / count_total) if count_total > 0 else 0.0
-
-    # Serie temporale daily ultimi 30 giorni
-    daily_rows = db.query(
-        func.date(PaymentOrder.paid_at).label("d"),
-        func.coalesce(func.sum(PaymentOrder.amount_paid_cents), 0).label("rev"),
-        func.count(PaymentOrder.id).label("cnt"),
-    ).filter(
-        PaymentOrder.status == "PAID",
-        PaymentOrder.paid_at >= one_month_ago,
-    ).group_by(func.date(PaymentOrder.paid_at)).order_by(func.date(PaymentOrder.paid_at)).all()
-
-    daily = [
-        AdminPaymentDailyPoint(
-            date=str(row.d),
-            revenue_cents=int(row.rev or 0),
-            count=int(row.cnt or 0),
-        )
-        for row in daily_rows
-    ]
-
-    return AdminPaymentStatsResponse(
-        revenue_cents_total=int(revenue_total),
-        revenue_cents_month=int(revenue_month),
-        count_total=int(count_total),
-        count_month=int(count_month),
-        count_by_status=count_by_status,
-        success_rate=round(success_rate, 4),
-        daily=daily,
-    )
-
-
-@router.get("/payments/{order_id}", response_model=PaymentOrderResponse)
-async def admin_get_payment(
-    order_id: str,
-    admin_user: User = Depends(get_current_admin_user),
-    db: Session = Depends(get_db),
-):
-    order = db.query(PaymentOrder).filter(PaymentOrder.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Ordine non trovato")
-    return PaymentOrderResponse(**order.to_dict())
-
-
-@router.post("/payments/{order_id}/cancel", response_model=AdminCancelPaymentResponse)
-async def admin_cancel_payment(
-    order_id: str,
-    admin_user: User = Depends(get_current_admin_user),
-    db: Session = Depends(get_db),
-):
-    """Annulla una posizione non ancora pagata su SolutionPA (modalita INV)."""
-    order = db.query(PaymentOrder).filter(PaymentOrder.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Ordine non trovato")
-    if order.status not in ("PENDING", "AWAITING_PAYMENT"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Ordine in stato {order.status}, non annullabile",
-        )
-    if not order.iuv:
-        # Posizione mai caricata -> solo cancel locale
-        order.status = "CANCELED"
-        db.commit()
-        return AdminCancelPaymentResponse(order_id=order_id, status="CANCELED", message="Annullato (mai caricato)")
-
-    try:
-        pgc.annulla_posizione(iuv=order.iuv)
-    except pgc.PagoPARemoteError as e:
-        raise HTTPException(status_code=502, detail=f"Errore SolutionPA: {e.code}")
-    except pgc.PagoPAError as e:
-        raise HTTPException(status_code=502, detail=f"Errore comunicazione SolutionPA: {e}")
-
-    order.status = "CANCELED"
-    db.add(PagoPAEvent(
-        order_id=order.id,
-        iuv=order.iuv,
-        event_type="POSITION_CANCELED",
-        source="manual",
-        payload={"admin": admin_user.username},
-    ))
-    db.commit()
-    return AdminCancelPaymentResponse(order_id=order_id, status="CANCELED", message="Posizione annullata")
-
-
-@router.post("/payments/{order_id}/refund-credits", response_model=PaymentOrderResponse)
-async def admin_refund_credits(
-    order_id: str,
-    request: AdminRefundCreditsRequest,
-    admin_user: User = Depends(get_current_admin_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Rimborso interno: scala i crediti accreditati e marca l'ordine REFUNDED.
-    NON storna su PagoPA: lo storno bancario va gestito manualmente.
-    """
-    order = db.query(PaymentOrder).filter(PaymentOrder.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Ordine non trovato")
-    if order.status != "PAID":
-        raise HTTPException(status_code=400, detail=f"Ordine in stato {order.status}, non rimborsabile")
-
-    user = db.query(User).filter(User.id == order.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Utente non trovato")
-
-    add_credits(
-        user=user,
-        amount=-order.credits,
-        description=f"Rimborso ordine PagoPA {order.iuv}: {request.description}",
-        db=db,
-        transaction_type="refund",
-        admin_user=admin_user,
-    )
-    order.status = "REFUNDED"
-    db.add(PagoPAEvent(
-        order_id=order.id,
-        iuv=order.iuv,
-        event_type="ESITO_PUSH",
-        source="manual",
-        payload={"action": "refund_credits", "admin": admin_user.username, "reason": request.description},
-    ))
-    db.commit()
-    db.refresh(order)
-    return PaymentOrderResponse(**order.to_dict())
-
-
 # ---- Pacchetti crediti -------------------------------------------------------
 
 @router.get("/credit-packages", response_model=CreditPackageListResponse)
@@ -1111,6 +978,9 @@ async def admin_create_package(
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):
+    et = (request.entity_type or 'privato').strip().lower()
+    if et not in ('distributore', 'rivenditore', 'privato'):
+        raise HTTPException(status_code=400, detail="entity_type deve essere 'distributore', 'rivenditore' o 'privato'")
     pkg = CreditPackage(
         name=request.name,
         credits=request.credits,
@@ -1118,6 +988,7 @@ async def admin_create_package(
         is_active=request.is_active,
         sort_order=request.sort_order,
         description=request.description,
+        entity_type=et,
     )
     db.add(pkg)
     db.commit()
@@ -1136,12 +1007,17 @@ async def admin_update_package(
     if not pkg:
         raise HTTPException(status_code=404, detail="Pacchetto non trovato")
 
+    et = (request.entity_type or 'privato').strip().lower()
+    if et not in ('distributore', 'rivenditore', 'privato'):
+        raise HTTPException(status_code=400, detail="entity_type deve essere 'distributore', 'rivenditore' o 'privato'")
+
     pkg.name = request.name
     pkg.credits = request.credits
     pkg.price_cents = request.price_cents
     pkg.is_active = request.is_active
     pkg.sort_order = request.sort_order
     pkg.description = request.description
+    pkg.entity_type = et
     pkg.updated_at = datetime.utcnow()
 
     db.commit()
@@ -1159,153 +1035,138 @@ async def admin_delete_package(
     if not pkg:
         raise HTTPException(status_code=404, detail="Pacchetto non trovato")
 
-    # Soft delete: se ci sono ordini collegati, disattiva invece di eliminare
-    has_orders = db.query(PaymentOrder).filter(PaymentOrder.package_id == package_id).limit(1).first()
-    if has_orders:
-        pkg.is_active = False
-        pkg.updated_at = datetime.utcnow()
-        db.commit()
-        return {"message": "Pacchetto disattivato (esistono ordini collegati)", "id": package_id}
-
     db.delete(pkg)
     db.commit()
     return {"message": "Pacchetto eliminato", "id": package_id}
 
 
-# ---- Configurazione PagoPA ---------------------------------------------------
+# ============================================================================
+# RICHIESTE CREDITI — inbox admin (richieste dei distributori)
+# ============================================================================
 
-def _mask(value: Optional[str]) -> Optional[str]:
-    """Maschera una stringa lasciando 2 char iniziali + asterischi + 2 finali."""
-    if not value:
-        return None
-    if len(value) <= 4:
-        return "***"
-    return f"{value[:2]}{'*' * (len(value) - 4)}{value[-2:]}"
-
-
-@router.get("/pagopa/config", response_model=AdminPagopaConfigResponse)
-async def admin_get_pagopa_config(
-    admin_user: User = Depends(get_current_admin_user),
-    db: Session = Depends(get_db),
-):
-    """Configurazione PagoPA con credenziali mascherate."""
-    return AdminPagopaConfigResponse(
-        test_mode=config.PAGOPA_TEST_MODE,
-        wsdl_url=config.PAGOPA_WSDL_URL,
-        dominio=config.PAGOPA_DOMINIO or "",
-        ub=config.PAGOPA_UB or "",
-        cod_tributo=config.PAGOPA_COD_TRIBUTO or "",
-        username_masked=_mask(config.PAGOPA_USERNAME),
-        password_set=bool(config.PAGOPA_PASSWORD),
-        return_url_base=config.PAGOPA_RETURN_URL_BASE,
-        notify_username_set=bool(config.PAGOPA_NOTIFY_AUTH_USER),
-        notify_password_set=bool(config.PAGOPA_NOTIFY_AUTH_PASS),
+def _admin_req_item(cr: CreditRequest, db: Session) -> CreditRequestItem:
+    requester = cr.requester or db.query(User).filter(User.id == cr.requester_id).first()
+    return CreditRequestItem(
+        id=str(cr.id),
+        requester_id=str(cr.requester_id),
+        requester_username=requester.username if requester else None,
+        requester_email=requester.email if requester else None,
+        requester_entity_type=(requester.entity_type if requester else None),
+        approver_id=str(cr.approver_id) if cr.approver_id else None,
+        approver_is_admin=bool(cr.approver_is_admin),
+        package_id=cr.package_id,
+        package_name=cr.package_name,
+        package_credits=cr.package_credits,
+        package_price_cents=cr.package_price_cents,
+        package_price_eur=round(cr.package_price_cents / 100.0, 2),
+        status=cr.status,
+        note=cr.note,
+        created_at=cr.created_at,
+        resolved_at=cr.resolved_at,
     )
 
 
-@router.put("/pagopa/config", response_model=AdminPagopaConfigResponse)
-async def admin_update_pagopa_config(
-    request: AdminPagopaConfigUpdateRequest,
+@router.get("/credit-requests", response_model=CreditRequestListResponse)
+async def admin_list_credit_requests(
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Aggiorna la configurazione PagoPA. Per ora supporta solo il toggle test_mode;
-    le credenziali si configurano via env e si vedono mascherate.
-    """
-    if request.test_mode is not None:
-        # Persistenza in system_settings per re-load runtime; la env resta
-        # source-of-truth al boot del server.
-        setting = db.query(SystemSetting).filter(SystemSetting.key == "pagopa_config").first()
-        config_data = (setting.value if setting else None) or {}
-        config_data["test_mode"] = bool(request.test_mode)
-        if setting:
-            setting.value = config_data
-            setting.updated_at = datetime.utcnow()
-            setting.updated_by = admin_user.id
-        else:
-            db.add(SystemSetting(
-                key="pagopa_config", value=config_data,
-                updated_at=datetime.utcnow(), updated_by=admin_user.id,
-            ))
-        config.PAGOPA_TEST_MODE = bool(request.test_mode)
-        # Reset cache zeep client per re-leggere il WSDL alla prossima call
-        pgc.reset_client_cache()
-        db.commit()
-
-    return await admin_get_pagopa_config(admin_user=admin_user, db=db)
+    """Richieste crediti pending indirizzate al pool admin (dei distributori)."""
+    rows = (
+        db.query(CreditRequest)
+        .filter(CreditRequest.approver_is_admin == True, CreditRequest.status == 'pending')  # noqa: E712
+        .order_by(CreditRequest.created_at.asc())
+        .all()
+    )
+    return CreditRequestListResponse(requests=[_admin_req_item(r, db) for r in rows], total=len(rows))
 
 
-@router.post("/pagopa/reconcile/upload", response_model=AdminEstrccUploadResponse)
-async def admin_upload_estrcc(
-    file: UploadFile = File(...),
+@router.get("/credit-requests/history", response_model=CreditRequestListResponse)
+async def admin_credit_requests_history(
     admin_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Upload manuale del file XML estrcc di riconciliazione daily.
-    Confronta ogni riga con gli ordini esistenti, segnala discrepanze.
-    """
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="File vuoto")
+    """Storico delle richieste admin gestite (approvate/rifiutate/annullate)."""
+    rows = (
+        db.query(CreditRequest)
+        .filter(CreditRequest.approver_is_admin == True, CreditRequest.status != 'pending')  # noqa: E712
+        .order_by(CreditRequest.resolved_at.desc(), CreditRequest.created_at.desc())
+        .all()
+    )
+    return CreditRequestListResponse(requests=[_admin_req_item(r, db) for r in rows], total=len(rows))
 
+
+@router.post("/credit-requests/{request_id}/approve", response_model=CreditRequestItem)
+async def admin_approve_credit_request(
+    request_id: str,
+    body: ResolveRequestRequest = ResolveRequestRequest(),
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Approva una richiesta admin: accredita i crediti (admin = crediti infiniti)."""
     try:
-        rows = pgc.parse_estrcc(content)
-    except pgc.PagoPAError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        cr = db.query(CreditRequest).filter(
+            CreditRequest.id == UUID(request_id),
+            CreditRequest.status == 'pending',
+        ).with_for_update().one_or_none()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="ID richiesta non valido")
+    if not cr or not cr.approver_is_admin:
+        raise HTTPException(status_code=409, detail="Richiesta non trovata o già gestita")
 
-    matched = 0
-    unmatched = 0
-    discrepancies = 0
-    items = []
-    for r in rows:
-        iuv = r.get("iuv")
-        item: dict = {**r, "match": "unmatched"}
-        if iuv:
-            order = db.query(PaymentOrder).filter(PaymentOrder.iuv == iuv).first()
-            if order:
-                matched += 1
-                item["match"] = "matched"
-                item["order_id"] = str(order.id)
-                # Verifica importo (tolleranza 1 cent)
-                try:
-                    importo_pagato = int(round(float(r.get("singolo_importo_pagato") or "0") * 100))
-                    expected = order.amount_paid_cents or order.amount_cents
-                    if abs(importo_pagato - expected) > 1:
-                        discrepancies += 1
-                        item["discrepancy"] = {
-                            "expected_cents": expected,
-                            "reconciled_cents": importo_pagato,
-                        }
-                except (TypeError, ValueError):
-                    pass
-                # Aggiorna identificativo flusso e reconciliation_id
-                if r.get("identificativo_flusso") and not order.identificativo_flusso:
-                    order.identificativo_flusso = r.get("identificativo_flusso")
-                if r.get("data_contabile") and not order.reconciliation_id:
-                    order.reconciliation_id = f"{r.get('identificativo_flusso')}/{r.get('data_contabile')}"
-            else:
-                unmatched += 1
-        else:
-            unmatched += 1
+    requester = db.query(User).filter(User.id == cr.requester_id).first()
+    if not requester:
+        raise HTTPException(status_code=404, detail="Richiedente non trovato")
 
-        # Audit log
-        db.add(PagoPAEvent(
-            order_id=order.id if (iuv and order) else None,
-            iuv=iuv,
-            event_type="RECONCILIATION_FILE",
-            source="manual",
-            payload=r,
-            processed=True,
-        ))
-        items.append(item)
-
-    db.commit()
-    return AdminEstrccUploadResponse(
-        parsed=len(rows),
-        matched=matched,
-        unmatched=unmatched,
-        discrepancies=discrepancies,
-        items=items,
+    cr.status = 'approved'
+    cr.resolver_id = admin_user.id
+    cr.resolved_at = datetime.utcnow()
+    cr.note = body.note
+    add_credits(
+        user=requester,
+        amount=cr.package_credits,
+        description=f"Approvazione richiesta crediti ({cr.package_name})",
+        db=db,
+        transaction_type='admin_adjustment',
+        admin_user=admin_user,
     )
+    db.refresh(cr)
+    notify(
+        db, cr.requester_id, 'request_approved',
+        "Richiesta approvata",
+        f"Sono stati accreditati {cr.package_credits} crediti ({cr.package_name}).",
+        link='/credits/buy',
+    )
+    return _admin_req_item(cr, db)
+
+
+@router.post("/credit-requests/{request_id}/reject", response_model=CreditRequestItem)
+async def admin_reject_credit_request(
+    request_id: str,
+    body: ResolveRequestRequest = ResolveRequestRequest(),
+    admin_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        cr = db.query(CreditRequest).filter(
+            CreditRequest.id == UUID(request_id),
+            CreditRequest.status == 'pending',
+        ).with_for_update().one_or_none()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="ID richiesta non valido")
+    if not cr or not cr.approver_is_admin:
+        raise HTTPException(status_code=409, detail="Richiesta non trovata o già gestita")
+    cr.status = 'rejected'
+    cr.resolver_id = admin_user.id
+    cr.resolved_at = datetime.utcnow()
+    cr.note = body.note
+    db.commit()
+    db.refresh(cr)
+    notify(
+        db, cr.requester_id, 'request_rejected',
+        "Richiesta rifiutata",
+        f"La richiesta di {cr.package_credits} crediti ({cr.package_name}) è stata rifiutata.",
+        link='/credits/buy',
+    )
+    return _admin_req_item(cr, db)
+

@@ -14,6 +14,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session, joinedload
 
+import config
 from database import get_db
 from db_models import User, RefreshToken, Role, RolePermission, UserPermission
 from dotenv import load_dotenv
@@ -21,8 +22,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configurazione JWT
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-super-secret-key-change-in-production")
-ALGORITHM = "HS256"
+#
+# Fail-fast a import time, non a primo utilizzo: senza una chiave di firma vera
+# l'applicazione NON deve partire. Con un segreto noto chiunque forgia un token
+# con `sub` arbitrario e diventa admin, quindi partire "in qualche modo" e'
+# peggio che non partire. Il messaggio spiega come generarne una (config.py).
+SECRET_KEY = config.validate_jwt_secret(config.JWT_SECRET_KEY)
+ALGORITHM = config.JWT_ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
@@ -59,10 +65,13 @@ class UserResponse(BaseModel):
     full_name: Optional[str]
     is_active: bool
     is_admin: bool
+    email_verified: bool = False
     role: Optional[str] = None
     credits: int = 0
     permissions: list = []
-    entity_type: Optional[str] = 'private'
+    entity_type: Optional[str] = 'privato'
+    parent_id: Optional[str] = None
+    distributor_id: Optional[str] = None
     codice_fiscale: Optional[str] = None
     partita_iva: Optional[str] = None
     ragione_sociale: Optional[str] = None
@@ -87,6 +96,33 @@ class PasswordChange(BaseModel):
     new_password: str
 
 
+class VerifyEmailRequest(BaseModel):
+    """Conferma email tramite token ricevuto via email."""
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    """Richiesta di reinvio dell'email di verifica."""
+    email: EmailStr
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Richiesta di reset password (invia link via email)."""
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset password tramite token ricevuto via email."""
+    token: str
+    new_password: str
+
+
+class SetPasswordRequest(BaseModel):
+    """Impostazione password iniziale (invito admin) tramite token."""
+    token: str
+    new_password: str
+
+
 class Token(BaseModel):
     """Schema per il token JWT."""
     access_token: str
@@ -98,11 +134,40 @@ class TokenData(BaseModel):
     """Dati estratti dal token."""
     user_id: Optional[str] = None
     username: Optional[str] = None
+    token_type: Optional[str] = None
 
 
 # ============================================================================
 # PASSWORD UTILITIES
 # ============================================================================
+
+# Requisiti password. Vivevano copiati in tre handler (register,
+# change-password, reset/set) e in tre componenti del frontend: sette posti, una
+# sola regola, nessuna fonte di verita'. La regola sta qui; il frontend la
+# specchia in src/utils/passwordPolicy.js (i messaggi devono restare allineati).
+PASSWORD_MIN_LENGTH = 12
+# bcrypt considera solo i primi 72 byte e TRONCA in silenzio: una password piu'
+# lunga darebbe all'utente una falsa sicurezza. Meglio rifiutarla.
+PASSWORD_MAX_BYTES = 72
+
+
+def validate_password_strength(password: str) -> str:
+    """Valida una password nuova, o solleva HTTPException 400."""
+    def _no(dettaglio: str):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=dettaglio)
+
+    if not password:
+        _no("La password è obbligatoria")
+    if len(password) < PASSWORD_MIN_LENGTH:
+        _no(f"La password deve essere di almeno {PASSWORD_MIN_LENGTH} caratteri")
+    if len(password.encode("utf-8")) > PASSWORD_MAX_BYTES:
+        _no(f"La password non può superare i {PASSWORD_MAX_BYTES} byte")
+    if not any(c.isupper() for c in password):
+        _no("La password deve contenere almeno una lettera maiuscola")
+    if not any(c.isdigit() for c in password):
+        _no("La password deve contenere almeno un numero")
+    return password
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifica una password."""
@@ -142,15 +207,25 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) 
     return encoded_jwt
 
 
-def decode_token(token: str) -> Optional[TokenData]:
-    """Decodifica un token JWT."""
+def decode_token(token: str, expected_type: str = "access") -> Optional[TokenData]:
+    """
+    Decodifica un token JWT e ne verifica il tipo.
+
+    Il claim `type` viene scritto da create_access_token/create_refresh_token ma
+    fino a qui non lo rileggeva nessuno: un refresh token (valido 7 giorni)
+    passava come Bearer su qualsiasi endpoint, admin inclusi. `expected_type`
+    chiude la confusione fra i due tipi; passare None disattiva il controllo.
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         username: str = payload.get("username")
+        token_type: str = payload.get("type")
         if user_id is None:
             return None
-        return TokenData(user_id=user_id, username=username)
+        if expected_type is not None and token_type != expected_type:
+            return None
+        return TokenData(user_id=user_id, username=username, token_type=token_type)
     except JWTError:
         return None
 
@@ -182,6 +257,9 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Use
         # Prova con email
         user = get_user_by_email(db, username)
     if not user:
+        return None
+    # Utente invitato dall'admin che non ha ancora impostato la password.
+    if not user.hashed_password:
         return None
     if not verify_password(password, user.hashed_password):
         return None
@@ -268,10 +346,13 @@ def build_user_response(user: User, db: Session) -> UserResponse:
         full_name=user.full_name,
         is_active=user.is_active,
         is_admin=user.is_admin,
+        email_verified=bool(getattr(user, 'email_verified', False)),
         role=role_name,
         credits=user.credits if not (user.is_admin or (user.role and user.role.name == 'admin')) else -1,  # -1 = infiniti
         permissions=permissions,
-        entity_type=getattr(user, 'entity_type', None) or 'private',
+        entity_type=getattr(user, 'entity_type', None) or 'privato',
+        parent_id=str(user.parent_id) if getattr(user, 'parent_id', None) else None,
+        distributor_id=str(user.distributor_id) if getattr(user, 'distributor_id', None) else None,
         codice_fiscale=getattr(user, 'codice_fiscale', None),
         partita_iva=getattr(user, 'partita_iva', None),
         ragione_sociale=getattr(user, 'ragione_sociale', None),
@@ -508,6 +589,49 @@ async def get_current_admin_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permessi insufficienti"
+        )
+    return current_user
+
+
+async def get_current_distributor(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """
+    Dependency per le rotte della dashboard distributore.
+    Consente l'accesso solo agli utenti con entity_type='distributore'.
+    """
+    if (getattr(current_user, 'entity_type', None) or '') != 'distributore':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accesso riservato ai distributori"
+        )
+    return current_user
+
+
+async def get_current_reseller(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """Consente l'accesso solo agli utenti con entity_type='rivenditore'."""
+    if (getattr(current_user, 'entity_type', None) or '') != 'rivenditore':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accesso riservato ai rivenditori"
+        )
+    return current_user
+
+
+async def get_current_manager(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """
+    Consente l'accesso a distributori E rivenditori (i "manager" che gestiscono un
+    sottoalbero). L'autorizzazione sul singolo target va comunque verificata in
+    handler con hierarchy.can_manage(actor, target, db).
+    """
+    if (getattr(current_user, 'entity_type', None) or '') not in ('distributore', 'rivenditore'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accesso riservato a distributori e rivenditori"
         )
     return current_user
 

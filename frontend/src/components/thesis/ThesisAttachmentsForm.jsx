@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Upload, FileText, Link2, Trash2, Info, Loader, CheckCircle, BookMarked } from 'lucide-react';
 import { uploadThesisAttachments, deleteThesisAttachment, addThesisUrlAttachments } from '../../services/api';
 
@@ -13,6 +14,7 @@ const formatFileSize = (bytes) => {
 };
 
 const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
+  const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState(null);
@@ -26,7 +28,7 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
     const validUrls = lines.filter(l => l.startsWith('http://') || l.startsWith('https://'));
 
     if (validUrls.length === 0) {
-      setUrlError('Inserisci almeno un URL valido (deve iniziare con http:// o https://)');
+      setUrlError(t('Inserisci almeno un URL valido (deve iniziare con http:// o https://)'));
       return;
     }
 
@@ -42,15 +44,16 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
       setUrlText('');
     } catch (err) {
       console.error('Errore aggiunta URL:', err);
-      setUrlError(err.response?.data?.detail || 'Errore durante il recupero dei contenuti dagli URL');
+      setUrlError(err.response?.data?.detail || t('Errore durante il recupero dei contenuti dagli URL'));
     } finally {
       setUrlLoading(false);
     }
   };
 
-  const handleFileSelect = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
+  const processFiles = async (files) => {
+    if (!files || files.length === 0) return;
+    // Guard: evita doppia esecuzione concorrente (es. drop + onChange spurio)
+    if (uploading) return;
 
     // Validazione
     const validFiles = files.filter(file => {
@@ -60,12 +63,12 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
     });
 
     if (validFiles.length === 0) {
-      setError('Nessun file valido selezionato. Formati supportati: PDF, DOCX, TXT (max 50MB)');
+      setError(t('Nessun file valido selezionato. Formati supportati: PDF, DOCX, TXT (max 50MB)'));
       return;
     }
 
     if (validFiles.length < files.length) {
-      setError(`${files.length - validFiles.length} file ignorati (formato non valido o troppo grandi)`);
+      setError(t('{{count}} file ignorati (formato non valido o troppo grandi)', { count: files.length - validFiles.length }));
     }
 
     setUploading(true);
@@ -85,7 +88,12 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
       });
     } catch (err) {
       console.error('Errore upload:', err);
-      setError(err.response?.data?.detail || 'Errore durante il caricamento dei file');
+      const isTimeout = err.code === 'ECONNABORTED' || (err.message || '').toLowerCase().includes('timeout');
+      if (isTimeout) {
+        setError(t('Il caricamento ha impiegato troppo tempo (timeout). Riprova con file più piccoli o verifica la connessione di rete.'));
+      } else {
+        setError(err.response?.data?.detail || t('Errore durante il caricamento dei file'));
+      }
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -93,6 +101,11 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
         fileInputRef.current.value = '';
       }
     }
+  };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    processFiles(files);
   };
 
   const handleRemoveAttachment = async (attachmentId) => {
@@ -104,21 +117,17 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
       });
     } catch (err) {
       console.error('Errore rimozione:', err);
-      setError('Errore durante la rimozione del file');
+      setError(t('Errore durante la rimozione del file'));
     }
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      const dataTransfer = new DataTransfer();
-      files.forEach(f => dataTransfer.items.add(f));
-      if (fileInputRef.current) {
-        fileInputRef.current.files = dataTransfer.files;
-        handleFileSelect({ target: fileInputRef.current });
-      }
-    }
+    // Non assegnamo piu' i file all'<input>: su alcuni browser (Firefox)
+    // l'assegnazione `.files = ...` triggera onChange e causava un doppio
+    // upload (barra 0->100, poi 0->100 di nuovo). Processiamo direttamente.
+    const files = Array.from(e.dataTransfer.files || []);
+    processFiles(files);
   };
 
   const handleDragOver = (e) => {
@@ -128,10 +137,9 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Allegati e Contenuti di Riferimento</h2>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Allegati e Contenuti di Riferimento')}</h2>
         <p className="text-slate-600">
-          Carica documenti che vuoi utilizzare come riferimento per la generazione.
-          L'AI analizzerà il contenuto per creare una tesi più accurata e pertinente.
+          {t('Carica documenti che vuoi utilizzare come riferimento per la generazione. Negli step successivi potrai cercare paper accademici (usando anche i tuoi documenti per suggerire le query) e indicizzare tutto nella Knowledge Base.')}
         </p>
       </div>
 
@@ -160,7 +168,7 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
           {uploading ? (
             <div>
               <Loader className="w-12 h-12 text-orange-500 animate-spin mx-auto mb-4" />
-              <p className="text-slate-600 mb-2">Caricamento in corso... {uploadProgress.toFixed(0)}%</p>
+              <p className="text-slate-600 mb-2">{t('Caricamento in corso... {{progress}}%', { progress: uploadProgress.toFixed(0) })}</p>
               <div className="w-full max-w-xs mx-auto bg-slate-200 rounded-full h-2">
                 <div
                   className="bg-gradient-to-r from-orange-500 to-red-500 h-2 rounded-full transition-all"
@@ -172,10 +180,10 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
             <>
               <Upload className="w-12 h-12 text-slate-400 mx-auto mb-4" />
               <p className="text-slate-600 mb-2">
-                Trascina qui i file o clicca per selezionarli
+                {t('Trascina qui i file o clicca per selezionarli')}
               </p>
               <p className="text-sm text-slate-500">
-                Formati supportati: PDF, DOCX, TXT (max 50MB per file)
+                {t('Formati supportati: PDF, DOCX, TXT (max 50MB per file)')}
               </p>
             </>
           )}
@@ -186,10 +194,10 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
           <div>
             <h3 className="font-medium text-slate-900 flex items-center gap-2 mb-1">
               <Link2 className="w-4 h-4 text-orange-500" />
-              Aggiungi Link come Fonti di Riferimento
+              {t('Aggiungi Link come Fonti di Riferimento')}
             </h3>
             <p className="text-sm text-slate-500">
-              Inserisci uno o più URL (uno per riga) da utilizzare come fonti di riferimento.
+              {t('Inserisci uno o più URL (uno per riga) da utilizzare come fonti di riferimento.')}
             </p>
           </div>
           <textarea
@@ -219,12 +227,12 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
             {urlLoading ? (
               <>
                 <Loader className="w-4 h-4 animate-spin" />
-                Recupero contenuti...
+                {t('Recupero contenuti...')}
               </>
             ) : (
               <>
                 <Link2 className="w-4 h-4" />
-                Aggiungi Link
+                {t('Aggiungi Link')}
               </>
             )}
           </button>
@@ -240,7 +248,7 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
         {/* Attachments List */}
         {data.attachments.length > 0 && (
           <div className="space-y-3">
-            <h3 className="font-medium text-slate-700">File caricati ({data.attachments.length})</h3>
+            <h3 className="font-medium text-slate-700">{t('File caricati ({{count}})', { count: data.attachments.length })}</h3>
             {data.attachments.map((att) => (
               <div
                 key={att.id}
@@ -267,7 +275,7 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
                     <p className="text-sm text-slate-500 flex items-center gap-2">
                       {att.mime_type === PAPER_MIME_TYPE ? (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200">
-                          Paper
+                          {t('Paper')}
                         </span>
                       ) : null}
                       {formatFileSize(att.file_size)}
@@ -279,7 +287,7 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
                   <button
                     onClick={() => handleRemoveAttachment(att.id)}
                     className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Rimuovi allegato"
+                    title={t('Rimuovi allegato')}
                   >
                     <Trash2 className="w-4 h-4 text-red-500" />
                   </button>
@@ -294,12 +302,12 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
           <div className="flex gap-3">
             <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-blue-800">
-              <p className="font-medium mb-1">Come vengono utilizzati gli allegati?</p>
+              <p className="font-medium mb-1">{t('Come vengono utilizzati gli allegati?')}</p>
               <ul className="list-disc list-inside space-y-1">
-                <li>Il testo viene estratto e analizzato dall'AI</li>
-                <li>Aiuta a creare contenuti più pertinenti e accurati</li>
-                <li>Puoi includere: paper di riferimento, appunti, bozze precedenti</li>
-                <li>I file originali non vengono inclusi nel documento finale</li>
+                <li>{t("Il testo viene estratto e analizzato dall'AI")}</li>
+                <li>{t('Aiuta a creare contenuti più pertinenti e accurati')}</li>
+                <li>{t('Puoi includere: paper di riferimento, appunti, bozze precedenti')}</li>
+                <li>{t('I file originali non vengono inclusi nel documento finale')}</li>
               </ul>
             </div>
           </div>
@@ -308,7 +316,7 @@ const ThesisAttachmentsForm = ({ data, onChange, thesisId }) => {
         {/* Skip Option */}
         {data.attachments.length === 0 && (
           <p className="text-center text-slate-500 text-sm">
-            Gli allegati sono opzionali. Puoi procedere senza caricare file.
+            {t('Gli allegati sono opzionali. Puoi procedere senza caricare file.')}
           </p>
         )}
       </div>
