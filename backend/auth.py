@@ -14,6 +14,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session, joinedload
 
+import config
 from database import get_db
 from db_models import User, RefreshToken, Role, RolePermission, UserPermission
 from dotenv import load_dotenv
@@ -21,8 +22,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configurazione JWT
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-super-secret-key-change-in-production")
-ALGORITHM = "HS256"
+#
+# Fail-fast a import time, non a primo utilizzo: senza una chiave di firma vera
+# l'applicazione NON deve partire. Con un segreto noto chiunque forgia un token
+# con `sub` arbitrario e diventa admin, quindi partire "in qualche modo" e'
+# peggio che non partire. Il messaggio spiega come generarne una (config.py).
+SECRET_KEY = config.validate_jwt_secret(config.JWT_SECRET_KEY)
+ALGORITHM = config.JWT_ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
@@ -128,6 +134,7 @@ class TokenData(BaseModel):
     """Dati estratti dal token."""
     user_id: Optional[str] = None
     username: Optional[str] = None
+    token_type: Optional[str] = None
 
 
 # ============================================================================
@@ -172,15 +179,25 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) 
     return encoded_jwt
 
 
-def decode_token(token: str) -> Optional[TokenData]:
-    """Decodifica un token JWT."""
+def decode_token(token: str, expected_type: str = "access") -> Optional[TokenData]:
+    """
+    Decodifica un token JWT e ne verifica il tipo.
+
+    Il claim `type` viene scritto da create_access_token/create_refresh_token ma
+    fino a qui non lo rileggeva nessuno: un refresh token (valido 7 giorni)
+    passava come Bearer su qualsiasi endpoint, admin inclusi. `expected_type`
+    chiude la confusione fra i due tipi; passare None disattiva il controllo.
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         username: str = payload.get("username")
+        token_type: str = payload.get("type")
         if user_id is None:
             return None
-        return TokenData(user_id=user_id, username=username)
+        if expected_type is not None and token_type != expected_type:
+            return None
+        return TokenData(user_id=user_id, username=username, token_type=token_type)
     except JWTError:
         return None
 

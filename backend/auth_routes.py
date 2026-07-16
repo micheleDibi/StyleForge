@@ -215,7 +215,7 @@ async def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
         )
 
     # Decodifica il token per ottenere i dati utente
-    token_data = decode_token(refresh_token)
+    token_data = decode_token(refresh_token, expected_type="refresh")
     if not token_data or not token_data.user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

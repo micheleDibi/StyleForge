@@ -13,6 +13,74 @@ load_dotenv(find_dotenv())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# ============================================================================
+# JWT — chiave di firma
+# ============================================================================
+# NESSUN default: un default hardcoded e' un segreto pubblico, e chi firma i
+# token con un segreto pubblico non ha autenticazione. La validazione NON sta a
+# livello di modulo perche' config e' importato da mezzo backend (llm_wiki,
+# thesis_assets, thesis_prompts, email_service...) che col JWT non c'entra
+# nulla: la fa auth.py, l'unico che il segreto lo usa davvero.
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+
+# Lunghezza minima. Il placeholder storico e' lungo 42 caratteri: una soglia
+# tipo "almeno 32" lo lascerebbe passare e il fix sarebbe decorativo.
+JWT_SECRET_MIN_LENGTH = 64
+
+# Valori che NON sono segreti, per quanto lunghi. E' questa lista a fare il
+# lavoro: il placeholder non arriva dal default di os.getenv, e' scritto nel
+# .env reale, quindi togliere il default da auth.py non farebbe fallire niente.
+_JWT_PLACEHOLDERS = frozenset({
+    "your-super-secret-key-change-in-production",
+    "your-secret-key",
+    "change-me",
+    "changeme",
+    "secret",
+    "supersecret",
+    "test",
+    "dev",
+    "development",
+    "production",
+})
+
+_JWT_SECRET_HOWTO = (
+    'Generane uno con: python3 -c "import secrets; print(secrets.token_urlsafe(64))" '
+    "e impostalo come JWT_SECRET_KEY (nel .env in locale, come variabile d'ambiente "
+    "in produzione). Ruotarlo invalida tutti i token esistenti: gli utenti dovranno "
+    "rifare il login."
+)
+
+
+def validate_jwt_secret(value):
+    """
+    Valida la chiave di firma JWT, o solleva RuntimeError.
+
+    Funzione pura (nessun accesso a os.environ): il chiamante passa il valore.
+    """
+    if value is None or not str(value).strip():
+        raise RuntimeError(
+            "JWT_SECRET_KEY non configurata: l'applicazione non parte senza una "
+            f"chiave di firma. {_JWT_SECRET_HOWTO}"
+        )
+
+    secret = str(value).strip()
+
+    if secret.lower() in _JWT_PLACEHOLDERS:
+        raise RuntimeError(
+            "JWT_SECRET_KEY e' un valore segnaposto pubblico, non un segreto: "
+            "chiunque puo' forgiare token per qualsiasi utente, admin inclusi. "
+            f"{_JWT_SECRET_HOWTO}"
+        )
+
+    if len(secret) < JWT_SECRET_MIN_LENGTH:
+        raise RuntimeError(
+            f"JWT_SECRET_KEY troppo corta ({len(secret)} caratteri, minimo "
+            f"{JWT_SECRET_MIN_LENGTH}). {_JWT_SECRET_HOWTO}"
+        )
+
+    return secret
+
 # OpenAI Configuration
 OPENAI_MODEL_ID = os.getenv("OPENAI_MODEL_ID", "o3")  # o3 reasoning model
 OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "16000"))
@@ -243,6 +311,11 @@ API per la generazione di contenuti utilizzando Claude Opus 4.8.
 # Validazione configurazione
 def validate_config():
     """Valida la configurazione e solleva eccezioni se mancano valori critici."""
+    # Rete per chi importa solo config: nel percorso dell'app questo controllo
+    # non viene mai raggiunto per il JWT, perche' api.py importa auth (che alza
+    # a import time) prima di chiamare validate_config().
+    validate_jwt_secret(JWT_SECRET_KEY)
+
     if not ANTHROPIC_API_KEY:
         raise ValueError(
             "ANTHROPIC_API_KEY non configurata. "

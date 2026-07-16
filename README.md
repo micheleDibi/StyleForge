@@ -187,7 +187,7 @@ npm run start                    # build + preview su :3000 (consigliato)
 | `SUPABASE_URL` | URL DB PostgreSQL | — |
 | `SUPABASE_ANON_KEY` | Chiave anonima Supabase | — |
 | `DATABASE_URL` | Connection string PostgreSQL | — |
-| `SECRET_KEY` | JWT signing key (`python -c "import secrets; print(secrets.token_urlsafe(32))"`) | — |
+| `JWT_SECRET_KEY` | Chiave di firma JWT, **obbligatoria** (min 64 char, senza l'app non parte): `python3 -c "import secrets; print(secrets.token_urlsafe(64))"` | — |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Validità access token | 30 |
 | `MAX_CONCURRENT_JOBS` | Job paralleli massimi | 10 |
 | `SESSION_CLEANUP_HOURS` | Cleanup sessioni non addestrate | 24 |
