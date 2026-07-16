@@ -16,7 +16,7 @@ from token_utils import cap_output_tokens
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Depends, Form
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, BackgroundTasks, Depends, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session as DBSession, defer
 from sqlalchemy import text
@@ -99,6 +99,8 @@ from research_summarizer import (
 )
 from keyword_extractor import extract_paper_keywords_from_attachments
 import config
+import ssrf_guard
+from rate_limit import FETCH_LIMIT, limiter
 
 # Mime type convenzionale per allegati di tipo "paper accademico"
 PAPER_MIME_TYPE = "application/x-research-paper"
@@ -664,9 +666,11 @@ async def delete_attachment(
 
 
 @router.post("/{thesis_id}/attachments/urls", response_model=ThesisAttachmentsListResponse)
+@limiter.limit(FETCH_LIMIT)
 async def add_url_attachments(
     thesis_id: str,
-    request: ThesisUrlAttachmentRequest,
+    request: Request,
+    payload: ThesisUrlAttachmentRequest,
     current_user: User = Depends(get_current_active_user),
     db: DBSession = Depends(get_db)
 ):
@@ -685,75 +689,114 @@ async def add_url_attachments(
         ThesisAttachment.thesis_id == thesis.id
     ).count()
 
-    if existing_count + len(request.urls) > config.THESIS_MAX_ATTACHMENTS:
+    if existing_count + len(payload.urls) > config.THESIS_MAX_ATTACHMENTS:
         raise HTTPException(
             status_code=400,
             detail=f"Superato il limite di {config.THESIS_MAX_ATTACHMENTS} allegati"
         )
 
+    # TUTTI gli URL si validano PRIMA di fetchare qualsiasi cosa, e uno solo
+    # rifiutato ferma l'intera richiesta.
+    #
+    # Non e' pignoleria: validare-e-fetchare in un ciclo unico lascerebbe un
+    # oracolo di scansione. Con gli errori silenziati per-URL, i tempi di
+    # risposta raccontano la rete interna (connessione rifiutata = subito,
+    # filtrata = 20s, aperta = contenuto). Rifiutando prima di ogni I/O, un URL
+    # bloccato costa sempre uguale e non dice niente.
+    validati = []
+    for url in payload.urls:
+        try:
+            validati.append(ssrf_guard.check_url_shape(url).url)
+        except ssrf_guard.SsrfBlocked as e:
+            logger.warning("URL allegato rifiutato (%s): %s", e.reason, url)
+            raise HTTPException(status_code=400, detail=f"URL non consentito: {url}")
+
     uploaded = []
 
-    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-        for url in request.urls:
+    for url in validati:
+        try:
             try:
-                response = await client.get(url, headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; StyleForge/1.0)"
-                })
-                response.raise_for_status()
-
-                soup = BeautifulSoup(response.text, 'html.parser')
-
-                # Estrai titolo
-                og_title = soup.find('meta', property='og:title')
-                title = og_title['content'] if og_title and og_title.get('content') else ''
-                if not title:
-                    title_tag = soup.find('title')
-                    title = title_tag.get_text(strip=True) if title_tag else url
-
-                # Estrai contenuto
-                content_text = ''
-                for selector in ['.entry-content', '.post-content', 'article .content', 'article', 'main']:
-                    el = soup.select_one(selector)
-                    if el:
-                        for tag in el.find_all(['script', 'style', 'nav', 'aside', 'footer']):
-                            tag.decompose()
-                        content_text = el.get_text(separator='\n', strip=True)
-                        break
-
-                if not content_text:
-                    body = soup.find('body')
-                    if body:
-                        for tag in body.find_all(['script', 'style', 'nav', 'header', 'footer', 'aside']):
-                            tag.decompose()
-                        content_text = body.get_text(separator='\n', strip=True)
-
-                if len(content_text) > 8000:
-                    content_text = content_text[:8000] + "\n[...contenuto troncato...]"
-
-                if not content_text:
-                    logger.warning(f"Nessun contenuto estratto da URL: {url}")
-                    continue
-
-                attachment = ThesisAttachment(
-                    thesis_id=thesis.id,
-                    filename=f"url_{uuid.uuid4().hex[:8]}.html",
-                    original_filename=title or url,
-                    file_path=url,
-                    file_size=len(content_text),
-                    mime_type="text/html",
-                    extracted_text=content_text
+                response = await ssrf_guard.safe_get(
+                    url,
+                    max_bytes=config.THESIS_URL_MAX_BYTES,
+                    deadline_s=config.THESIS_URL_TIMEOUT,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; StyleForge/1.0)"},
                 )
+            except ssrf_guard.SsrfBlocked as e:
+                # La forma era a posto ma la destinazione no (IP interno dietro
+                # un nome pubblico, o un redirect verso l'interno).
+                logger.warning("Destinazione bloccata dalla guard: %s", e)
+                raise HTTPException(status_code=400, detail=f"URL non consentito: {url}")
 
-                db.add(attachment)
-                db.commit()
-                db.refresh(attachment)
+            if response.status_code >= 400:
+                logger.warning("Errore HTTP per URL %s: %s", url, response.status_code)
+                continue
 
-                uploaded.append(ThesisAttachmentResponse(**attachment.to_dict()))
+            soup = BeautifulSoup(response.text, 'html.parser')
 
-            except httpx.HTTPStatusError as e:
-                logger.warning(f"Errore HTTP per URL {url}: {e.response.status_code}")
-            except Exception as e:
-                logger.warning(f"Errore recupero URL {url}: {e}")
+            # Estrai titolo
+            og_title = soup.find('meta', property='og:title')
+            title = og_title['content'] if og_title and og_title.get('content') else ''
+            if not title:
+                title_tag = soup.find('title')
+                title = title_tag.get_text(strip=True) if title_tag else url
+
+            # original_filename e' String(500): un <title> piu' lungo faceva
+            # esplodere l'insert dentro l'except generico qui sotto, e l'URL
+            # spariva senza spiegazioni.
+            title = title[:500]
+
+            # Estrai contenuto
+            content_text = ''
+            for selector in ['.entry-content', '.post-content', 'article .content', 'article', 'main']:
+                el = soup.select_one(selector)
+                if el:
+                    for tag in el.find_all(['script', 'style', 'nav', 'aside', 'footer']):
+                        tag.decompose()
+                    content_text = el.get_text(separator='\n', strip=True)
+                    break
+
+            if not content_text:
+                body = soup.find('body')
+                if body:
+                    for tag in body.find_all(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+                        tag.decompose()
+                    content_text = body.get_text(separator='\n', strip=True)
+
+            if len(content_text) > 8000:
+                content_text = content_text[:8000] + "\n[...contenuto troncato...]"
+
+            if not content_text:
+                logger.warning(f"Nessun contenuto estratto da URL: {url}")
+                continue
+
+            attachment = ThesisAttachment(
+                thesis_id=thesis.id,
+                filename=f"url_{uuid.uuid4().hex[:8]}.html",
+                original_filename=title or url[:500],
+                file_path=url,
+                file_size=len(content_text),
+                mime_type="text/html",
+                extracted_text=content_text
+            )
+
+            db.add(attachment)
+            db.commit()
+            db.refresh(attachment)
+
+            uploaded.append(ThesisAttachmentResponse(**attachment.to_dict()))
+
+        except HTTPException:
+            # Il 400 di una destinazione bloccata NON va inghiottito dall'except
+            # generico qui sotto: rifiutare in silenzio e' esattamente il modo in
+            # cui questo endpoint nascondeva la SSRF.
+            raise
+        except ssrf_guard.GuardError as e:
+            logger.warning("Fetch abortito dalla guard per %s: %s", url, e)
+        except httpx.HTTPError as e:
+            logger.warning(f"Errore HTTP per URL {url}: {e}")
+        except Exception as e:
+            logger.warning(f"Errore recupero URL {url}: {e}")
 
     if not uploaded:
         raise HTTPException(
@@ -935,9 +978,11 @@ async def suggest_paper_keywords(
 
 
 @router.post("/{thesis_id}/attachments/papers", response_model=ThesisAddPapersResponse)
+@limiter.limit(FETCH_LIMIT)
 async def add_paper_attachments(
     thesis_id: str,
-    request: ThesisAddPapersRequest,
+    request: Request,
+    payload: ThesisAddPapersRequest,
     current_user: User = Depends(require_permission('thesis')),
     db: DBSession = Depends(get_db),
 ):
@@ -961,7 +1006,7 @@ async def add_paper_attachments(
         ThesisAttachment.thesis_id == thesis.id
     ).count()
 
-    if existing_count + len(request.items) > config.THESIS_MAX_ATTACHMENTS:
+    if existing_count + len(payload.items) > config.THESIS_MAX_ATTACHMENTS:
         raise HTTPException(
             status_code=400,
             detail=f"Superato il limite di {config.THESIS_MAX_ATTACHMENTS} allegati",
@@ -969,7 +1014,7 @@ async def add_paper_attachments(
 
     created: List[ThesisAttachmentResponse] = []
 
-    for item in request.items:
+    for item in payload.items:
         try:
             paper = UnifiedPaper(**item.paper)
         except Exception:
@@ -991,8 +1036,23 @@ async def add_paper_attachments(
             extracted_text = sanitize_text_for_db(paper_to_attachment_text(paper))
 
         # Placeholder per file_path (la colonna è NOT NULL)
+        #
+        # full_text_url arriva dal payload del client e la pipeline wiki lo
+        # scarica dopo (paper_downloader._download_pdf): senza questo controllo
+        # e' una SSRF differita e persistente. Qui si valida la FORMA, senza
+        # rete: il DNS puo' cambiare fra ora e il download, quindi la verifica
+        # sugli IP la rifa' la guard al momento del fetch. Validare solo al
+        # fetch lascerebbe URL avvelenati in tabella; solo qui non proteggerebbe
+        # le righe gia' salvate. Servono entrambi.
         if paper.full_text_url:
-            file_path = paper.full_text_url
+            try:
+                file_path = ssrf_guard.check_url_shape(paper.full_text_url).url
+            except ssrf_guard.SsrfBlocked as e:
+                logger.warning("URL paper rifiutato: %s", e)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"URL del paper non consentito: {paper.full_text_url}",
+                )
         elif paper.doi:
             file_path = f"doi:{paper.doi}"
         else:

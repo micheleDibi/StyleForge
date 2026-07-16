@@ -179,19 +179,36 @@ class TestValidazioneUrl:
         with pytest.raises(SsrfBlocked):
             validate_public_url(url, resolve=_resolver(PUBLIC_IP))
 
-    def test_forme_alternative_passano_dal_dns_non_da_scorciatoie(self, monkeypatch):
-        # Il valore di questo test: se un domani qualcuno aggiunge un ramo
-        # "se e' gia' un IP letterale salto il DNS", queste forme lo aggirano.
+    def test_forme_alternative_passano_dal_dns_non_da_scorciatoie(self):
+        # L'invariante che questo test protegge: nessuna di queste forme e'
+        # riconoscibile come IP da ipaddress (ip_address('127.1') alza
+        # ValueError), quindi finiscono per forza nel ramo "e' un nome". Se un
+        # domani qualcuno ci mettesse una scorciatoia tipo "se non e' un IP
+        # letterale allora fidati", passerebbero tutte: e' il resolver, con la
+        # validazione di OGNI record, l'unica cosa che le ferma.
+        import ipaddress as _ip
+
         visti = []
 
         def fake(host, port):
             visti.append(host)
             return ["127.0.0.1"]
 
-        for url in ["https://2130706433/x", "https://127.1/x", "https://0/x", "https://[::1]/x"]:
+        forme = ["https://2130706433/x", "https://127.1/x", "https://0/x"]
+        for url in forme:
             with pytest.raises(SsrfBlocked):
                 validate_public_url(url, resolve=fake)
-        assert len(visti) == 4, "ogni forma deve passare dal resolver, senza scorciatoie"
+        assert len(visti) == len(forme), "ogni forma deve passare dal resolver"
+
+    def test_ip_letterali_bloccati_senza_nemmeno_risolvere(self):
+        # Controllo AGGIUNTIVO, non una scorciatoia: e' solo un no anticipato.
+        # validate_public_url continua comunque a risolvere e a rivalidare.
+        def mai(host, port):
+            raise AssertionError("non si deve risolvere un letterale gia' bocciato")
+
+        for url in ["https://[::1]/x", "https://127.0.0.1/x", "https://169.254.169.254/x"]:
+            with pytest.raises(SsrfBlocked):
+                validate_public_url(url, resolve=mai)
 
     def test_resolver_di_default_e_monkeypatchabile(self, monkeypatch):
         # Invariante di design: `resolve or _resolve` dentro il corpo, MAI

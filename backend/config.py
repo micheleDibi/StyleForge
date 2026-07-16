@@ -203,6 +203,12 @@ THESIS_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 THESIS_MAX_UPLOAD_SIZE = int(os.getenv("THESIS_MAX_UPLOAD_SIZE", "50")) * 1024 * 1024  # 50MB
 THESIS_MAX_ATTACHMENTS = int(os.getenv("THESIS_MAX_ATTACHMENTS", "10"))
 THESIS_MAX_CONTEXT_CHARS = int(os.getenv("THESIS_MAX_CONTEXT_CHARS", "50000"))
+# Allegati-URL: tetto sulla pagina scaricata. Ne servono ~8000 caratteri di
+# testo (il resto viene troncato), quindi 5 MB di HTML sono gia' abbondanti.
+# Prima non c'era limite: response.text scaricava tutto e troncava DOPO.
+THESIS_URL_MAX_BYTES = int(os.getenv("THESIS_URL_MAX_MB", "5")) * 1024 * 1024
+# Time budget per URL: era il timeout httpx dell'implementazione precedente.
+THESIS_URL_TIMEOUT = int(os.getenv("THESIS_URL_TIMEOUT", "20"))
 
 # LLM Wiki (second-brain per-tesi)
 # Path del template del wiki: contiene CLAUDE.md (la "costituzione") + struttura

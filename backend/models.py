@@ -2,10 +2,12 @@
 Modelli Pydantic per le API di StyleForge.
 """
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, List, Dict, Any, Literal
 from enum import Enum
 from datetime import datetime
+
+import config
 
 
 class JobStatus(str, Enum):
@@ -362,7 +364,26 @@ class ThesisCreateRequest(BaseModel):
 
 class ThesisUrlAttachmentRequest(BaseModel):
     """Request per aggiungere URL come allegati alla tesi."""
-    urls: List[str] = Field(..., description="Lista di URL da usare come fonti di riferimento")
+    urls: List[str] = Field(
+        ...,
+        min_length=1,
+        max_length=config.THESIS_MAX_ATTACHMENTS,
+        description="Lista di URL da usare come fonti di riferimento",
+    )
+
+    @field_validator("urls")
+    @classmethod
+    def _urls_non_vuoti(cls, v: List[str]) -> List[str]:
+        """
+        Solo forma e igiene: la lista non e' un posto dove decidere se un URL e'
+        sicuro. Un HttpUrl qui non fermerebbe ne' un IP interno ne' un
+        rebinding, che e' il motivo per cui il vero controllo sta nella guard
+        (ssrf_guard), prima di ogni fetch.
+        """
+        puliti = [str(u).strip() for u in v if str(u).strip()]
+        if not puliti:
+            raise ValueError("Inserisci almeno un URL")
+        return puliti
 
 
 class ChapterInfo(BaseModel):

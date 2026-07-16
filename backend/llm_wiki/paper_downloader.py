@@ -24,6 +24,7 @@ from typing import List, Optional
 import httpx
 
 import config
+import ssrf_guard
 from db_models import ThesisAttachment
 from llm_wiki.wiki_workspace import (
     PAPER_MIME_TYPE,
@@ -196,44 +197,46 @@ def _build_markdown_with_pdf(meta: dict, slug: str, pdf_text: str, raw_assets_pa
 def _download_pdf(url: str, dst: Path) -> bool:
     """
     Scarica il PDF dall'URL in dst. Ritorna True se ottenuto un PDF valido.
-    Streaming + check size + check content-type.
+
+    L'URL non e' fidato: arriva da ThesisAttachment.file_path, che l'endpoint
+    /attachments/papers riempie con `full_text_url` preso dal payload del
+    client. Era quindi una SSRF differita (e persistente: le righe restano in
+    tabella), per giunta dentro un BackgroundTask. Il fetch passa per la guard,
+    che valida la destinazione, pinna l'IP e ri-valida ogni redirect.
     """
     try:
-        with httpx.Client(
-            timeout=config.WIKI_PAPER_DOWNLOAD_TIMEOUT,
-            follow_redirects=True,
+        resp = ssrf_guard.safe_get_sync(
+            url,
+            max_bytes=config.WIKI_PAPER_MAX_BYTES,
+            deadline_s=config.WIKI_PAPER_DOWNLOAD_TIMEOUT,
+            allowed_content_types={"pdf"},
             headers={"User-Agent": "StyleForge-LLMWiki/1.0 (+https://styleforge)"},
-        ) as client:
-            with client.stream("GET", url) as resp:
-                if resp.status_code != 200:
-                    logger.info("Download paper non OK (HTTP %s): %s", resp.status_code, url)
-                    return False
-                ctype = (resp.headers.get("content-type") or "").lower()
-                if "pdf" not in ctype:
-                    logger.info("Download paper: content-type non PDF (%s) per %s", ctype, url)
-                    return False
-                clen = resp.headers.get("content-length")
-                if clen and clen.isdigit() and int(clen) > config.WIKI_PAPER_MAX_BYTES:
-                    logger.info("PDF troppo grande (%s bytes) per %s", clen, url)
-                    return False
-                downloaded = 0
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                with open(dst, "wb") as fh:
-                    for chunk in resp.iter_bytes(chunk_size=64 * 1024):
-                        fh.write(chunk)
-                        downloaded += len(chunk)
-                        if downloaded > config.WIKI_PAPER_MAX_BYTES:
-                            logger.info("Download abortito: superato max bytes")
-                            fh.close()
-                            try:
-                                dst.unlink()
-                            except OSError:
-                                pass
-                            return False
-        return True
+        )
+    except ssrf_guard.SsrfBlocked as e:
+        logger.warning("Download paper bloccato dalla guard SSRF: %s", e)
+        return False
+    except ssrf_guard.ContentTypeNotAllowed as e:
+        logger.info("Download paper: content-type non PDF (%s)", e)
+        return False
+    except ssrf_guard.GuardError as e:
+        logger.info("Download paper abortito (%s): %s", e, url)
+        return False
     except (httpx.HTTPError, OSError) as e:
         logger.info("Errore download paper %s: %s", url, e)
         return False
+
+    if resp.status_code != 200:
+        logger.info("Download paper non OK (HTTP %s): %s", resp.status_code, url)
+        return False
+
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(resp.content)
+    except OSError as e:
+        logger.info("Errore scrittura PDF %s: %s", dst, e)
+        return False
+
+    return True
 
 
 def _extract_pdf_text(pdf_path: Path) -> str:
@@ -264,50 +267,67 @@ def materialize_papers(thesis_id: str, attachments: List[ThesisAttachment]) -> L
         if att.mime_type != PAPER_MIME_TYPE:
             continue
 
-        meta = _parse_paper_metadata(att)
-        slug = _slug_for_paper(meta)
-        md_filename = make_raw_filename(None, slug)  # gia' include slug, no prefisso data
-        md_dst = root / "raw" / "paper" / md_filename
-
-        # Anti-collisione
-        i = 1
-        while md_dst.exists():
-            md_dst = root / "raw" / "paper" / make_raw_filename(None, f"{slug}-{i}")
-            i += 1
-
-        url = _resolve_url(att, meta)
-        pdf_downloaded = False
-        pdf_text = ""
-        raw_assets_path = ""
-
-        if url:
-            pdf_dst = root / "raw" / "assets" / f"{md_dst.stem}.pdf"
-            if _download_pdf(url, pdf_dst):
-                pdf_text = _extract_pdf_text(pdf_dst)
-                if pdf_text.strip():
-                    pdf_downloaded = True
-                    raw_assets_path = str(pdf_dst.relative_to(root))
-                else:
-                    # PDF scaricato ma estrazione vuota -> fallback
-                    try:
-                        pdf_dst.unlink()
-                    except OSError:
-                        pass
-
-        if pdf_downloaded:
-            md_dst.write_text(
-                _build_markdown_with_pdf(meta, slug, pdf_text, raw_assets_path),
-                encoding="utf-8",
+        # Un paper che esplode non deve portarsi dietro tutti gli altri: questo
+        # gira in un BackgroundTask dentro un ingest a pagamento, e il chiamante
+        # (thesis_routes) ha un solo try attorno all'INTERA materializzazione.
+        # Senza questo, un URL bloccato dalla guard = zero paper, in silenzio.
+        try:
+            out.append(_materialize_one(att, root))
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Materializzazione paper fallita (allegato %s): si prosegue con gli altri",
+                att.id,
             )
-        else:
-            md_dst.write_text(_build_markdown_fallback(meta, slug), encoding="utf-8")
-
-        out.append(PaperMaterializationResult(
-            attachment_id=str(att.id),
-            title=meta.get("title") or "Paper",
-            raw_path=str(md_dst.relative_to(root)),
-            pdf_downloaded=pdf_downloaded,
-            fallback_used=not pdf_downloaded,
-        ))
 
     return out
+
+
+def _materialize_one(att: ThesisAttachment, root: Path) -> PaperMaterializationResult:
+    """Materializza un singolo paper. Solleva: il chiamante isola il fallimento."""
+    meta = _parse_paper_metadata(att)
+    slug = _slug_for_paper(meta)
+    md_filename = make_raw_filename(None, slug)  # gia' include slug, no prefisso data
+    md_dst = root / "raw" / "paper" / md_filename
+
+    # Anti-collisione
+    i = 1
+    while md_dst.exists():
+        md_dst = root / "raw" / "paper" / make_raw_filename(None, f"{slug}-{i}")
+        i += 1
+
+    url = _resolve_url(att, meta)
+    pdf_downloaded = False
+    pdf_text = ""
+    raw_assets_path = ""
+
+    if url:
+        pdf_dst = root / "raw" / "assets" / f"{md_dst.stem}.pdf"
+        if _download_pdf(url, pdf_dst):
+            pdf_text = _extract_pdf_text(pdf_dst)
+            if pdf_text.strip():
+                pdf_downloaded = True
+                raw_assets_path = str(pdf_dst.relative_to(root))
+            else:
+                # PDF scaricato ma estrazione vuota -> fallback
+                try:
+                    pdf_dst.unlink()
+                except OSError:
+                    pass
+
+    if pdf_downloaded:
+        md_dst.write_text(
+            _build_markdown_with_pdf(meta, slug, pdf_text, raw_assets_path),
+            encoding="utf-8",
+        )
+    else:
+        # Il PDF non si e' scaricato (fonte giu', non-PDF, o destinazione
+        # bloccata): il paper resta, con abstract e metadati.
+        md_dst.write_text(_build_markdown_fallback(meta, slug), encoding="utf-8")
+
+    return PaperMaterializationResult(
+        attachment_id=str(att.id),
+        title=meta.get("title") or "Paper",
+        raw_path=str(md_dst.relative_to(root)),
+        pdf_downloaded=pdf_downloaded,
+        fallback_used=not pdf_downloaded,
+    )

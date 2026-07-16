@@ -237,21 +237,19 @@ def _resolve(host: str, port: int) -> list[str]:
     return ips
 
 
-def validate_public_url(
+def check_url_shape(
     url: str,
     *,
     allowed_ports: Collection[int] = DEFAULT_ALLOWED_PORTS,
-    resolve: Optional[Callable[[str, int], Sequence[str]]] = None,
 ) -> ValidatedTarget:
     """
-    Valida un URL come destinazione pubblica e ne risolve gli IP.
+    Controlli che NON richiedono rete: caratteri, scheme, userinfo, host, porta.
 
-    `resolve` e' iniettabile per i test. Il default NON va messo nella firma
-    (`resolve=_resolve`): verrebbe catturato a def-time e il monkeypatch del
-    modulo sarebbe ignorato, dando test che sembrano isolati ma fanno DNS vero.
+    Serve dove l'URL va validato al salvataggio, prima e indipendentemente dal
+    fetch (e dove una risoluzione DNS sarebbe sia lenta sia inutile: puo'
+    cambiare fra il salvataggio e il download). Il campo `ips` resta vuoto:
+    solo validate_public_url risolve, ed e' l'unico che autorizza a connettersi.
     """
-    resolver = resolve or _resolve
-
     if not isinstance(url, str) or not url.strip():
         raise SsrfBlocked(str(url), "URL vuoto")
 
@@ -290,6 +288,41 @@ def validate_public_url(
     if port not in allowed_ports:
         raise SsrfBlocked(url, f"porta non consentita: {port}")
 
+    # Se l'host e' gia' un IP letterale lo si giudica subito, senza DNS. E'
+    # AGGIUNTIVO, non una scorciatoia: validate_public_url risolve e rivalida
+    # comunque ogni record. La scorciatoia pericolosa sarebbe l'opposto —
+    # "e' un letterale, salto il DNS" — perche' ip_address('0177.0.0.1') alza
+    # ValueError pur essendo loopback su Linux.
+    try:
+        literal = ipaddress.ip_address(hostname.strip("[]"))
+    except ValueError:
+        literal = None
+    if literal is not None:
+        reason = _ip_rejection_reason(literal)
+        if reason:
+            raise SsrfBlocked(url, reason)
+
+    return ValidatedTarget(url=str(parsed), hostname=hostname, ips=(), port=port)
+
+
+def validate_public_url(
+    url: str,
+    *,
+    allowed_ports: Collection[int] = DEFAULT_ALLOWED_PORTS,
+    resolve: Optional[Callable[[str, int], Sequence[str]]] = None,
+) -> ValidatedTarget:
+    """
+    Valida un URL come destinazione pubblica e ne risolve gli IP.
+
+    `resolve` e' iniettabile per i test. Il default NON va messo nella firma
+    (`resolve=_resolve`): verrebbe catturato a def-time e il monkeypatch del
+    modulo sarebbe ignorato, dando test che sembrano isolati ma fanno DNS vero.
+    """
+    resolver = resolve or _resolve
+
+    shape = check_url_shape(url, allowed_ports=allowed_ports)
+    url, hostname, port = shape.url, shape.hostname, shape.port
+
     try:
         ips = list(resolver(hostname, port))
     except socket.gaierror as exc:
@@ -309,7 +342,7 @@ def validate_public_url(
         if reason:
             raise SsrfBlocked(url, reason)
 
-    return ValidatedTarget(url=str(parsed), hostname=hostname, ips=tuple(ips), port=port)
+    return ValidatedTarget(url=url, hostname=hostname, ips=tuple(ips), port=port)
 
 
 # ============================================================================
