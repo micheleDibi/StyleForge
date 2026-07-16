@@ -1,0 +1,59 @@
+# Lint del backend. Prima non ce n'era nessuno (ne' ruff, ne' mypy, ne' flake8).
+#
+# Il set di regole e' volutamente stretto: serve a intercettare errori veri
+# (nomi non definiti, import morti, except sbagliati) su un codice che non e'
+# mai stato lintato. Allargarlo ora produrrebbe centinaia di segnalazioni di
+# stile su file che nessuno sta toccando, e il lint verrebbe ignorato — che e'
+# il modo tipico in cui muore.
+
+target-version = "py312"
+line-length = 120
+
+# PERIMETRO — leggere prima di aggiungere un file.
+#
+# Il lint copre i moduli nati (o riscritti da zero) con la remediation del
+# pen-test, piu' i loro test. Su questi il verde e' un requisito: qui ci vive
+# la difesa SSRF, e un import morto o un nome non definito e' esattamente il
+# tipo di errore che la fa fallire in silenzio.
+#
+# Il resto del backend NON e' lint-clean e sta volutamente fuori: 64 rilievi
+# solo su --select F (44 F401 import morti, 8 F841, 6 F541, 5 F811, 1 F821).
+# Metterlo dentro oggi significherebbe o una CI rossa dal primo giorno, o una
+# riformattazione di massa dentro una PR di sicurezza — dove nasconderebbe le
+# righe che contano. Allargare il perimetro e' un lavoro a se': un file alla
+# volta, ripulendolo davvero.
+#
+# Uno di quei rilievi e' un bug vero, non stile: F821 `logger` non definito a
+# api.py:1307 (preesistente, commit 23c2274) — quel ramo except alza NameError
+# invece di loggare. E' segnalato a parte, non e' stato toccato qui.
+include = [
+    "ssrf_guard.py",
+    "rate_limit.py",
+    "config.py",
+    "models.py",
+    "conftest.py",
+    "research_providers/base.py",
+    "test_ssrf_guard.py",
+    "test_auth_security.py",
+    "test_video_proxy.py",
+    "test_thesis_attachments_ssrf.py",
+]
+
+[lint]
+select = [
+    "F",      # pyflakes: nomi non definiti, import e variabili morti
+    "E9",     # errori di sintassi/runtime
+    "B",      # bugbear: trappole comuni
+    "S",      # bandit: regole di sicurezza
+]
+
+ignore = [
+    "B008",   # Depends()/Query() nei default: e' il modo in cui si scrive FastAPI
+    "S101",   # assert: usati nei test
+    "S104",   # bind su 0.0.0.0: e' voluto, l'app sta dietro nginx
+]
+
+[lint.per-file-ignores]
+# I test forgiano token e usano segreti finti apposta.
+"test_*.py" = ["S105", "S106", "S107", "S311"]
+"conftest.py" = ["S105", "S106"]

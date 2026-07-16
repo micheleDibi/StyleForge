@@ -167,7 +167,7 @@ async def proxy_video(
         url = await minimax_service.retrieve_file_url(file_id)
     except Exception as e:
         logger.warning("Risoluzione file_id %s fallita: %s", file_id, e)
-        raise HTTPException(status_code=502, detail="Video non disponibile")
+        raise HTTPException(status_code=502, detail="Video non disponibile") from e
 
     # L'URL viene da MiniMax, non dall'utente: la guard e' difesa in profondita'
     # (se un giorno quella risposta fosse manipolata, non diventa una SSRF).
@@ -179,10 +179,10 @@ async def proxy_video(
         )
     except ssrf_guard.SsrfBlocked as e:
         logger.error("Destinazione video bloccata dalla guard: %s", e)
-        raise HTTPException(status_code=502, detail="Destinazione video non consentita")
+        raise HTTPException(status_code=502, detail="Destinazione video non consentita") from e
     except ssrf_guard.GuardError as e:
         logger.warning("Download video abortito: %s", e)
-        raise HTTPException(status_code=502, detail="Errore download video")
+        raise HTTPException(status_code=502, detail="Errore download video") from e
 
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Errore download video: {resp.status_code}")

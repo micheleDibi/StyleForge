@@ -1,0 +1,160 @@
+# CI di sicurezza. Prima non c'era nessuna CI nel repo.
+#
+# Cosa protegge, in concreto:
+#  - i test di regressione codificano i PoC del pen-test (segreto JWT di
+#    default, SSRF sul video proxy, SSRF sugli allegati per URL). Se qualcuno
+#    li riapre, qui si rompe.
+#  - gitleaks: la vuln piu' grave era un segreto in chiaro nel repo.
+#  - pip-audit / npm audit: CVE note nelle dipendenze.
+#
+# I job sono indipendenti apposta: un CVE nuovo pubblicato stanotte non deve
+# far sembrare rotti i test di qualcun altro.
+
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Le CVE escono anche quando nessuno committa: un giro a settimana.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: test + lint backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Installa le dipendenze
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff
+
+      # Il perimetro dei file e' in backend/ruff.toml (include = [...]), non
+      # qui: la scelta di cosa e' lintato appartiene al repo, non alla CI.
+      # Il resto del backend non e' ancora lint-clean — vedi il commento la'.
+      - name: ruff
+        run: ruff check .
+
+      # Solo la suite di sicurezza, non l'intera cartella: gli altri test
+      # preesistenti vogliono un DB e servizi esterni, e non sono mai girati in
+      # CI. Aggiungerli qui li troverebbe rossi per motivi che non c'entrano
+      # con la sicurezza, e il segnale di questo job morirebbe il primo giorno.
+      - name: Test di sicurezza (PoC del pen-test)
+        run: |
+          python -m pytest -q \
+            test_ssrf_guard.py \
+            test_auth_security.py \
+            test_video_proxy.py \
+            test_thesis_attachments_ssrf.py
+
+  frontend:
+    name: lint + build frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # eslint ha 2 errori preesistenti (no-useless-catch in services/api.js):
+      # non li sistemo dentro una PR di sicurezza. continue-on-error tiene il
+      # job leggibile senza fingere che siano risolti — da togliere appena
+      # quelli sono puliti.
+      - name: eslint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: build
+        run: npm run build
+
+  # ATTENZIONE: questo job NON blocca, ed e' l'unico. Non e' pigrizia, e' lo
+  # stato reale delle dipendenze oggi (misurato, non stimato):
+  #
+  #   pip-audit  2 rilievi
+  #     - ecdsa 0.19.2 / PYSEC-2026-1325 (Minerva, timing su P-256): niente fix,
+  #       upstream lo considera fuori scope. Arriva da python-jose e qui non e'
+  #       nemmeno sul percorso: i token sono HS256, ECDSA non viene mai usata.
+  #     - PyPDF2 3.0.1 / PYSEC-2026-1835: loop infinito su extract_text() di un
+  #       PDF costruito ad arte -> un core al 100%. RAGGIUNGIBILE (api.py:297,
+  #       sul PDF caricato dall'utente). Si chiude migrando a pypdf: e' l'unico
+  #       punto che usa PyPDF2, ma e' un cambio di libreria nel flusso Train e
+  #       non entra in una PR di sicurezza su SSRF/JWT.
+  #
+  #   npm audit  8 rilievi in dipendenze di produzione (11 high/critical in
+  #     totale contando la catena di build), tra cui jspdf (critical, LFI),
+  #     axios (SSRF via NO_PROXY) e react-router (XSS via open redirect).
+  #     Sono upgrade veri, con rischio di regressione: PR dedicata.
+  #
+  # Renderlo bloccante ora significa CI rossa dal primo giorno -> in una
+  # settimana nessuno la guarda piu' e diventa peggio del non averla.
+  # Toglierlo dal repo significa non vedere le CVE. Quindi: gira, stampa,
+  # non blocca. Appena le due liste sono a zero, questo diventa un gate vero:
+  # togliere i continue-on-error e rimettere --strict / --audit-level=high.
+  dipendenze:
+    name: CVE note (informativo, non blocca)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: pip-audit
+        continue-on-error: true
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip-audit -r backend/requirements.txt --strict
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm audit (dipendenze di produzione)
+        working-directory: frontend
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+
+  segreti:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Serve tutta la storia: un segreto committato e poi rimosso e'
+          # ancora un segreto compromesso, e resta raggiungibile nei commit.
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Senza questa config il job e' rosso su 3 falsi positivi (il
+          # placeholder 'sf_k_abc123...' degli esempi curl in
+          # API_DOCUMENTATION.md). Verificato: con la config, 0 leaks.
+          GITLEAKS_CONFIG: ${{ github.workspace }}/.github/gitleaks.toml

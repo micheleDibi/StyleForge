@@ -5,6 +5,9 @@ import { useAuth } from '../context/AuthContext';
 import { resendVerification } from '../services/api';
 import { UserPlus, Sparkles, Mail, User, Lock, ArrowRight, Eye, EyeOff, ArrowLeft, CheckCircle, MailCheck, Loader } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+// alias: piu' sotto c'e' gia' un `const passwordStrength` che ombreggerebbe
+// l'import e lo renderebbe irraggiungibile (TDZ) proprio dove serve.
+import { validatePassword, passwordStrength as calcolaRobustezza } from '../utils/passwordPolicy';
 
 const Register = () => {
   const { t } = useTranslation();
@@ -48,8 +51,9 @@ const Register = () => {
       return false;
     }
 
-    if (formData.password.length < 6) {
-      setError(t('La password deve essere di almeno 6 caratteri'));
+    const errorePassword = validatePassword(formData.password, t);
+    if (errorePassword) {
+      setError(errorePassword);
       return false;
     }
 
@@ -104,21 +108,13 @@ const Register = () => {
     }
   };
 
-  // Password strength indicator
+  // Indicatore di robustezza. Il punteggio arriva da passwordPolicy, cosi' non
+  // puo' piu' suggerire requisiti che il backend non impone (prima dava un
+  // punto gia' a 6 caratteri, quando il minimo ora e' 12).
   const getPasswordStrength = () => {
-    const { password } = formData;
-    if (!password) return { strength: 0, label: '' };
-
-    let strength = 0;
-    if (password.length >= 6) strength++;
-    if (password.length >= 8) strength++;
-    if (/[A-Z]/.test(password)) strength++;
-    if (/[0-9]/.test(password)) strength++;
-    if (/[^A-Za-z0-9]/.test(password)) strength++;
-
-    const labels = ['', t('Debole'), t('Media'), t('Buona'), t('Forte'), t('Ottima')];
-    const colors = ['', 'bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-green-500', 'bg-emerald-500'];
-
+    const strength = calcolaRobustezza(formData.password);
+    const labels = ['', t('Debole'), t('Media'), t('Buona'), t('Ottima')];
+    const colors = ['', 'bg-red-500', 'bg-yellow-500', 'bg-green-500', 'bg-emerald-500'];
     return { strength, label: labels[strength], color: colors[strength] };
   };
 
@@ -317,7 +313,7 @@ const Register = () => {
               {formData.password && (
                 <div className="mt-2">
                   <div className="flex gap-1 mb-1">
-                    {[1, 2, 3, 4, 5].map((level) => (
+                    {[1, 2, 3, 4].map((level) => (
                       <div
                         key={level}
                         className={`h-1 flex-1 rounded-full transition-colors ${

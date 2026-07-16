@@ -2,6 +2,7 @@
 Configurazione per l'applicazione FastAPI.
 """
 
+import logging
 import os
 from pathlib import Path
 from dotenv import load_dotenv, find_dotenv
@@ -44,8 +45,10 @@ _JWT_PLACEHOLDERS = frozenset({
     "production",
 })
 
+# Il noqa: bandit vede "SECRET" nel nome e grida al segreto hardcoded. E' il
+# testo che spiega come generarne uno, il valore opposto di un segreto.
 _JWT_SECRET_HOWTO = (
-    'Generane uno con: python3 -c "import secrets; print(secrets.token_urlsafe(64))" '
+    'Generane uno con: python3 -c "import secrets; print(secrets.token_urlsafe(64))" '  # noqa: S105
     "e impostalo come JWT_SECRET_KEY (nel .env in locale, come variabile d'ambiente "
     "in produzione). Ruotarlo invalida tutti i token esistenti: gli utenti dovranno "
     "rifare il login."
@@ -236,7 +239,19 @@ WIKI_LINT_MAX_TOKENS = int(os.getenv("WIKI_LINT_MAX_TOKENS", "4000"))
 PROMPT_ADDESTRAMENTO_PATH = Path(os.getenv("PROMPT_ADDESTRAMENTO_PATH", "prompt_addestramento.txt"))
 
 # CORS
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+# Allowlist esplicita, non "*": con allow_credentials=True l'origin jolly e'
+# invalido per la spec CORS, e un default permissivo e' un default sbagliato.
+# Lo split va ripulito: "a, b".split(",") produce " b", un'origin con lo spazio
+# davanti che non matcha mai — e il modo in cui fallisce (silenziosamente, solo
+# in browser) e' pessimo da diagnosticare.
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "CORS_ORIGINS",
+        "https://app.styleforge.us,http://localhost:5173",
+    ).split(",")
+    if o.strip()
+]
 
 # ============================================================================
 # EMAIL / SMTP (verifica registrazione, reset password, invito)
@@ -337,4 +352,18 @@ def validate_config():
         raise FileNotFoundError(
             f"File prompt_addestramento.txt non trovato: {PROMPT_ADDESTRAMENTO_PATH}. "
             "Crea il file con il prompt di addestramento."
+        )
+
+    # Il default nuovo e' un'allowlist, ma un CORS_ORIGINS=* gia' scritto in un
+    # .env vince sul default e rende il fix inerte, in silenzio: e' la stessa
+    # trappola del segreto JWT (il valore non arriva dal default, arriva dal
+    # .env). Qui non si alza — CORS "*" non e' una critica e far esplodere
+    # l'avvio di un ambiente gia' funzionante sarebbe sproporzionato — ma non
+    # si tace nemmeno.
+    if "*" in CORS_ORIGINS:
+        logging.getLogger(__name__).warning(
+            "CORS_ORIGINS contiene '*': qualsiasi sito puo' chiamare questa API. "
+            "Con allow_credentials=True l'origin jolly e' anche invalido per la "
+            "spec CORS. Sostituiscilo con l'elenco esplicito delle origini "
+            "(vedi .env.example)."
         )

@@ -141,6 +141,34 @@ class TokenData(BaseModel):
 # PASSWORD UTILITIES
 # ============================================================================
 
+# Requisiti password. Vivevano copiati in tre handler (register,
+# change-password, reset/set) e in tre componenti del frontend: sette posti, una
+# sola regola, nessuna fonte di verita'. La regola sta qui; il frontend la
+# specchia in src/utils/passwordPolicy.js (i messaggi devono restare allineati).
+PASSWORD_MIN_LENGTH = 12
+# bcrypt considera solo i primi 72 byte e TRONCA in silenzio: una password piu'
+# lunga darebbe all'utente una falsa sicurezza. Meglio rifiutarla.
+PASSWORD_MAX_BYTES = 72
+
+
+def validate_password_strength(password: str) -> str:
+    """Valida una password nuova, o solleva HTTPException 400."""
+    def _no(dettaglio: str):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=dettaglio)
+
+    if not password:
+        _no("La password è obbligatoria")
+    if len(password) < PASSWORD_MIN_LENGTH:
+        _no(f"La password deve essere di almeno {PASSWORD_MIN_LENGTH} caratteri")
+    if len(password.encode("utf-8")) > PASSWORD_MAX_BYTES:
+        _no(f"La password non può superare i {PASSWORD_MAX_BYTES} byte")
+    if not any(c.isupper() for c in password):
+        _no("La password deve contenere almeno una lettera maiuscola")
+    if not any(c.isdigit() for c in password):
+        _no("La password deve contenere almeno un numero")
+    return password
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifica una password."""
     return pwd_context.verify(plain_password, hashed_password)

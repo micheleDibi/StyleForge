@@ -56,7 +56,14 @@ python-frontmatter>=1.1.0
 filelock>=3.13.0
 
 # HTTP client (paper download for LLM Wiki)
-httpx>=0.25.0
+httpx>=0.26.0
+
+# httpcore: gia' installato come dipendenza di httpx, ma ssrf_guard.py lo importa
+# DIRETTAMENTE (il pinning dell'IP validato e' un override di connect_tcp sul
+# network backend), quindi va dichiarato. Il floor >=1.0.0 e' quello che porta
+# httpx>=0.26. test_ssrf_guard.py::TestPinning::test_hook_di_pinning_esiste_ancora
+# fallisce di proposito se un upgrade sposta quell'aggancio interno.
+httpcore>=1.0.0
 
 # Testing
 pytest>=7.4.0

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Lock, Eye, EyeOff, Loader, CheckCircle2 } from 'lucide-react';
 import { changePassword } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { validatePassword } from '../utils/passwordPolicy';
 
 const ChangePassword = () => {
   const { t } = useTranslation();
@@ -20,7 +21,8 @@ const ChangePassword = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!current) { setError(t('Inserisci la password attuale')); return; }
-    if (pw.length < 6) { setError(t('La nuova password deve essere di almeno 6 caratteri')); return; }
+    const errorePassword = validatePassword(pw, t);
+    if (errorePassword) { setError(errorePassword); return; }
     if (pw !== confirm) { setError(t('Le password non coincidono')); return; }
     setLoading(true);
     setError('');

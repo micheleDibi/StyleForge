@@ -76,7 +76,8 @@ from rate_limit import limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS - Usa origini specifiche da config, fallback a * per sviluppo
+# CORS - allowlist esplicita da config (niente "*": con allow_credentials=True
+# e' una combinazione invalida per la spec)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,

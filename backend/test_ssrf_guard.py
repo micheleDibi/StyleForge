@@ -186,8 +186,6 @@ class TestValidazioneUrl:
         # domani qualcuno ci mettesse una scorciatoia tipo "se non e' un IP
         # letterale allora fidati", passerebbero tutte: e' il resolver, con la
         # validazione di OGNI record, l'unica cosa che le ferma.
-        import ipaddress as _ip
-
         visti = []
 
         def fake(host, port):
@@ -471,7 +469,7 @@ class TestPinning:
     def test_unix_socket_rifiutato(self):
         b = ssrf_guard._PinnedAsyncBackend(_FakeInner(), {})
         with pytest.raises(SsrfBlocked):
-            _run(b.connect_unix_socket("/tmp/x.sock"))
+            _run(b.connect_unix_socket("./x.sock"))
 
     def test_rebinding_il_pin_vince_sulla_seconda_risoluzione(self):
         # Il resolver risponde pubblico alla validazione e interno subito dopo:

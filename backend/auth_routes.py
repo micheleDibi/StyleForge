@@ -20,7 +20,7 @@ from auth import (
     authenticate_user, create_user, update_user, change_password, update_last_login,
     save_refresh_token, get_refresh_token, revoke_refresh_token, revoke_all_user_tokens,
     get_current_user, get_current_active_user,
-    verify_password, build_user_response,
+    verify_password, build_user_response, validate_password_strength,
     ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
 )
 from email_service import (
@@ -43,7 +43,7 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks, db:
 
     - **email**: Email univoca dell'utente
     - **username**: Username univoco
-    - **password**: Password (minimo 8 caratteri consigliati)
+    - **password**: Password (min 12 caratteri, con almeno una maiuscola e un numero)
     - **full_name**: Nome completo (opzionale)
     """
     # Verifica che email non sia già in uso
@@ -60,12 +60,8 @@ async def register(user_data: UserCreate, background_tasks: BackgroundTasks, db:
             detail="Username già in uso"
         )
 
-    # Validazione password
-    if len(user_data.password) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La password deve essere di almeno 6 caratteri"
-        )
+    # Validazione password (regola unica in auth.validate_password_strength)
+    validate_password_strength(user_data.password)
 
     # Crea l'utente (con ruolo default 'user' assegnato automaticamente).
     # email_verified resta False (default del modello): l'utente deve confermare.
@@ -343,11 +339,7 @@ async def change_user_password(
         )
 
     # Validazione nuova password
-    if len(password_data.new_password) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La nuova password deve essere di almeno 6 caratteri"
-        )
+    validate_password_strength(password_data.new_password)
 
     # Cambia la password
     change_password(db, current_user, password_data.new_password)
@@ -400,8 +392,7 @@ async def forgot_password(payload: ForgotPasswordRequest, background_tasks: Back
 def _apply_new_password_from_token(db: Session, token: str, purpose: str, new_password: str) -> User:
     """Helper condiviso da reset-password e set-password: consuma il token,
     imposta la nuova password e revoca tutte le sessioni."""
-    if len(new_password) < 6:
-        raise HTTPException(status_code=400, detail="La password deve essere di almeno 6 caratteri")
+    validate_password_strength(new_password)
     user = consume_email_token(db, token, purpose)
     if not user:
         raise HTTPException(status_code=400, detail="Link non valido o scaduto.")

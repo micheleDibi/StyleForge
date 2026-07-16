@@ -23,7 +23,7 @@ from slowapi.errors import RateLimitExceeded
 
 import ssrf_guard
 import thesis_routes
-from auth import get_current_active_user, require_permission
+from auth import get_current_active_user
 from database import get_db
 from rate_limit import limiter
 

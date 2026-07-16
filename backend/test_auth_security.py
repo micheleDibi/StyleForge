@@ -201,3 +201,107 @@ class TestTokenTyping:
             algorithm="HS256",
         )
         assert auth.decode_token(altro) is None
+
+
+# ═══════════════════════════════════════ password ════════════════════════════
+
+class TestPasswordPolicy:
+    def _valida(self, pw):
+        import auth
+
+        return auth.validate_password_strength(pw)
+
+    @pytest.mark.parametrize(
+        "pw",
+        [
+            "",
+            "corta1A",
+            "Password1",          # 9 caratteri: sotto il minimo
+            "tuttominuscolo123",  # niente maiuscola
+            "TuttoSenzaNumeri",   # niente cifre
+        ],
+    )
+    def test_password_deboli_rifiutate(self, pw):
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as e:
+            self._valida(pw)
+        assert e.value.status_code == 400
+
+    def test_il_vecchio_minimo_di_6_non_basta_piu(self):
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException):
+            self._valida("Abc123")
+
+    def test_password_valida_passa(self):
+        assert self._valida("UnaPasswordLunga1") == "UnaPasswordLunga1"
+
+    def test_oltre_72_byte_rifiutata(self):
+        # bcrypt tronca in silenzio a 72 byte: accettarla darebbe all'utente una
+        # falsa sicurezza sui caratteri in piu'.
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException, match="72"):
+            self._valida("A1" + "x" * 71)
+
+    def test_i_byte_contano_non_i_caratteri(self):
+        # 40 emoji = 40 caratteri ma 160 byte: sotto i 72 byte deve passare.
+        import auth
+        from fastapi import HTTPException
+
+        pw = "Password1" + "à" * 10  # 19 caratteri, 29 byte
+        assert auth.validate_password_strength(pw) == pw
+        with pytest.raises(HTTPException):
+            auth.validate_password_strength("Password1" + "😀" * 20)  # 89 byte
+
+
+# ═══════════════════════════════════════ CORS ════════════════════════════════
+
+class TestCorsWildcard:
+    """
+    Il default in codice e' un'allowlist, ma un CORS_ORIGINS=* scritto nel .env
+    vince sul default. Questi test dicono che il caso non passa in silenzio.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _ripristina_config(self):
+        # reload() muta il modulo config per tutti i test che vengono dopo, in
+        # qualsiasi file: monkeypatch rimette a posto l'env, non il modulo gia'
+        # ricaricato. Senza questo teardown il danno resta latente finche' non
+        # arriva un test che legge config e fallisce per motivi invisibili.
+        yield
+        import importlib
+
+        importlib.reload(config)
+
+    def _rileggi_config(self, monkeypatch, valore):
+        # load_dotenv ha override=False: la var impostata qui vince sul .env.
+        monkeypatch.setenv("CORS_ORIGINS", valore)
+        monkeypatch.setenv("JWT_SECRET_KEY", SEGRETO_FORTE)
+        import importlib
+
+        return importlib.reload(config)
+
+    def test_il_wildcard_viene_loggato(self, monkeypatch, caplog):
+        cfg = self._rileggi_config(monkeypatch, "*")
+        with caplog.at_level("WARNING"):
+            cfg.validate_config()
+        assert "CORS_ORIGINS contiene '*'" in caplog.text
+
+    def test_lallowlist_non_logga_nulla(self, monkeypatch, caplog):
+        cfg = self._rileggi_config(monkeypatch, "https://app.styleforge.us,http://localhost:5173")
+        with caplog.at_level("WARNING"):
+            cfg.validate_config()
+        assert "CORS_ORIGINS" not in caplog.text
+        assert cfg.CORS_ORIGINS == ["https://app.styleforge.us", "http://localhost:5173"]
+
+    def test_gli_spazi_dopo_la_virgola_non_creano_origini_fantasma(self, monkeypatch):
+        # "a, b".split(",") -> " b": un'origin che non matcha mai, e fallisce
+        # solo nel browser — il modo peggiore in cui possa fallire.
+        cfg = self._rileggi_config(monkeypatch, "https://a.example, https://b.example ")
+        assert cfg.CORS_ORIGINS == ["https://a.example", "https://b.example"]
+
+    def test_niente_origini_vuote(self, monkeypatch):
+        cfg = self._rileggi_config(monkeypatch, "https://a.example,,")
+        assert cfg.CORS_ORIGINS == ["https://a.example"]

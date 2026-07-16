@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff, Loader, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { validatePassword } from '../utils/passwordPolicy';
 
 /**
  * Card riusabile per impostare una nuova password tramite token nell'URL (?token=).
@@ -22,7 +23,8 @@ const NewPasswordCard = ({ title, subtitle, submitFn, successText }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (pw.length < 6) { setError(t('La password deve essere di almeno 6 caratteri')); return; }
+    const errorePassword = validatePassword(pw, t);
+    if (errorePassword) { setError(errorePassword); return; }
     if (pw !== confirm) { setError(t('Le password non coincidono')); return; }
     setLoading(true);
     setError('');
