@@ -34,18 +34,22 @@ DEFAULT_CREDIT_COSTS = {
         'base': 3,          # costo base per umanizzazione
         'per_1000_chars': 1, # per 1000 caratteri input
     },
+    # Tesi: addebito PER STEP = quota fissa (base) + scaling sulla dimensione.
+    # Le quote base sommano a ~1000 (floor), lo scaling aggiunge per tesi più grandi.
+    # Si paga solo gli step eseguiti. Tutti i valori modificabili da admin.
     'thesis_chapters': {
-        'base': 5,          # generare struttura capitoli
-        'per_1000_attachment_chars': 1,  # per 1000 caratteri di allegati/link
+        'base': 150,                     # quota fissa step capitoli
+        'per_1000_attachment_chars': 1,  # + scaling sui caratteri degli allegati
     },
     'thesis_sections': {
-        'base': 5,          # generare struttura sezioni
+        'base': 150,                     # quota fissa step sezioni
+        'per_chapter': 5,                # + scaling per capitolo
     },
     'thesis_content': {
-        'base': 10,         # costo base generazione contenuto tesi
-        'per_chapter': 5,   # per capitolo
-        'per_section': 3,   # per sezione
-        'per_1000_words_target': 1,  # per 1000 parole target per sezione
+        'base': 700,                     # quota fissa step contenuto
+        'per_chapter': 5,                # + scaling per capitolo
+        'per_section': 3,                # + scaling per sezione
+        'per_1000_words_target': 1,      # + scaling per 1000 parole target
     },
     'compilatio_scan': {
         'base': 5,           # costo base per scansione Compilatio (manuale/generate/humanize)
@@ -61,12 +65,20 @@ DEFAULT_CREDIT_COSTS = {
     'research_summary': {
         'base': 3,           # costo base per riassunto AI di un paper
     },
-    # Tariffa flat tesi: addebito unico alla creazione della tesi.
-    # Differenziato per tipo di ente impostato sull'utente (User.entity_type).
-    # Copre tutto il flusso wizard tesi (paper, allegati, capitoli, sezioni, contenuto).
-    'thesis_total': {
-        'private': 250,      # ente privato
-        'training': 125,     # ente di formazione
+    # Estrazione keyword dai documenti caricati (per popolare la search bar paper)
+    'paper_keyword_suggest': {
+        'base': 2,           # costo base
+        'per_attachment': 1, # per ogni documento testuale considerato (max 5)
+    },
+    # Analisi documenti/paper (ingest Knowledge Base via SDK Anthropic): step a
+    # pagamento (quota fissa + scaling per fonte analizzata). Copre ingest+lint+autofix.
+    'wiki_ingest': {
+        'base': 100,         # quota fissa analisi documenti/paper
+        'per_source': 5,     # + scaling per ogni fonte analizzata (paper + upload)
+    },
+    # LLM Wiki: lint del wiki (one-shot, costo basso)
+    'wiki_lint': {
+        'base': 3,
     },
 }
 
@@ -153,6 +165,10 @@ def save_credit_costs(costs: dict, admin_user_id, db: Session) -> dict:
                     status_code=400,
                     detail=f"Il valore '{key}' per '{op_type}' deve essere un numero >= 0"
                 )
+
+    # Rimuove eventuali override legacy del vecchio costo flat 'thesis_total':
+    # ora la tesi si paga per step (thesis_chapters/sections/content).
+    costs.pop('thesis_total', None)
 
     # Salva o aggiorna
     setting = db.query(SystemSetting).filter(
@@ -253,44 +269,47 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
         }
 
     elif operation_type == 'thesis_chapters':
+        # Quota fissa + scaling sui caratteri degli allegati.
         base = costs['base']
         attachment_chars = params.get('attachment_chars', 0)
-        attachment_cost = math.ceil(attachment_chars / 1000 * costs.get('per_1000_attachment_chars', 1)) if attachment_chars > 0 else 0
+        attachment_cost = math.ceil(attachment_chars / 1000 * costs.get('per_1000_attachment_chars', 0)) if attachment_chars > 0 else 0
         total = base + attachment_cost
-        breakdown = {
-            "base": base,
-            "descrizione": "Generazione struttura capitoli"
-        }
+        breakdown = {"base": base, "descrizione": "Generazione struttura capitoli"}
         if attachment_cost > 0:
-            breakdown["allegati"] = f"{attachment_chars:,} caratteri x {costs.get('per_1000_attachment_chars', 1)}/1000 = {attachment_cost}"
+            breakdown["allegati"] = f"{attachment_chars:,} caratteri x {costs.get('per_1000_attachment_chars', 0)}/1000 = {attachment_cost}"
             breakdown["allegati_crediti"] = attachment_cost
 
     elif operation_type == 'thesis_sections':
-        total = costs['base']
-        breakdown = {
-            "base": total,
-            "descrizione": "Generazione struttura sezioni"
-        }
+        # Quota fissa + scaling per capitolo.
+        base = costs['base']
+        num_chapters = params.get('num_chapters', 5)
+        chapter_cost = num_chapters * costs.get('per_chapter', 0)
+        total = base + chapter_cost
+        breakdown = {"base": base, "descrizione": "Generazione struttura sezioni"}
+        if chapter_cost > 0:
+            breakdown["capitoli"] = f"{num_chapters} capitoli x {costs.get('per_chapter', 0)} = {chapter_cost}"
+            breakdown["capitoli_crediti"] = chapter_cost
 
     elif operation_type == 'thesis_content':
+        # Quota fissa + scaling per capitolo/sezione/parole.
         base = costs['base']
         num_chapters = params.get('num_chapters', 5)
         sections_per_chapter = params.get('sections_per_chapter', 3)
         words_per_section = params.get('words_per_section', 5000)
 
         total_sections = num_chapters * sections_per_chapter
-        chapter_cost = num_chapters * costs['per_chapter']
-        section_cost = total_sections * costs['per_section']
-        word_cost = math.ceil(total_sections * words_per_section / 1000 * costs['per_1000_words_target'])
+        chapter_cost = num_chapters * costs.get('per_chapter', 0)
+        section_cost = total_sections * costs.get('per_section', 0)
+        word_cost = math.ceil(total_sections * words_per_section / 1000 * costs.get('per_1000_words_target', 0))
 
         total = base + chapter_cost + section_cost + word_cost
         breakdown = {
             "base": base,
-            "capitoli": f"{num_chapters} capitoli x {costs['per_chapter']} = {chapter_cost}",
+            "capitoli": f"{num_chapters} capitoli x {costs.get('per_chapter', 0)} = {chapter_cost}",
             "capitoli_crediti": chapter_cost,
-            "sezioni": f"{total_sections} sezioni x {costs['per_section']} = {section_cost}",
+            "sezioni": f"{total_sections} sezioni x {costs.get('per_section', 0)} = {section_cost}",
             "sezioni_crediti": section_cost,
-            "parole": f"{total_sections * words_per_section:,} parole totali x {costs['per_1000_words_target']}/1000 = {word_cost}",
+            "parole": f"{total_sections * words_per_section:,} parole x {costs.get('per_1000_words_target', 0)}/1000 = {word_cost}",
             "parole_crediti": word_cost,
             "info": f"{num_chapters} capitoli, {sections_per_chapter} sezioni/capitolo, {words_per_section} parole/sezione"
         }
@@ -336,18 +355,40 @@ def estimate_credits(operation_type: str, params: dict, db: Optional[Session] = 
             "descrizione": "Riassunto AI di un paper accademico"
         }
 
-    elif operation_type == 'thesis_total':
-        # Tariffa flat per tesi, scelta in base al tipo di ente dell'utente.
-        et = (params.get('entity_type') or 'private').strip().lower()
-        if et not in ('private', 'training'):
-            et = 'private'
-        total = int(costs.get(et, costs.get('private', 250)) or 0)
-        label_ente = "Ente di formazione" if et == 'training' else "Ente privato"
+    elif operation_type == 'paper_keyword_suggest':
+        base = costs['base']
+        num_attachments = max(0, int(params.get('num_attachments', 0) or 0))
+        per_attachment = costs.get('per_attachment', 1)
+        extra = num_attachments * per_attachment
+        total = base + extra
+        breakdown = {
+            "base": base,
+            "descrizione": "Suggerimento keyword da documenti caricati",
+        }
+        if extra > 0:
+            breakdown["documenti"] = f"{num_attachments} documenti x {per_attachment} = {extra}"
+            breakdown["documenti_crediti"] = extra
+
+    elif operation_type == 'wiki_ingest':
+        base = costs['base']
+        num_sources = max(0, int(params.get('num_sources', 0) or 0))
+        per_source = costs.get('per_source', 2)
+        extra = num_sources * per_source
+        total = base + extra
+        breakdown = {
+            "base": base,
+            "descrizione": "Ingest LLM Wiki (sintesi cross-fonte via Claude)",
+            "fonti": num_sources,
+            "fonti_crediti": extra,
+        }
+
+    elif operation_type == 'wiki_lint':
+        total = costs['base']
         breakdown = {
             "base": total,
-            "descrizione": f"Tesi completa (tariffa flat - {label_ente})",
-            "tipo_ente": et,
+            "descrizione": "Lint LLM Wiki (controllo coerenza, contraddizioni, gaps)"
         }
+
 
     return {
         "credits_needed": total,
@@ -481,6 +522,72 @@ def add_credits(
     db.refresh(transaction)
 
     return transaction
+
+
+def transfer_credits(
+    giver: User,
+    receiver: User,
+    amount: int,
+    db: Session,
+    description: str,
+):
+    """
+    Trasferisce `amount` crediti da `giver` a `receiver` in modo atomico.
+
+    Scala i crediti dal donatore (che deve averne a sufficienza) e li accredita al
+    ricevente, registrando DUE CreditTransaction ('transfer': out sul donatore, in
+    sul ricevente). Le righe vengono bloccate con SELECT FOR UPDATE (ordinate per id
+    per evitare deadlock) così assegnazioni/approvazioni concorrenti non causano
+    scoperti.
+
+    Per i grant dell'admin (crediti infiniti) usare add_credits, NON questa funzione.
+
+    Raises:
+        HTTPException 400 se amount<=0 o giver==receiver
+        HTTPException 402 se il donatore non ha crediti sufficienti
+    """
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="L'importo da trasferire deve essere positivo.")
+    if giver.id == receiver.id:
+        raise HTTPException(status_code=400, detail="Donatore e ricevente coincidono.")
+
+    # Lock di entrambe le righe in ordine di id (deadlock-safe).
+    locked = (
+        db.query(User)
+        .filter(User.id.in_([giver.id, receiver.id]))
+        .order_by(User.id)
+        .with_for_update()
+        .all()
+    )
+    by_id = {u.id: u for u in locked}
+    g = by_id.get(giver.id)
+    r = by_id.get(receiver.id)
+    if g is None or r is None:
+        raise HTTPException(status_code=404, detail="Utente non trovato per il trasferimento.")
+
+    if g.credits < amount:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Crediti insufficienti per il trasferimento ({g.credits} < {amount}).",
+        )
+
+    g.credits -= amount
+    r.credits += amount
+
+    tx_out = CreditTransaction(
+        user_id=g.id, amount=-amount, balance_after=g.credits,
+        transaction_type='transfer', operation_type='transfer_out',
+        description=f"{description} (a {r.username})",
+    )
+    tx_in = CreditTransaction(
+        user_id=r.id, amount=amount, balance_after=r.credits,
+        transaction_type='transfer', operation_type='transfer_in',
+        description=f"{description} (da {g.username})",
+    )
+    db.add(tx_out)
+    db.add(tx_in)
+    db.commit()
+    return tx_out, tx_in
 
 
 def get_user_transactions(

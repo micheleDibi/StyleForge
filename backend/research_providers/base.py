@@ -2,8 +2,11 @@
 Modello base per paper accademici e interfaccia provider.
 """
 
+import logging
 from typing import Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class UnifiedPaper(BaseModel):
@@ -28,6 +31,33 @@ class UnifiedPaper(BaseModel):
         None,
         description="Componenti normalizzate 0-1 del composite_score: relevance, citations, recency, abstract, open_access, venue",
     )
+
+    @field_validator("full_text_url")
+    @classmethod
+    def _solo_url_http(cls, v: Optional[str]) -> Optional[str]:
+        """
+        Prima barriera su full_text_url.
+
+        Serve perche' questo modello non viene costruito solo dai provider: in
+        POST /thesis/{id}/attachments/papers arriva dal payload del CLIENT
+        (UnifiedPaper(**item.paper)), finisce in ThesisAttachment.file_path e la
+        pipeline wiki lo scarica. E' un URL controllato dall'utente a tutti gli
+        effetti.
+
+        Un valore non-http(s) si azzera invece di far fallire la validazione:
+        cosi' un risultato strano di un provider perde il link al full text ma
+        il paper resta, mentre uno schema tipo file:// sparisce. Il blocco vero
+        (IP interni, rebinding) e' della guard, al salvataggio e al fetch.
+        """
+        if v is None:
+            return None
+        valore = str(v).strip()
+        if not valore:
+            return None
+        if not (valore.startswith("http://") or valore.startswith("https://")):
+            logger.warning("full_text_url ignorato, non e' un URL http(s): %.100r", valore)
+            return None
+        return valore
 
 
 class ProviderError(Exception):

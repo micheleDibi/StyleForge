@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   login as apiLogin,
   logout as apiLogout,
@@ -12,6 +13,7 @@ import {
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
+  const { t } = useTranslation();
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,7 +54,13 @@ export const AuthProvider = ({ children }) => {
       return { success: true };
     } catch (err) {
       console.error('AuthContext login error:', err);
-      const errorMessage = err.response?.data?.detail || err.message || 'Errore durante il login';
+      const detail = err.response?.data?.detail;
+      // Email non verificata: il backend ritorna detail = { code, message }
+      if (detail && typeof detail === 'object' && detail.code === 'email_not_verified') {
+        setError(detail.message);
+        return { success: false, error: detail.message, code: 'email_not_verified' };
+      }
+      const errorMessage = (typeof detail === 'string' ? detail : null) || err.message || t('Errore durante il login');
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -62,10 +70,11 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     try {
       await apiRegister(email, username, password, fullName);
-      // Auto-login dopo la registrazione
-      return await login(username, password);
+      // NIENTE auto-login: l'utente deve prima verificare l'email.
+      return { success: true, pendingVerification: true };
     } catch (err) {
-      const errorMessage = err.response?.data?.detail || 'Errore durante la registrazione';
+      const detail = err.response?.data?.detail;
+      const errorMessage = (typeof detail === 'string' ? detail : null) || t('Errore durante la registrazione');
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -116,6 +125,21 @@ export const AuthProvider = ({ children }) => {
   const isAdmin = user?.role === 'admin' || user?.is_admin || false;
 
   /**
+   * Controlla se l'utente e' un distributore (accede alla dashboard rivenditori).
+   */
+  const isDistributor = user?.entity_type === 'distributore' || false;
+
+  /**
+   * Controlla se l'utente e' un rivenditore.
+   */
+  const isReseller = user?.entity_type === 'rivenditore' || false;
+
+  /**
+   * Manager = distributore o rivenditore (gestisce un sottoalbero di utenti).
+   */
+  const isManager = isDistributor || isReseller;
+
+  /**
    * Ottieni il saldo crediti. -1 = infiniti (admin).
    */
   const credits = user?.credits ?? 0;
@@ -134,6 +158,9 @@ export const AuthProvider = ({ children }) => {
       // Nuovi helper per permessi e crediti
       hasPermission,
       isAdmin,
+      isDistributor,
+      isReseller,
+      isManager,
       credits
     }}>
       {children}

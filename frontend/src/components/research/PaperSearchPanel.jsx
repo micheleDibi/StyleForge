@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Search,
   Loader,
@@ -61,6 +62,7 @@ const PaperSearchPanel = ({
   initialTopic = '',
   hideCreditEstimate = false,
 }) => {
+  const { t } = useTranslation();
   const [topic, setTopic] = useState(initialTopic);
   const [sources, setSources] = useState(AVAILABLE_SOURCES.map((s) => s.key));
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -69,6 +71,16 @@ const PaperSearchPanel = ({
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Permetti al genitore di reset/aggiornare la search bar (es. click su un chip
+  // di keyword suggerita): se `initialTopic` cambia e non e' stringa vuota,
+  // sincronizziamo lo state interno.
+  useEffect(() => {
+    if (typeof initialTopic === 'string' && initialTopic && initialTopic !== topic) {
+      setTopic(initialTopic);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTopic]);
 
   const toggleSource = (key) => {
     setSources((prev) =>
@@ -96,11 +108,11 @@ const PaperSearchPanel = ({
       if (onCreditsChanged) onCreditsChanged();
     } catch (err) {
       if (err.isInsufficientCredits) {
-        setError(err.creditErrorMessage || 'Crediti insufficienti.');
+        setError(err.creditErrorMessage || t('Crediti insufficienti.'));
       } else if (err.response?.status === 400) {
-        setError(err.response?.data?.detail || 'Parametri non validi.');
+        setError(err.response?.data?.detail || t('Parametri non validi.'));
       } else {
-        setError('Errore nella ricerca. Riprova tra qualche istante.');
+        setError(t('Errore nella ricerca. Riprova tra qualche istante.'));
       }
     } finally {
       setLoading(false);
@@ -115,7 +127,7 @@ const PaperSearchPanel = ({
       <form onSubmit={handleSearch} className="card space-y-5">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
-            Argomento <span className="text-red-500">*</span>
+            {t('Argomento')} <span className="text-red-500">*</span>
           </label>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
@@ -124,7 +136,7 @@ const PaperSearchPanel = ({
                 type="text"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder="es. machine learning in agricoltura"
+                placeholder={t('es. machine learning in agricoltura')}
                 className="input w-full pl-9"
                 disabled={loading}
                 minLength={2}
@@ -140,12 +152,12 @@ const PaperSearchPanel = ({
               {loading ? (
                 <>
                   <Loader className="w-4 h-4 animate-spin" />
-                  Cerco...
+                  {t('Cerco...')}
                 </>
               ) : (
                 <>
                   <Search className="w-4 h-4" />
-                  Cerca
+                  {t('Cerca')}
                 </>
               )}
             </button>
@@ -153,7 +165,7 @@ const PaperSearchPanel = ({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Fonti</label>
+          <label className="block text-sm font-medium text-slate-700 mb-2">{t('Fonti')}</label>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             {AVAILABLE_SOURCES.map((s) => {
               const active = sources.includes(s.key);
@@ -190,7 +202,7 @@ const PaperSearchPanel = ({
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4" />
-            Ordina per
+            {t('Ordina per')}
           </label>
           <select
             value={sortBy}
@@ -209,7 +221,7 @@ const PaperSearchPanel = ({
         {!hideCreditEstimate && (
           <CreditEstimatePreview
             operations={[
-              { type: 'research_search', params: { num_sources: sources.length }, label: 'Ricerca' },
+              { type: 'research_search', params: { num_sources: sources.length }, label: t('Ricerca') },
             ]}
           />
         )}
@@ -226,7 +238,7 @@ const PaperSearchPanel = ({
         {loading && (
           <div className="card text-center py-10 text-slate-600">
             <Loader className="w-6 h-6 animate-spin mx-auto mb-2 text-orange-500" />
-            <p className="text-sm">Interrogazione di {sources.length} {sources.length === 1 ? 'fonte' : 'fonti'} in parallelo...</p>
+            <p className="text-sm">{t('Interrogazione di {{count}} {{noun}} in parallelo...', { count: sources.length, noun: sources.length === 1 ? t('fonte') : t('fonti') })}</p>
           </div>
         )}
 
@@ -237,7 +249,7 @@ const PaperSearchPanel = ({
               <div className="card text-center py-10">
                 <Inbox className="w-10 h-10 text-slate-300 mx-auto mb-3" />
                 <p className="text-sm text-slate-600">
-                  Nessun risultato con i filtri correnti. Prova ad ampliare la ricerca.
+                  {t('Nessun risultato con i filtri correnti. Prova ad ampliare la ricerca.')}
                 </p>
               </div>
             ) : (
@@ -266,34 +278,37 @@ const PaperSearchPanel = ({
   );
 };
 
-const ResultsHeader = ({ results }) => (
+const ResultsHeader = ({ results }) => {
+  const { t } = useTranslation();
+  return (
   <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600 flex flex-wrap items-center gap-x-4 gap-y-1">
     <span>
-      <strong className="text-slate-900">{results.papers.length}</strong> risultati mostrati
+      <strong className="text-slate-900">{results.papers.length}</strong> {t('risultati mostrati')}
     </span>
     <span className="text-slate-400">·</span>
     <span>
-      <strong className="text-slate-900">{results.total_unique}</strong> paper unici (da {results.total_raw} risposte)
+      <strong className="text-slate-900">{results.total_unique}</strong> {t('paper unici (da {{count}} risposte)', { count: results.total_raw })}
     </span>
     {results.used_sources?.length > 0 && (
       <>
         <span className="text-slate-400">·</span>
-        <span>Fonti: {results.used_sources.join(', ')}</span>
+        <span>{t('Fonti:')} {results.used_sources.join(', ')}</span>
       </>
     )}
     {results.failed_sources?.length > 0 && (
       <span className="flex items-center gap-1 text-amber-700">
         <AlertTriangle className="w-3.5 h-3.5" />
-        Fonti non disponibili:{' '}
+        {t('Fonti non disponibili:')}{' '}
         {results.failed_sources.map((f, i) => (
           <span key={f.source}>
             {i > 0 && ', '}
-            {f.source}{f.error === 'rate_limit' ? ' (rate limit)' : ''}
+            {f.source}{f.error === 'rate_limit' ? t(' (rate limit)') : ''}
           </span>
         ))}
       </span>
     )}
   </div>
-);
+  );
+};
 
 export default PaperSearchPanel;

@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, BookMarked } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import PaperSearchPanel from '../components/research/PaperSearchPanel';
 
 const ResearchSearch = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { refreshUser } = useAuth();
 
   return (
@@ -15,7 +17,7 @@ const ResearchSearch = () => {
           className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 mb-4"
         >
           <ArrowLeft className="w-4 h-4" />
-          Torna alla dashboard
+          {t('Torna alla dashboard')}
         </button>
 
         <header className="mb-6">
@@ -24,9 +26,9 @@ const ResearchSearch = () => {
               <BookMarked className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Ricerca Accademica</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900">{t('Ricerca Accademica')}</h1>
               <p className="text-sm text-slate-600">
-                Aggrega risultati da OpenAlex, Semantic Scholar e Crossref. Riassunti AI on-demand.
+                {t('Aggrega risultati da OpenAlex, Semantic Scholar e Crossref. Riassunti AI on-demand.')}
               </p>
             </div>
           </div>

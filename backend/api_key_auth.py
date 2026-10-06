@@ -6,7 +6,7 @@ import hashlib
 import secrets
 import time
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from threading import Lock
 
@@ -102,7 +102,13 @@ async def get_api_key_user(
             detail="API key revocata"
         )
 
-    if db_key.expires_at and db_key.expires_at < datetime.utcnow():
+    # expires_at è TIMESTAMPTZ (aware): confronta con un now() aware, non con
+    # datetime.utcnow() naive (solleverebbe TypeError aware/naive). Normalizza
+    # difensivamente nel caso arrivasse naive.
+    _exp = db_key.expires_at
+    if _exp is not None and _exp.tzinfo is None:
+        _exp = _exp.replace(tzinfo=timezone.utc)
+    if _exp and _exp < datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="API key scaduta"

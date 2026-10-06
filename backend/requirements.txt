@@ -35,6 +35,15 @@ bcrypt==4.0.1
 # Image Processing
 Pillow>=10.0.0
 
+# Grafici accademici nelle tesi (backend Agg, nessun display richiesto)
+matplotlib>=3.8.0
+
+# Formule LaTeX nelle tesi: OMML nativo per docx, Unicode per txt
+# (i PNG per il PDF usano matplotlib mathtext, già presente sopra)
+latex2mathml>=3.77
+mathml2omml>=0.0.2
+pylatexenc>=2.10
+
 # Web Scraping
 beautifulsoup4>=4.12.0
 
@@ -42,6 +51,19 @@ beautifulsoup4>=4.12.0
 zeep>=4.2.0
 lxml>=4.9.0
 
+# LLM Wiki (second-brain): markdown frontmatter + filesystem lock cross-platform
+python-frontmatter>=1.1.0
+filelock>=3.13.0
+
+# HTTP client (paper download for LLM Wiki)
+httpx>=0.26.0
+
+# httpcore: gia' installato come dipendenza di httpx, ma ssrf_guard.py lo importa
+# DIRETTAMENTE (il pinning dell'IP validato e' un override di connect_tcp sul
+# network backend), quindi va dichiarato. Il floor >=1.0.0 e' quello che porta
+# httpx>=0.26. test_ssrf_guard.py::TestPinning::test_hook_di_pinning_esiste_ancora
+# fallisce di proposito se un upgrade sposta quell'aggancio interno.
+httpcore>=1.0.0
+
 # Testing
 pytest>=7.4.0
-httpx>=0.25.0

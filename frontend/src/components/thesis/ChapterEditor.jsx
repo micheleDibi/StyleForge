@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { GripVertical, Plus, Trash2, Edit3, Check, X, Sparkles, Loader, BookOpen, Brain, ListTree, Download } from 'lucide-react';
 import exportThesisStructureToPdf from '../../utils/exportThesisStructure';
 
 const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenerating, thesisTitle = '', thesisDescription = '' }) => {
+  const { t } = useTranslation();
   const [editingIndex, setEditingIndex] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -17,16 +19,16 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
   useEffect(() => {
     if (isGenerating) {
       const steps = [
-        { step: 1, message: 'Analisi del titolo e della descrizione...' },
-        { step: 2, message: 'Valutazione degli argomenti chiave...' },
-        { step: 3, message: 'Determinazione dello stile di scrittura...' },
-        { step: 4, message: 'Analisi del pubblico target...' },
-        { step: 5, message: 'Strutturazione della progressione logica...' },
-        { step: 6, message: 'Generazione dei titoli dei capitoli...' },
-        { step: 7, message: 'Creazione delle descrizioni...' },
-        { step: 8, message: 'Ottimizzazione della struttura...' },
-        { step: 9, message: 'Verifica della coerenza...' },
-        { step: 10, message: 'Finalizzazione dei capitoli...' }
+        { step: 1, message: t('Analisi del titolo e della descrizione...') },
+        { step: 2, message: t('Valutazione degli argomenti chiave...') },
+        { step: 3, message: t('Determinazione dello stile di scrittura...') },
+        { step: 4, message: t('Analisi del pubblico target...') },
+        { step: 5, message: t('Strutturazione della progressione logica...') },
+        { step: 6, message: t('Generazione dei titoli dei capitoli...') },
+        { step: 7, message: t('Creazione delle descrizioni...') },
+        { step: 8, message: t('Ottimizzazione della struttura...') },
+        { step: 9, message: t('Verifica della coerenza...') },
+        { step: 10, message: t('Finalizzazione dei capitoli...') }
       ];
 
       let currentIndex = 0;
@@ -122,9 +124,9 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Generazione Capitoli</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Generazione Capitoli')}</h2>
           <p className="text-slate-600">
-            Stiamo generando la struttura dei capitoli in base ai tuoi parametri.
+            {t('Stiamo generando la struttura dei capitoli in base ai tuoi parametri.')}
           </p>
         </div>
 
@@ -135,9 +137,9 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
               <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
             </div>
             <div className="text-center">
-              <h3 className="text-lg font-semibold text-slate-800 mb-1">Generazione in corso...</h3>
+              <h3 className="text-lg font-semibold text-slate-800 mb-1">{t('Generazione in corso...')}</h3>
               <p className="text-sm text-slate-500">
-                {generationMessage || 'Elaborazione della struttura dei capitoli'}
+                {generationMessage || t('Elaborazione della struttura dei capitoli')}
               </p>
             </div>
           </div>
@@ -159,9 +161,9 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Struttura Capitoli</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Struttura Capitoli')}</h2>
           <p className="text-slate-600">
-            Rivedi e modifica i capitoli generati dall'AI. Puoi riordinare, aggiungere o rimuovere capitoli.
+            {t('Rivedi e modifica i capitoli generati dall\'AI. Puoi riordinare, aggiungere o rimuovere capitoli.')}
           </p>
         </div>
         <button
@@ -169,10 +171,10 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
           onClick={handleExportPdf}
           disabled={safeChapters.length === 0}
           className="flex-shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Esporta la struttura corrente dei capitoli in PDF"
+          title={t('Esporta la struttura corrente dei capitoli in PDF')}
         >
           <Download className="w-4 h-4" />
-          Esporta PDF
+          {t('Esporta PDF')}
         </button>
       </div>
 
@@ -180,8 +182,8 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
         {safeChapters.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
             <BookOpen className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-            <p>Nessun capitolo generato.</p>
-            <p className="text-sm">Clicca "Aggiungi Capitolo" per iniziare.</p>
+            <p>{t('Nessun capitolo generato.')}</p>
+            <p className="text-sm">{t('Clicca "Aggiungi Capitolo" per iniziare.')}</p>
           </div>
         ) : (
           <>
@@ -189,7 +191,7 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
             <div className="p-3 bg-green-50 border border-green-200 rounded-lg mb-4">
               <div className="flex items-center gap-2 text-green-700">
                 <Check className="w-5 h-5" />
-                <span className="font-medium">{safeChapters.length} capitoli generati</span>
+                <span className="font-medium">{t('{{count}} capitoli generati', { count: safeChapters.length })}</span>
               </div>
             </div>
 
@@ -226,7 +228,7 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           className="input w-full"
-                          placeholder="Titolo del capitolo"
+                          placeholder={t('Titolo del capitolo')}
                           autoFocus
                         />
                         <textarea
@@ -234,7 +236,7 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                           onChange={(e) => setEditDescription(e.target.value)}
                           className="input w-full resize-none"
                           rows={2}
-                          placeholder="Breve descrizione (opzionale)"
+                          placeholder={t('Breve descrizione (opzionale)')}
                         />
                         <div className="flex gap-2">
                           <button
@@ -242,14 +244,14 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                             className="btn-primary text-sm py-1.5 px-3"
                           >
                             <Check className="w-4 h-4 mr-1" />
-                            Salva
+                            {t('Salva')}
                           </button>
                           <button
                             onClick={handleCancel}
                             className="btn-secondary text-sm py-1.5 px-3"
                           >
                             <X className="w-4 h-4 mr-1" />
-                            Annulla
+                            {t('Annulla')}
                           </button>
                         </div>
                       </div>
@@ -271,14 +273,14 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
                       <button
                         onClick={() => handleEdit(index)}
                         className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
-                        title="Modifica"
+                        title={t('Modifica')}
                       >
                         <Edit3 className="w-4 h-4 text-slate-600" />
                       </button>
                       <button
                         onClick={() => handleDelete(index)}
                         className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Elimina"
+                        title={t('Elimina')}
                         disabled={safeChapters.length <= 1}
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
@@ -297,7 +299,7 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
           className="w-full p-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-orange-400 hover:text-orange-600 transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="w-5 h-5" />
-          Aggiungi Capitolo
+          {t('Aggiungi Capitolo')}
         </button>
       </div>
 
@@ -311,12 +313,12 @@ const ChapterEditor = ({ chapters = [], onChange, onConfirm, isLoading, isGenera
           {isLoading ? (
             <>
               <Loader className="w-5 h-5 animate-spin" />
-              Salvataggio...
+              {t('Salvataggio...')}
             </>
           ) : (
             <>
               <Check className="w-5 h-5" />
-              Conferma Capitoli e Continua
+              {t('Conferma Capitoli e Continua')}
             </>
           )}
         </button>

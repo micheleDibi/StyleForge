@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Coins, Loader } from 'lucide-react';
 import { estimateCredits } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
  * - operations: [{ type, params, label }] (multiple operazioni, somma totale)
  */
 const CreditEstimatePreview = ({ operationType, params, operations }) => {
+  const { t } = useTranslation();
   const { isAdmin, credits } = useAuth();
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -62,19 +64,19 @@ const CreditEstimatePreview = ({ operationType, params, operations }) => {
             {loading ? (
               <span className="flex items-center gap-2">
                 <Loader className="w-3 h-3 animate-spin" />
-                Calcolo crediti...
+                {t('Calcolo crediti...')}
               </span>
             ) : (
-              <>Crediti necessari: {totalNeeded}</>
+              <>{t('Crediti necessari: {{n}}', { n: totalNeeded })}</>
             )}
           </span>
         </div>
         {!loading && (
           <span className="opacity-75">
             {isAdmin ? (
-              'Crediti illimitati'
+              t('Crediti illimitati')
             ) : (
-              <>Saldo: {credits} {sufficient ? '✓' : '— insufficienti'}</>
+              <>{t('Saldo: {{credits}}', { credits })} {sufficient ? '✓' : t('— insufficienti')}</>
             )}
           </span>
         )}
@@ -91,8 +93,8 @@ const CreditEstimatePreview = ({ operationType, params, operations }) => {
       )}
       {!loading && results && ops.length === 1 && (results[0]?.breakdown?.allegati_crediti > 0) && (
         <div className="flex gap-4 opacity-75 mt-1">
-          <span>Generazione testo: {totalNeeded - results[0].breakdown.allegati_crediti}</span>
-          <span>Scansione allegati: {results[0].breakdown.allegati_crediti}</span>
+          <span>{t('Generazione testo: {{n}}', { n: totalNeeded - results[0].breakdown.allegati_crediti })}</span>
+          <span>{t('Scansione allegati: {{n}}', { n: results[0].breakdown.allegati_crediti })}</span>
         </div>
       )}
     </div>

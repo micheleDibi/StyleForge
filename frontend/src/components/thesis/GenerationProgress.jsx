@@ -1,17 +1,19 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Loader, CheckCircle, AlertCircle, ChevronDown, ChevronRight, FileText, Clock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
-const formatTime = (seconds) => {
-  if (seconds < 60) return 'meno di un minuto';
+const formatTime = (seconds, t) => {
+  if (seconds < 60) return t('meno di un minuto');
   const m = Math.round(seconds / 60);
-  if (m === 1) return 'circa 1 minuto';
-  if (m < 60) return `circa ${m} minuti`;
+  if (m === 1) return t('circa 1 minuto');
+  if (m < 60) return t('circa {{m}} minuti', { m });
   const h = Math.floor(m / 60);
   const rm = m % 60;
-  return rm > 0 ? `circa ${h}h ${rm}min` : `circa ${h}h`;
+  return rm > 0 ? t('circa {{h}}h {{rm}}min', { h, rm }) : t('circa {{h}}h', { h });
 };
 
 const GenerationProgress = ({ status, onComplete }) => {
+  const { t } = useTranslation();
   const [expandedChapters, setExpandedChapters] = useState({});
   const startTimeRef = useRef(null);
   const [eta, setEta] = useState(null);
@@ -74,8 +76,8 @@ const GenerationProgress = ({ status, onComplete }) => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Generazione Contenuto</h2>
-          <p className="text-slate-600">Preparazione della generazione in corso...</p>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Generazione Contenuto')}</h2>
+          <p className="text-slate-600">{t('Preparazione della generazione in corso...')}</p>
         </div>
         <div className="card py-12">
           <div className="flex flex-col items-center gap-5">
@@ -83,7 +85,7 @@ const GenerationProgress = ({ status, onComplete }) => {
               <div className="absolute inset-0 rounded-full border-[3px] border-slate-200"></div>
               <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
             </div>
-            <p className="text-sm text-slate-500">Inizializzazione...</p>
+            <p className="text-sm text-slate-500">{t('Inizializzazione...')}</p>
           </div>
         </div>
       </div>
@@ -93,13 +95,13 @@ const GenerationProgress = ({ status, onComplete }) => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Generazione Contenuto</h2>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">{t('Generazione Contenuto')}</h2>
         <p className="text-slate-600">
           {generationStatus === 'completed'
-            ? 'Generazione completata! La tua tesi e pronta.'
+            ? t('Generazione completata! La tua tesi e pronta.')
             : generationStatus === 'failed'
-            ? 'Si e verificato un errore durante la generazione.'
-            : 'Il contenuto viene generato sezione per sezione.'}
+            ? t('Si e verificato un errore durante la generazione.')
+            : t('Il contenuto viene generato sezione per sezione.')}
         </p>
       </div>
 
@@ -116,12 +118,12 @@ const GenerationProgress = ({ status, onComplete }) => {
             )}
             <div>
               <p className="font-semibold text-slate-900">
-                {generationStatus === 'completed' ? 'Completato' :
-                 generationStatus === 'failed' ? 'Errore' : 'Generazione in corso...'}
+                {generationStatus === 'completed' ? t('Completato') :
+                 generationStatus === 'failed' ? t('Errore') : t('Generazione in corso...')}
               </p>
               {generationStatus === 'generating' && totalSections > 0 && (
                 <p className="text-sm text-slate-500">
-                  Sezione {completedSections + 1} di {totalSections}
+                  {t('Sezione {{current}} di {{total}}', { current: completedSections + 1, total: totalSections })}
                 </p>
               )}
             </div>
@@ -143,13 +145,13 @@ const GenerationProgress = ({ status, onComplete }) => {
         {/* Stats */}
         {totalSections > 0 && (
           <div className="flex items-center gap-6 mt-4 text-sm text-slate-600">
-            <span><strong className="text-slate-900">{completedSections}</strong> completate</span>
-            <span><strong className="text-slate-900">{totalSections - completedSections}</strong> rimanenti</span>
-            <span><strong className="text-slate-900">{totalSections}</strong> totali</span>
+            <span><strong className="text-slate-900">{completedSections}</strong> {t('completate')}</span>
+            <span><strong className="text-slate-900">{totalSections - completedSections}</strong> {t('rimanenti')}</span>
+            <span><strong className="text-slate-900">{totalSections}</strong> {t('totali')}</span>
             {generationStatus === 'generating' && eta != null && completedSections > 0 && (
               <span className="flex items-center gap-1 ml-auto text-orange-600">
                 <Clock className="w-3.5 h-3.5" />
-                {formatTime(eta)}
+                {formatTime(eta, t)}
               </span>
             )}
           </div>
@@ -163,7 +165,7 @@ const GenerationProgress = ({ status, onComplete }) => {
               : 'bg-red-50 border border-red-200 text-red-700'
           }`}>
             <p className="font-medium">
-              {errorMessage.toLowerCase().includes('crediti') ? 'Crediti insufficienti' : 'Errore'}
+              {errorMessage.toLowerCase().includes('crediti') ? t('Crediti insufficienti') : t('Errore')}
             </p>
             <p className="mt-1">{errorMessage.replace('CREDITI_INSUFFICIENTI: ', '')}</p>
           </div>
@@ -173,7 +175,7 @@ const GenerationProgress = ({ status, onComplete }) => {
       {/* Dettaglio Capitoli */}
       {chaptersData.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Progresso per capitolo</h3>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">{t('Progresso per capitolo')}</h3>
           {chaptersData.map((chapter, idx) => {
             const chapterIndex = chapter.chapter_index ?? idx;
             const isCurrentChapter = currentChapter === chapterIndex;
@@ -197,7 +199,7 @@ const GenerationProgress = ({ status, onComplete }) => {
                     <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex-shrink-0" />
                   )}
                   <span className="flex-1 text-sm font-medium text-slate-800 truncate">
-                    Cap. {chapterIndex + 1}: {chapter.chapter_title || `Capitolo ${chapterIndex + 1}`}
+                    {t('Cap. {{num}}:', { num: chapterIndex + 1 })} {chapter.chapter_title || t('Capitolo {{num}}', { num: chapterIndex + 1 })}
                   </span>
                   <span className="text-xs text-slate-500 mr-2">
                     {chapter.completed_sections ?? 0}/{chapter.total_sections ?? 0}
@@ -230,10 +232,10 @@ const GenerationProgress = ({ status, onComplete }) => {
                             <div className="w-3.5 h-3.5 rounded-full border-[1.5px] border-slate-300 flex-shrink-0" />
                           )}
                           <span className={`flex-1 truncate ${isCurrentSec ? 'text-orange-700 font-medium' : 'text-slate-600'}`}>
-                            {section.section_title || section.title || `Sezione ${sectionIndex + 1}`}
+                            {section.section_title || section.title || t('Sezione {{num}}', { num: sectionIndex + 1 })}
                           </span>
                           {section.words_count > 0 && (
-                            <span className="text-xs text-slate-400">{section.words_count.toLocaleString()} parole</span>
+                            <span className="text-xs text-slate-400">{t('{{count}} parole', { count: section.words_count.toLocaleString() })}</span>
                           )}
                         </div>
                       );
@@ -251,9 +253,9 @@ const GenerationProgress = ({ status, onComplete }) => {
         <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3">
           <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
           <div>
-            <p className="font-semibold text-green-800">Tesi generata con successo!</p>
+            <p className="font-semibold text-green-800">{t('Tesi generata con successo!')}</p>
             <p className="text-sm text-green-700">
-              Tutte le {totalSections} sezioni sono state generate. Puoi visualizzare l'anteprima e scaricare il documento.
+              {t("Tutte le {{total}} sezioni sono state generate. Puoi visualizzare l'anteprima e scaricare il documento.", { total: totalSections })}
             </p>
           </div>
         </div>

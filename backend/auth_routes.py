@@ -6,20 +6,26 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from database import get_db
 from auth import (
     UserCreate, UserLogin, UserResponse, UserUpdate, PasswordChange, Token,
+    VerifyEmailRequest, ResendVerificationRequest, ForgotPasswordRequest,
+    ResetPasswordRequest, SetPasswordRequest,
     create_access_token, create_refresh_token, decode_token,
     get_user_by_email, get_user_by_username, get_user_by_id,
     authenticate_user, create_user, update_user, change_password, update_last_login,
     save_refresh_token, get_refresh_token, revoke_refresh_token, revoke_all_user_tokens,
     get_current_user, get_current_active_user,
-    verify_password, build_user_response,
+    verify_password, build_user_response, validate_password_strength,
     ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
+)
+from email_service import (
+    create_email_token, consume_email_token, build_link,
+    send_verification_email, send_invite_email, send_reset_email,
 )
 from db_models import User
 
@@ -31,13 +37,13 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 # ============================================================================
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserCreate, db: Session = Depends(get_db)):
+async def register(user_data: UserCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
     Registra un nuovo utente.
 
     - **email**: Email univoca dell'utente
     - **username**: Username univoco
-    - **password**: Password (minimo 8 caratteri consigliati)
+    - **password**: Password (min 12 caratteri, con almeno una maiuscola e un numero)
     - **full_name**: Nome completo (opzionale)
     """
     # Verifica che email non sia già in uso
@@ -54,15 +60,17 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Username già in uso"
         )
 
-    # Validazione password
-    if len(user_data.password) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La password deve essere di almeno 6 caratteri"
-        )
+    # Validazione password (regola unica in auth.validate_password_strength)
+    validate_password_strength(user_data.password)
 
-    # Crea l'utente (con ruolo default 'user' assegnato automaticamente)
+    # Crea l'utente (con ruolo default 'user' assegnato automaticamente).
+    # email_verified resta False (default del modello): l'utente deve confermare.
     user = create_user(db, user_data)
+
+    # Invia l'email di verifica in background (non blocca la risposta).
+    raw = create_email_token(db, user.id, 'verify')
+    link = build_link('verify', raw)
+    background_tasks.add_task(send_verification_email, user.email, user.full_name or user.username, link)
 
     return build_user_response(user, db)
 
@@ -91,6 +99,15 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account disabilitato"
+        )
+
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "email_not_verified",
+                "message": "Email non verificata. Controlla la tua casella o richiedi un nuovo link di verifica.",
+            }
         )
 
     # Aggiorna ultimo login
@@ -135,6 +152,15 @@ async def login_form(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account disabilitato"
+        )
+
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "email_not_verified",
+                "message": "Email non verificata. Controlla la tua casella o richiedi un nuovo link di verifica.",
+            }
         )
 
     # Aggiorna ultimo login
@@ -185,7 +211,7 @@ async def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
         )
 
     # Decodifica il token per ottenere i dati utente
-    token_data = decode_token(refresh_token)
+    token_data = decode_token(refresh_token, expected_type="refresh")
     if not token_data or not token_data.user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -301,6 +327,11 @@ async def change_user_password(
     Cambia la password dell'utente corrente.
     """
     # Verifica la password attuale
+    if not current_user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nessuna password impostata per questo account"
+        )
     if not verify_password(password_data.current_password, current_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -308,11 +339,7 @@ async def change_user_password(
         )
 
     # Validazione nuova password
-    if len(password_data.new_password) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La nuova password deve essere di almeno 6 caratteri"
-        )
+    validate_password_strength(password_data.new_password)
 
     # Cambia la password
     change_password(db, current_user, password_data.new_password)
@@ -321,6 +348,80 @@ async def change_user_password(
     revoke_all_user_tokens(db, current_user.id)
 
     return {"message": "Password cambiata con successo. Effettua nuovamente il login."}
+
+
+# ============================================================================
+# EMAIL VERIFICATION & PASSWORD RESET (pubblici, no auth)
+# ============================================================================
+
+@router.post("/verify-email")
+async def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):
+    """Conferma l'email tramite il token ricevuto via email."""
+    user = consume_email_token(db, payload.token, 'verify')
+    if not user:
+        raise HTTPException(status_code=400, detail="Link di verifica non valido o scaduto.")
+    if not user.email_verified:
+        user.email_verified = True
+        user.email_verified_at = datetime.utcnow()
+        db.commit()
+    return {"message": "Email verificata con successo. Ora puoi accedere."}
+
+
+@router.post("/resend-verification")
+async def resend_verification(payload: ResendVerificationRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Reinvia l'email di verifica. Risposta sempre generica (no user enumeration)."""
+    user = get_user_by_email(db, payload.email)
+    if user and not user.email_verified:
+        raw = create_email_token(db, user.id, 'verify')
+        link = build_link('verify', raw)
+        background_tasks.add_task(send_verification_email, user.email, user.full_name or user.username, link)
+    return {"message": "Se l'indirizzo è registrato e non ancora verificato, riceverai un'email con il link."}
+
+
+@router.post("/forgot-password")
+async def forgot_password(payload: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Invia il link di reset password. Risposta sempre generica (no user enumeration)."""
+    user = get_user_by_email(db, payload.email)
+    if user:
+        raw = create_email_token(db, user.id, 'reset')
+        link = build_link('reset', raw)
+        background_tasks.add_task(send_reset_email, user.email, user.full_name or user.username, link)
+    return {"message": "Se l'indirizzo è registrato, riceverai un'email con il link per reimpostare la password."}
+
+
+def _apply_new_password_from_token(db: Session, token: str, purpose: str, new_password: str) -> User:
+    """Helper condiviso da reset-password e set-password: consuma il token,
+    imposta la nuova password e revoca tutte le sessioni."""
+    validate_password_strength(new_password)
+    user = consume_email_token(db, token, purpose)
+    if not user:
+        raise HTTPException(status_code=400, detail="Link non valido o scaduto.")
+    change_password(db, user, new_password)
+    revoke_all_user_tokens(db, user.id)
+    return user
+
+
+@router.post("/reset-password")
+async def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Reimposta la password tramite token (password dimenticata)."""
+    user = _apply_new_password_from_token(db, payload.token, 'reset', payload.new_password)
+    # Chi reimposta la password ha dimostrato di possedere la casella email.
+    if not user.email_verified:
+        user.email_verified = True
+        user.email_verified_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Password reimpostata con successo. Ora puoi accedere."}
+
+
+@router.post("/set-password")
+async def set_password(payload: SetPasswordRequest, db: Session = Depends(get_db)):
+    """Imposta la password iniziale (invito admin): attiva e verifica l'account."""
+    user = _apply_new_password_from_token(db, payload.token, 'set_password', payload.new_password)
+    user.is_active = True
+    user.email_verified = True
+    user.email_verified_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Password impostata. Il tuo account è attivo: ora puoi accedere."}
 
 
 # ============================================================================
@@ -338,7 +439,7 @@ async def delete_account(
     Richiede la password per conferma.
     """
     # Verifica la password
-    if not verify_password(password, current_user.hashed_password):
+    if not current_user.hashed_password or not verify_password(password, current_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Password non corretta"

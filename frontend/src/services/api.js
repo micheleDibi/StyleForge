@@ -1,4 +1,5 @@
 import axios from 'axios';
+import i18n from '../i18n';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -153,15 +154,15 @@ export const login = async (username, password) => {
     console.error('Error message:', error.message);
 
     if (error.code === 'ECONNABORTED') {
-      throw new Error('Timeout: il server non risponde. Riprova più tardi.');
+      throw new Error(i18n.t('Timeout: il server non risponde. Riprova più tardi.'));
     }
 
     if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
-      throw new Error('Backend non disponibile. Assicurati che il server sia in esecuzione su ' + API_URL);
+      throw new Error(i18n.t('Backend non disponibile. Assicurati che il server sia in esecuzione su {{url}}', { url: API_URL }));
     }
 
     if (error.code === 'ECONNREFUSED') {
-      throw new Error('Impossibile connettersi al server. Verifica che il backend sia attivo.');
+      throw new Error(i18n.t('Impossibile connettersi al server. Verifica che il backend sia attivo.'));
     }
 
     throw error;
@@ -222,6 +223,90 @@ export const deleteAccount = async (password) => {
   return response.data;
 };
 
+// --- Verifica email / reset password (pubblici, no auth) ---
+export const verifyEmail = async (token) => {
+  const response = await api.post('/auth/verify-email', { token });
+  return response.data;
+};
+
+export const resendVerification = async (email) => {
+  const response = await api.post('/auth/resend-verification', { email });
+  return response.data;
+};
+
+export const forgotPassword = async (email) => {
+  const response = await api.post('/auth/forgot-password', { email });
+  return response.data;
+};
+
+export const resetPassword = async (token, newPassword) => {
+  const response = await api.post('/auth/reset-password', { token, new_password: newPassword });
+  return response.data;
+};
+
+export const setPassword = async (token, newPassword) => {
+  const response = await api.post('/auth/set-password', { token, new_password: newPassword });
+  return response.data;
+};
+
+// --- i18n: lingue + traduzioni (pubblici, no auth) ---
+export const getActiveLanguages = async () => {
+  const response = await api.get('/api/languages');
+  return response.data;
+};
+
+export const getPublicTranslations = async (code) => {
+  const response = await api.get(`/api/translations/${code}`);
+  return response.data; // mappa { chiave: valore }
+};
+
+// --- i18n admin ---
+export const adminListLanguages = async () => {
+  const response = await api.get('/admin/languages');
+  return response.data;
+};
+
+export const adminCreateLanguage = async (payload) => {
+  const response = await api.post('/admin/languages', payload);
+  return response.data;
+};
+
+export const adminUpdateLanguage = async (code, payload) => {
+  const response = await api.put(`/admin/languages/${code}`, payload);
+  return response.data;
+};
+
+export const adminDeleteLanguage = async (code) => {
+  const response = await api.delete(`/admin/languages/${code}`);
+  return response.data;
+};
+
+export const adminGetLanguageDetail = async (code, search = null) => {
+  const params = search ? { search } : {};
+  const response = await api.get(`/admin/languages/${code}/detail`, { params });
+  return response.data;
+};
+
+export const adminSaveTranslations = async (code, translations) => {
+  const response = await api.put(`/admin/languages/${code}/translations`, { translations });
+  return response.data;
+};
+
+export const adminSyncBaseLabels = async (catalog) => {
+  const response = await api.post('/admin/languages/sync-base', { translations: catalog });
+  return response.data;
+};
+
+export const adminTranslateEmpty = async (code) => {
+  const response = await api.post(`/admin/languages/${code}/translate-empty`);
+  return response.data;
+};
+
+export const adminGetTranslateStatus = async (jobId) => {
+  const response = await api.get(`/admin/languages/translate-status/${jobId}`);
+  return response.data;
+};
+
 // ============================================================================
 // SESSIONS
 // ============================================================================
@@ -256,18 +341,27 @@ export const renameSession = async (sessionId, name) => {
 // TRAINING
 // ============================================================================
 
-export const trainSession = async (file, sessionId = null, maxPages = 50) => {
+export const trainSession = async (file, sessionId = null) => {
   const formData = new FormData();
   formData.append('file', file);
   if (sessionId) {
     formData.append('session_id', sessionId);
   }
-  formData.append('max_pages', maxPages);
 
   const response = await api.post('/train', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
+  });
+  return response.data;
+};
+
+// Stima crediti per l'addestramento sulle pagine reali del PDF (l'intero documento viene analizzato).
+export const estimateTraining = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/train/estimate', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
   });
   return response.data;
 };
@@ -276,26 +370,75 @@ export const trainSession = async (file, sessionId = null, maxPages = 50) => {
 // GENERATION
 // ============================================================================
 
-export const generateContent = async (sessionId, argomento, numeroParole, destinatario = 'Pubblico Generale') => {
+export const generateContent = async (sessionId, argomento, numeroParole, destinatario = 'Pubblico Generale', profile = 'academic') => {
   const response = await api.post('/generate', {
     session_id: sessionId,
     argomento,
     numero_parole: numeroParole,
     destinatario,
+    profile,
   });
   return response.data;
 };
 
-export const humanizeContent = async (sessionId, testo) => {
+export const humanizeContent = async (sessionId, testo, profile = 'informal') => {
   const response = await api.post('/humanize', {
     session_id: sessionId,
     testo,
+    profile,
   });
   return response.data;
 };
 
-export const antiAICorrection = async (testo) => {
-  const response = await api.post('/anti-ai-correction', { testo });
+// Umanizza un documento .docx mantenendo il template originale. Ritorna { job_id, ... }.
+export const humanizeDocument = async (file, sessionId, profile = 'academic') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('session_id', sessionId);
+  formData.append('profile', profile);
+  const response = await api.post('/humanize-document', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
+  });
+  return response.data;
+};
+
+// Scarica il .docx umanizzato (col template originale) di un job completato.
+export const downloadDocumentResult = async (jobId, filename = null) => {
+  const response = await api.get(`/results/${jobId}/docx`, { responseType: 'blob' });
+  const url = window.URL.createObjectURL(new Blob([response.data], {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename || `documento_umanizzato_${jobId}.docx`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+  return response.data;
+};
+
+export const antiAICorrection = async (testo, profile = 'informal') => {
+  const response = await api.post('/anti-ai-correction', { testo, profile });
+  return response.data;
+};
+
+// Estrazione testo da file caricato (PDF/DOCX/TXT). Il file NON viene salvato.
+export const extractTextFromFile = async (file, onProgress = null) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await api.post('/extract-text', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    // 5 minuti: l'estrazione include parsing PDF/DOCX e sanitizzazione,
+    // che su file grandi può superare il default di 30s.
+    timeout: 300000,
+    onUploadProgress: onProgress ? (progressEvent) => {
+      const progress = (progressEvent.loaded / progressEvent.total) * 100;
+      onProgress(progress);
+    } : undefined
+  });
   return response.data;
 };
 
@@ -427,6 +570,10 @@ export const uploadThesisAttachments = async (thesisId, files, onProgress = null
 
   const response = await api.post(`/api/thesis/${thesisId}/attachments`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    // 5 minuti: l'upload include estrazione testo (PyMuPDF/docx2txt) e
+    // sanitizzazione NUL su PDF anche grandi. Senza override usavamo il
+    // default di 30s e Firefox abortiva la fetch (NS_BINDING_ABORTED).
+    timeout: 300000,
     onUploadProgress: onProgress ? (progressEvent) => {
       const progress = (progressEvent.loaded / progressEvent.total) * 100;
       onProgress(progress);
@@ -495,10 +642,78 @@ export const addPaperAttachments = async (thesisId, items) => {
   return response.data;
 };
 
+// Estrae 5-8 keyword da usare come termini di ricerca paper, analizzando
+// gli allegati testuali (non-paper) gia' caricati per la tesi.
+// Costa pochi crediti (paper_keyword_suggest = base + per_attachment).
+export const suggestPaperKeywords = async (thesisId) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/suggest-paper-keywords`,
+    {},
+    { timeout: 60000 }
+  );
+  return response.data;
+};
+
+// ============================================================================
+// LLM WIKI (second-brain) — knowledge base per-tesi
+// ============================================================================
+
+// Avvia ingest + lint del wiki (in background sul server). Ritorna lo stato
+// transitorio (wiki_status='ingesting'); il client deve fare polling con
+// getWikiStatus.
+export const startWikiIngest = async (thesisId, force = false) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/wiki/ingest`,
+    { force: !!force },
+    { timeout: 30000 }
+  );
+  return response.data;
+};
+
+// Rilancia il SOLO lint (l'ingest deve gia' essere stato eseguito).
+export const startWikiLint = async (thesisId) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/wiki/lint`,
+    {},
+    { timeout: 30000 }
+  );
+  return response.data;
+};
+
+// Sblocca manualmente un ingest bloccato in ingesting/linting.
+export const cancelWikiIngest = async (thesisId) => {
+  const response = await api.post(
+    `/api/thesis/${thesisId}/wiki/cancel`,
+    {},
+    { timeout: 15000 }
+  );
+  return response.data;
+};
+
+// Stato del wiki di una tesi (per polling). Ritorna anche sources_count e
+// pages_count per la progress bar.
+export const getWikiStatus = async (thesisId) => {
+  const response = await api.get(`/api/thesis/${thesisId}/wiki/status`);
+  return response.data;
+};
+
+// Report di lint (orphan_pages, broken_wikilinks, contradictions, gaps, ...).
+export const getWikiReport = async (thesisId) => {
+  const response = await api.get(`/api/thesis/${thesisId}/wiki/report`);
+  return response.data;
+};
+
+// Informazioni estratte dai documenti (vista utente): pagine del wiki
+// raggruppate per categoria (fonti/entità/concetti/temi/sintesi/domande).
+export const getWikiContent = async (thesisId) => {
+  const response = await api.get(`/api/thesis/${thesisId}/wiki/content`);
+  return response.data;
+};
+
 // Generation phases - timeout estesi per operazioni AI
 export const generateThesisChapters = async (thesisId) => {
   const response = await api.post(`/api/thesis/${thesisId}/generate-chapters`, {}, {
-    timeout: 120000 // 2 minuti per generazione AI
+    timeout: 300000 // 5 minuti: generazione AI sincrona (Claude Opus è più lento)
   });
   return response.data;
 };
@@ -512,7 +727,7 @@ export const confirmThesisChapters = async (thesisId, chapters) => {
 
 export const generateThesisSections = async (thesisId) => {
   const response = await api.post(`/api/thesis/${thesisId}/generate-sections`, {}, {
-    timeout: 120000 // 2 minuti per generazione AI
+    timeout: 300000 // 5 minuti: generazione AI sincrona (Claude Opus è più lento)
   });
   return response.data;
 };
@@ -644,11 +859,12 @@ export const estimateApiCost = async (params) => {
 // ADMIN - USERS
 // ============================================================================
 
-export const getAdminUsers = async (search = null, roleId = null, isActive = null) => {
+export const getAdminUsers = async (search = null, roleId = null, isActive = null, entityType = null) => {
   const params = {};
   if (search) params.search = search;
   if (roleId !== null) params.role_id = roleId;
   if (isActive !== null) params.is_active = isActive;
+  if (entityType) params.entity_type = entityType;
   const response = await api.get('/admin/users', { params });
   return response.data;
 };
@@ -722,6 +938,11 @@ export const adminCreateUser = async (userData) => {
   return response.data;
 };
 
+export const adminResendInvite = async (userId) => {
+  const response = await api.post(`/admin/users/${userId}/resend-invite`);
+  return response.data;
+};
+
 // ============================================================================
 // ADMIN - CONFIGURAZIONE COSTI CREDITI
 // ============================================================================
@@ -750,6 +971,7 @@ export const updateAdminEurPerCredit = async (value) => {
   const response = await api.put('/admin/settings/eur-per-credit', { eur_per_credit: value });
   return response.data;
 };
+
 
 // ============================================================================
 // ADMIN - TEMPLATE ESPORTAZIONE
@@ -896,10 +1118,34 @@ export const getVideoTasksStatus = async (taskIds) => {
   return response.data;
 };
 
-export const getVideoProxyUrl = (videoUrl) => {
-  const token = getAccessToken();
-  const params = new URLSearchParams({ url: videoUrl, token });
-  return `${API_URL}/api/video/proxy?${params.toString()}`;
+// Scarica il video come Blob passando dall'istanza `api`: eredita l'interceptor
+// che mette il Bearer e quello che rinnova il token sul 401. Con fetch() nudo si
+// perderebbero entrambi, e qui un token che scade DURANTE la generazione (3-5
+// minuti) e' lo scenario normale, non l'eccezione.
+//
+// Prima si costruiva un URL con il JWT in query string, da dare a <video src>.
+// Il token finiva in access log, Referer e cronologia, e il parametro `url`
+// libero rendeva l'endpoint una SSRF: ora si passa solo il file_id.
+export const fetchVideoBlob = async (fileId) => {
+  const response = await api.get('/api/video/proxy', {
+    params: { file_id: fileId },
+    responseType: 'blob',
+    timeout: 180000,
+  });
+  return response.data;
+};
+
+// Con responseType 'blob' anche il body d'errore arriva come Blob, quindi
+// `err.response.data.detail` diventa undefined in silenzio: senza questo helper
+// ogni errore del proxy si legge come un generico "errore" e non si debugga.
+export const readBlobErrorDetail = async (err) => {
+  const data = err?.response?.data;
+  if (!(data instanceof Blob)) return data?.detail || null;
+  try {
+    return JSON.parse(await data.text())?.detail || null;
+  } catch {
+    return null;
+  }
 };
 
 // ============================================================================
@@ -969,57 +1215,103 @@ export const revokeApiKey = async (keyId) => {
 };
 
 // ============================================================================
-// PAGOPA — UTENTE: pacchetti, avvio pagamento, storico
+// PACCHETTI CREDITI — listino utente (vetrina)
 // ============================================================================
 
 export const listCreditPackages = async () => {
-  const response = await api.get('/api/payments/packages');
-  return response.data;
-};
-
-export const initiatePayment = async (payload) => {
-  const response = await api.post('/api/payments/initiate', payload);
-  return response.data;
-};
-
-export const getPayment = async (orderId) => {
-  const response = await api.get(`/api/payments/${orderId}`);
-  return response.data;
-};
-
-export const getUserPaymentHistory = async (limit = 50, offset = 0) => {
-  const response = await api.get('/api/payments/history', { params: { limit, offset } });
+  const response = await api.get('/api/packages');
   return response.data;
 };
 
 // ============================================================================
-// PAGOPA — ADMIN: ordini, pacchetti, configurazione, riconciliazione
+// DISTRIBUTORE - dashboard rivenditori (sola lettura)
 // ============================================================================
 
-export const adminListPayments = async (filters = {}) => {
-  const response = await api.get('/admin/payments', { params: filters });
+export const getMyResellers = async () => {
+  const response = await api.get('/api/distributor/resellers');
   return response.data;
 };
 
-export const adminPaymentStats = async () => {
-  const response = await api.get('/admin/payments/stats');
+// ============================================================================
+// GERARCHIA DISTRIBUZIONE — manager (distributore/rivenditore)
+// ============================================================================
+
+export const getMyChildren = async () => {
+  const response = await api.get('/api/hierarchy/children');
   return response.data;
 };
 
-export const adminGetPayment = async (orderId) => {
-  const response = await api.get(`/admin/payments/${orderId}`);
+export const getMySubtree = async () => {
+  const response = await api.get('/api/hierarchy/subtree');
   return response.data;
 };
 
-export const adminCancelPayment = async (orderId) => {
-  const response = await api.post(`/admin/payments/${orderId}/cancel`);
+export const createSubUser = async (payload) => {
+  const response = await api.post('/api/hierarchy/users', payload);
   return response.data;
 };
 
-export const adminRefundCredits = async (orderId, description) => {
-  const response = await api.post(`/admin/payments/${orderId}/refund-credits`, { description });
+export const assignCreditsToChild = async (userId, amount, description) => {
+  const response = await api.post(`/api/hierarchy/users/${userId}/assign-credits`, { amount, description });
   return response.data;
 };
+
+// Richieste crediti — richiedente
+export const createCreditRequest = async (packageId) => {
+  const response = await api.post('/api/hierarchy/requests', { package_id: packageId });
+  return response.data;
+};
+
+export const getMyCreditRequests = async () => {
+  const response = await api.get('/api/hierarchy/requests/mine');
+  return response.data;
+};
+
+export const cancelCreditRequest = async (requestId) => {
+  const response = await api.post(`/api/hierarchy/requests/${requestId}/cancel`);
+  return response.data;
+};
+
+// Richieste crediti — referente (manager)
+export const getRequestsInbox = async () => {
+  const response = await api.get('/api/hierarchy/requests/inbox');
+  return response.data;
+};
+
+export const getRequestsHistory = async () => {
+  const response = await api.get('/api/hierarchy/requests/history');
+  return response.data;
+};
+
+export const approveCreditRequest = async (requestId, note) => {
+  const response = await api.post(`/api/hierarchy/requests/${requestId}/approve`, { note });
+  return response.data;
+};
+
+export const rejectCreditRequest = async (requestId, note) => {
+  const response = await api.post(`/api/hierarchy/requests/${requestId}/reject`, { note });
+  return response.data;
+};
+
+// Invito privato (crea-o-sposta) + accetta/rifiuta spostamento
+export const invitePrivato = async (payload) => {
+  const response = await api.post('/api/hierarchy/invite-privato', payload);
+  return response.data;
+};
+
+export const acceptMoveInvite = async (token) => {
+  const response = await api.post('/api/hierarchy/move/accept', { token });
+  return response.data;
+};
+
+export const rejectMoveInvite = async (token) => {
+  const response = await api.post('/api/hierarchy/move/reject', { token });
+  return response.data;
+};
+
+// ============================================================================
+// PACCHETTI CREDITI — admin (CRUD listino)
+// ============================================================================
 
 export const adminListCreditPackages = async () => {
   const response = await api.get('/admin/credit-packages');
@@ -1041,23 +1333,48 @@ export const adminDeleteCreditPackage = async (packageId) => {
   return response.data;
 };
 
-export const adminGetPagopaConfig = async () => {
-  const response = await api.get('/admin/pagopa/config');
+// Richieste crediti — inbox admin (richieste dei distributori)
+export const getAdminCreditRequests = async () => {
+  const response = await api.get('/admin/credit-requests');
   return response.data;
 };
 
-export const adminUpdatePagopaConfig = async (payload) => {
-  const response = await api.put('/admin/pagopa/config', payload);
+export const getAdminCreditRequestsHistory = async () => {
+  const response = await api.get('/admin/credit-requests/history');
   return response.data;
 };
 
-export const adminUploadEstrcc = async (file) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  const response = await api.post('/admin/pagopa/reconcile/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 60000,
-  });
+export const adminApproveCreditRequest = async (requestId, note) => {
+  const response = await api.post(`/admin/credit-requests/${requestId}/approve`, { note });
+  return response.data;
+};
+
+export const adminRejectCreditRequest = async (requestId, note) => {
+  const response = await api.post(`/admin/credit-requests/${requestId}/reject`, { note });
+  return response.data;
+};
+
+// ============================================================================
+// NOTIFICHE IN-APP
+// ============================================================================
+
+export const getNotifications = async (limit = 20) => {
+  const response = await api.get('/api/notifications', { params: { limit } });
+  return response.data;
+};
+
+export const getUnreadCount = async () => {
+  const response = await api.get('/api/notifications/unread-count');
+  return response.data;
+};
+
+export const markNotificationRead = async (id) => {
+  const response = await api.post(`/api/notifications/${id}/read`);
+  return response.data;
+};
+
+export const markAllNotificationsRead = async () => {
+  const response = await api.post('/api/notifications/read-all');
   return response.data;
 };
 

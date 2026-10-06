@@ -6,20 +6,24 @@ import {
   Layers, Brain, BookOpen, Calendar, Download,
   ChevronDown, Eye, Play, Coins, Shield, Pencil, Search,
   ArrowUpRight, ScanSearch, FileDown, BarChart3, Film,
-  BookMarked
+  BookMarked, Store, KeyRound, Building2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getSessions, deleteSession, renameSession, healthCheck, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, downloadCompilatioReport } from '../services/api';
+import { getSessions, deleteSession, renameSession, getJobs, getTheses, deleteThesis, exportThesis, getExportTemplates, getCompilatioScansBySource, downloadCompilatioReport } from '../services/api';
+import { useTranslation } from 'react-i18next';
 import JobCard from '../components/JobCard';
 import Logo from '../components/Logo';
+import LanguageSwitcher from '../components/LanguageSwitcher';
+import NotificationBell from '../components/NotificationBell';
+import DashboardRequestsCard from '../components/DashboardRequestsCard';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { logout, user, hasPermission, isAdmin, credits } = useAuth();
+  const { t } = useTranslation();
+  const { logout, user, hasPermission, isAdmin, isDistributor, isReseller, credits } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [theses, setTheses] = useState([]);
-  const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedThesis, setExpandedThesis] = useState(null);
@@ -31,10 +35,27 @@ const Dashboard = () => {
   const [editSessionValue, setEditSessionValue] = useState('');
   const editSessionRef = useRef(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const hasActiveWorkRef = useRef(false);
+  const templatesLoadedRef = useRef(false);
 
+  // Caricamento iniziale completo (una sola volta).
+  useEffect(() => { loadData(); }, []);
+
+  // Tiene traccia se ci sono lavori/tesi in corso (decide se fare polling).
   useEffect(() => {
-    loadData();
-    const interval = setInterval(() => { if (!editingSessionName) loadData(); }, 30000);
+    hasActiveWorkRef.current =
+      jobs.some(j => ['pending', 'training', 'generating'].includes(j.status)) ||
+      theses.some(t => t.status === 'generating');
+  }, [jobs, theses]);
+
+  // Polling leggero ogni 30s: solo job + lista tesi leggera, e SOLO se c'è
+  // qualcosa in corso (dashboard ferma = nessuna richiesta in background).
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (editingSessionName || !hasActiveWorkRef.current) return;
+      refreshLive();
+    }, 30000);
     return () => clearInterval(interval);
   }, [editingSessionName]);
 
@@ -44,16 +65,35 @@ const Dashboard = () => {
 
   const loadData = async () => {
     try {
-      const [sessionsData, healthData, jobsData, thesesData, templatesData] = await Promise.all([
-        getSessions(), healthCheck(), getJobs(),
-        getTheses().catch(() => ({ theses: [] })),
-        getExportTemplates().catch(() => ({ templates: [] }))
+      const [sessionsData, jobsData, thesesData] = await Promise.all([
+        getSessions(), getJobs(),
+        getTheses().catch(() => ({ theses: [] }))
       ]);
-      setSessions(sessionsData.sessions); setHealth(healthData);
+      setSessions(sessionsData.sessions);
       setJobs(jobsData.jobs || []); setTheses(thesesData.theses || []);
-      setTemplates(templatesData.templates || []);
     } catch (error) { console.error('Errore nel caricamento:', error); }
     finally { setLoading(false); setRefreshing(false); }
+  };
+
+  // Refresh leggero per il polling: solo job + lista tesi leggera.
+  const refreshLive = async () => {
+    try {
+      const [jobsData, thesesData] = await Promise.all([
+        getJobs(), getTheses().catch(() => ({ theses: [] }))
+      ]);
+      setJobs(jobsData.jobs || []); setTheses(thesesData.theses || []);
+    } catch { /* ignora errori di polling */ }
+  };
+
+  // Template di export: caricati on-demand (solo admin, una sola volta) quando
+  // si apre una tesi. Erano scaricati a ogni load/polling pur servendo solo all'export.
+  const ensureTemplates = async () => {
+    if (templatesLoadedRef.current || !isAdmin) return;
+    templatesLoadedRef.current = true;
+    try {
+      const d = await getExportTemplates();
+      setTemplates(d.templates || []);
+    } catch { templatesLoadedRef.current = false; }
   };
 
   useEffect(() => {
@@ -67,10 +107,10 @@ const Dashboard = () => {
   }, [isAdmin, jobs, theses]);
 
   const handleRefresh = () => { setRefreshing(true); loadData(); };
-  const handleDeleteSession = async (id) => { if (confirm('Eliminare questa sessione?')) { try { await deleteSession(id); setSessions(s => s.filter(x => x.session_id !== id)); } catch { alert('Errore'); } } };
-  const handleDeleteThesis = async (id) => { if (confirm('Eliminare questa tesi?')) { try { await deleteThesis(id); setTheses(t => t.filter(x => x.id !== id)); } catch { alert('Errore'); } } };
-  const handleExportThesis = async (id, fmt = 'pdf') => { setExportingThesis(id); try { await exportThesis(id, fmt, selectedTemplates[id] || null); } catch { alert('Errore export'); } finally { setExportingThesis(null); } };
-  const handleLogout = () => { if (confirm('Uscire?')) logout(); };
+  const handleDeleteSession = async (id) => { if (confirm(t('Eliminare questa sessione?'))) { try { await deleteSession(id); setSessions(s => s.filter(x => x.session_id !== id)); } catch { alert(t('Errore')); } } };
+  const handleDeleteThesis = async (id) => { if (confirm(t('Eliminare questa tesi?'))) { try { await deleteThesis(id); setTheses(x => x.filter(y => y.id !== id)); } catch { alert(t('Errore')); } } };
+  const handleExportThesis = async (id, fmt = 'pdf') => { setExportingThesis(id); try { await exportThesis(id, fmt, selectedTemplates[id] || null); } catch { alert(t('Errore export')); } finally { setExportingThesis(null); } };
+  const handleLogout = () => { if (confirm(t('Uscire?'))) logout(); };
   const handleStartSessionEdit = (id, name) => { setEditingSessionName(id); setEditSessionValue(name || id); };
   const handleSaveSessionName = async (id) => { const t = editSessionValue.trim(); if (!t) { setEditingSessionName(null); return; } try { await renameSession(id, t); setSessions(s => s.map(x => x.session_id === id ? { ...x, name: t } : x)); } catch {} setEditingSessionName(null); };
   const handleSessionEditKeyDown = (e, id) => { if (e.key === 'Enter') handleSaveSessionName(id); else if (e.key === 'Escape') setEditingSessionName(null); };
@@ -80,12 +120,12 @@ const Dashboard = () => {
 
   const getAIScoreColor = (p) => p <= 5 ? 'badge-success' : p <= 20 ? 'badge-warning' : 'badge-error';
   const getAIScoreColorInline = (p) => p <= 5 ? 'text-green-700 bg-green-50 border-green-200' : p <= 20 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
-  const getThesisAction = (t) => t.status === 'completed' ? { label: 'Apri', icon: Eye } : t.status === 'generating' ? { label: 'Stato', icon: Clock } : { label: 'Continua', icon: Play };
+  const getThesisAction = (th) => th.status === 'completed' ? { label: t('Apri'), icon: Eye } : th.status === 'generating' ? { label: t('Stato'), icon: Clock } : { label: t('Continua'), icon: Play };
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
   const getStatusBadge = (status) => {
     const m = { completed: 'badge-success', generating: 'badge-warning', failed: 'badge-error' };
     const icons = { completed: CheckCircle2, generating: Clock, failed: AlertCircle };
-    const labels = { completed: 'Completata', generating: 'In corso', failed: 'Errore' };
+    const labels = { completed: t('Completata'), generating: t('In corso'), failed: t('Errore') };
     const Icon = icons[status] || Clock;
     return <span className={`badge ${m[status] || 'badge-neutral'}`}><Icon className={`w-3 h-3 ${status === 'generating' ? 'animate-spin' : ''}`} />{labels[status] || status}</span>;
   };
@@ -113,19 +153,19 @@ const Dashboard = () => {
 
   // ─── Quick Actions config ───
   const quickActions = [
-    hasPermission('train') && { key: 'train', icon: Upload, label: 'Addestra', desc: 'Carica PDF e addestra il modello', gradient: 'from-orange-400 to-orange-600', path: '/train' },
-    hasPermission('generate') && { key: 'gen', icon: FileText, label: 'Genera', desc: 'Crea contenuti con il tuo stile', gradient: 'from-blue-400 to-blue-600', path: '/generate' },
-    hasPermission('humanize') && { key: 'hum', icon: Wand2, label: 'Umanizza', desc: 'Bypassa AI detection', gradient: 'from-purple-400 to-purple-600', path: '/humanize' },
-    hasPermission('thesis') && { key: 'thesis', icon: BookOpen, label: 'Tesi', desc: 'Genera documenti completi', gradient: 'from-green-400 to-green-600', path: '/thesis' },
-    hasPermission('research') && { key: 'research', icon: BookMarked, label: 'Ricerca Accademica', desc: 'Paper e riviste su un argomento', gradient: 'from-amber-400 to-orange-600', path: '/research' },
-    isAdmin && { key: 'i2v', icon: Film, label: 'Image to Video', desc: 'Genera video da immagini con AI', gradient: 'from-violet-400 to-indigo-600', path: '/image-to-video' },
-    hasPermission('compilatio_scan') && { key: 'detector', icon: ScanSearch, label: 'Detector AI', desc: 'Scansione AI e plagio', gradient: 'from-pink-400 to-rose-600', path: '/detector-ai' },
+    hasPermission('train') && { key: 'train', icon: Upload, label: t('Addestra'), desc: t('Carica PDF e addestra il modello'), gradient: 'from-orange-400 to-orange-600', path: '/train' },
+    hasPermission('generate') && { key: 'gen', icon: FileText, label: t('Genera'), desc: t('Crea contenuti con il tuo stile'), gradient: 'from-blue-400 to-blue-600', path: '/generate' },
+    hasPermission('humanize') && { key: 'hum', icon: Wand2, label: t('Umanizza'), desc: t('Bypassa AI detection'), gradient: 'from-purple-400 to-purple-600', path: '/humanize' },
+    hasPermission('thesis') && { key: 'thesis', icon: BookOpen, label: t('Tesi'), desc: t('Genera documenti completi'), gradient: 'from-green-400 to-green-600', path: '/thesis' },
+    hasPermission('research') && { key: 'research', icon: BookMarked, label: t('Ricerca Accademica'), desc: t('Paper e riviste su un argomento'), gradient: 'from-amber-400 to-orange-600', path: '/research' },
+    isAdmin && { key: 'i2v', icon: Film, label: t('Image to Video'), desc: t('Genera video da immagini con AI'), gradient: 'from-violet-400 to-indigo-600', path: '/image-to-video' },
+    hasPermission('compilatio_scan') && { key: 'detector', icon: ScanSearch, label: t('Detector AI'), desc: t('Scansione AI e plagio'), gradient: 'from-pink-400 to-rose-600', path: '/detector-ai' },
   ].filter(Boolean);
 
   const tabs = [
-    { id: 'overview', label: 'Panoramica', icon: Layers },
-    ...(theses.length > 0 ? [{ id: 'theses', label: `Tesi (${theses.length})`, icon: BookOpen }] : []),
-    ...(sessions.length > 0 ? [{ id: 'sessions', label: `Sessioni (${sessions.length})`, icon: Brain }] : []),
+    { id: 'overview', label: t('Panoramica'), icon: Layers },
+    ...(theses.length > 0 ? [{ id: 'theses', label: t('Tesi ({{n}})', { n: theses.length }), icon: BookOpen }] : []),
+    ...(sessions.length > 0 ? [{ id: 'sessions', label: t('Sessioni ({{n}})', { n: sessions.length }), icon: Brain }] : []),
   ];
 
   return (
@@ -138,7 +178,7 @@ const Dashboard = () => {
       </div>
 
       {/* ═══ HEADER ═══ */}
-      <header className="relative z-10 glass border-b border-white/20">
+      <header className="relative z-40 glass border-b border-white/20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -151,7 +191,7 @@ const Dashboard = () => {
                   <h1 className="text-2xl font-bold text-gray-900">
                     Style<span className="gradient-text">Forge</span>
                   </h1>
-                  <p className="text-gray-500 text-sm">Dashboard</p>
+                  <p className="text-gray-500 text-sm">{t('Dashboard')}</p>
                 </div>
               </div>
             </div>
@@ -161,28 +201,57 @@ const Dashboard = () => {
               <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl border border-orange-200/50">
                 <Coins className="w-4 h-4 text-orange-500" />
                 <span className="text-sm font-bold text-orange-700">{isAdmin ? '∞' : credits}</span>
-                <span className="text-xs text-orange-500">crediti</span>
+                <span className="text-xs text-orange-500">{t('crediti')}</span>
                 {!isAdmin && (
                   <button
                     onClick={() => navigate('/credits/buy')}
                     className="ml-1 w-5 h-5 rounded-full bg-orange-500 hover:bg-orange-600 text-white flex items-center justify-center transition-colors shadow-sm"
-                    title="Compra crediti"
+                    title={t('Compra crediti')}
                   >
                     <span className="text-sm font-bold leading-none">+</span>
                   </button>
                 )}
               </div>
-              {/* User */}
-              <div className="hidden md:flex items-center gap-2 px-3 py-2 bg-white/70 rounded-xl border border-gray-200/50">
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold ${isAdmin ? 'bg-gradient-to-br from-orange-400 to-orange-600' : 'bg-gradient-to-br from-blue-400 to-blue-600'}`}>
-                  {(user?.username || 'U')[0].toUpperCase()}
-                </div>
-                <span className="text-sm font-medium text-gray-700">{user?.username}</span>
-                {isAdmin && <span className="badge badge-warning text-[10px]">ADMIN</span>}
+              <LanguageSwitcher />
+              {/* User menu (desktop) */}
+              <div className="hidden md:block relative">
+                <button
+                  onClick={() => setMenuOpen((o) => !o)}
+                  className="flex items-center gap-2 px-3 py-2 bg-white/70 rounded-xl border border-gray-200/50 hover:bg-white transition-colors"
+                >
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold ${isAdmin ? 'bg-gradient-to-br from-orange-400 to-orange-600' : 'bg-gradient-to-br from-blue-400 to-blue-600'}`}>
+                    {(user?.username || 'U')[0].toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">{user?.username}</span>
+                  {isAdmin && <span className="badge badge-warning text-[10px]">ADMIN</span>}
+                  <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {menuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl border border-gray-200 shadow-lg z-20 py-1">
+                      <button
+                        onClick={() => { setMenuOpen(false); navigate('/change-password'); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                      >
+                        <KeyRound className="w-4 h-4 text-gray-400" /> {t('Cambia password')}
+                      </button>
+                      <button
+                        onClick={() => { setMenuOpen(false); handleLogout(); }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 text-left"
+                      >
+                        <LogOut className="w-4 h-4" /> {t('Esci')}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
-              {isAdmin && <button onClick={() => navigate('/admin')} className="btn btn-ghost" title="Admin"><Settings className="w-[18px] h-[18px]" /></button>}
+              <NotificationBell />
+              {isDistributor && <button onClick={() => navigate('/distributor')} className="btn btn-ghost" title={t('Dashboard distributore')}><Store className="w-[18px] h-[18px]" /></button>}
+              {isReseller && <button onClick={() => navigate('/reseller')} className="btn btn-ghost" title={t('Dashboard rivenditore')}><Building2 className="w-[18px] h-[18px]" /></button>}
+              {isAdmin && <button onClick={() => navigate('/admin')} className="btn btn-ghost" title={t('Admin')}><Settings className="w-[18px] h-[18px]" /></button>}
               <button onClick={handleRefresh} disabled={refreshing} className="btn btn-ghost"><RefreshCw className={`w-[18px] h-[18px] ${refreshing ? 'animate-spin' : ''}`} /></button>
-              <button onClick={handleLogout} className="btn btn-ghost text-red-500 hover:text-red-600 hover:bg-red-50"><LogOut className="w-[18px] h-[18px]" /></button>
+              <button onClick={handleLogout} className="btn btn-ghost md:hidden text-red-500 hover:text-red-600 hover:bg-red-50"><LogOut className="w-[18px] h-[18px]" /></button>
             </div>
           </div>
         </div>
@@ -195,15 +264,15 @@ const Dashboard = () => {
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-orange-200 to-purple-100 rounded-full -translate-y-1/3 translate-x-1/4 blur-2xl opacity-50"></div>
           <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-1">Ciao, {user?.username || 'Utente'} 👋</h2>
-              <p className="text-gray-500 text-sm">{activeJobs.length > 0 ? `${activeJobs.length} job in esecuzione` : 'Tutto operativo — pronto a creare'}</p>
+              <h2 className="text-2xl font-bold text-gray-900 mb-1">{t('Ciao, {{name}} 👋', { name: user?.username || t('Utente') })}</h2>
+              <p className="text-gray-500 text-sm">{activeJobs.length > 0 ? t('{{n}} job in esecuzione', { n: activeJobs.length }) : t('Tutto operativo — pronto a creare')}</p>
             </div>
             <div className="flex gap-3 flex-wrap">
               {[
-                { v: sessions.length, l: 'Sessioni', icon: Brain, color: 'from-blue-400 to-blue-600' },
-                { v: trainedSessions, l: 'Addestrate', icon: CheckCircle2, color: 'from-green-400 to-green-600' },
-                { v: completedTheses, l: 'Tesi', icon: BookOpen, color: 'from-purple-400 to-purple-600' },
-                { v: activeJobs.length, l: 'Job attivi', icon: Zap, color: 'from-orange-400 to-orange-600', pulse: activeJobs.length > 0 },
+                { v: sessions.length, l: t('Sessioni'), icon: Brain, color: 'from-blue-400 to-blue-600' },
+                { v: trainedSessions, l: t('Addestrate'), icon: CheckCircle2, color: 'from-green-400 to-green-600' },
+                { v: completedTheses, l: t('Tesi'), icon: BookOpen, color: 'from-purple-400 to-purple-600' },
+                { v: activeJobs.length, l: t('Job attivi'), icon: Zap, color: 'from-orange-400 to-orange-600', pulse: activeJobs.length > 0 },
               ].map((s, i) => (
                 <div key={i} className="bg-white/70 rounded-xl px-5 py-3 text-center border border-gray-200/50 min-w-[90px]">
                   <div className="flex items-center justify-center gap-1.5">
@@ -217,9 +286,12 @@ const Dashboard = () => {
           </div>
         </div>
 
+        {/* ═══ RICHIESTE CREDITI ═══ */}
+        <DashboardRequestsCard />
+
         {/* ═══ QUICK ACTIONS ═══ */}
         <section>
-          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">Azioni rapide</h3>
+          <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">{t('Azioni rapide')}</h3>
           <div className={`grid gap-4 ${quickActions.length >= 6 ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4' : quickActions.length >= 5 ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5' : 'grid-cols-2 lg:grid-cols-4'}`}>
             {quickActions.map(a => (
               <div key={a.key} onClick={() => navigate(a.path)}
@@ -259,7 +331,7 @@ const Dashboard = () => {
               <section>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
-                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Job in corso</h3>
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">{t('Job in corso')}</h3>
                 </div>
                 <div className="space-y-3">
                   {activeJobs.map(job => <JobCard key={job.job_id} job={job} isAdmin={isAdmin} scanResult={scanResults[job.job_id]} onUpdate={u => setJobs(j => j.map(x => x.job_id === u.job_id ? u : x))} onScanComplete={(id, r) => setScanResults(p => ({ ...p, [id]: r }))} />)}
@@ -268,7 +340,7 @@ const Dashboard = () => {
             )}
             {completedJobs.length > 0 && (
               <section>
-                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Completati di recente</h3>
+                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">{t('Completati di recente')}</h3>
                 <div className="space-y-3">
                   {completedJobs.slice(0, 5).map(job => <JobCard key={job.job_id} job={job} isAdmin={isAdmin} scanResult={scanResults[job.job_id]} onUpdate={u => setJobs(j => j.map(x => x.job_id === u.job_id ? u : x))} onScanComplete={(id, r) => setScanResults(p => ({ ...p, [id]: r }))} />)}
                 </div>
@@ -278,10 +350,10 @@ const Dashboard = () => {
             {theses.length > 0 && (
               <section>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">Tesi recenti</h3>
+                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">{t('Tesi recenti')}</h3>
                   {theses.length > 3 && (
                     <button onClick={() => setActiveTab('theses')} className="text-xs text-orange-600 hover:text-orange-700 font-medium">
-                      Vedi tutte ({theses.length})
+                      {t('Vedi tutte ({{n}})', { n: theses.length })}
                     </button>
                   )}
                 </div>
@@ -298,7 +370,7 @@ const Dashboard = () => {
                           <h4 className="font-semibold text-gray-900 text-sm truncate">{thesis.title}</h4>
                           <div className="flex items-center gap-2 text-xs text-gray-500">
                             {getStatusBadge(thesis.status)}
-                            <span>{thesis.num_chapters} capitoli</span>
+                            <span>{t('{{n}} capitoli', { n: thesis.num_chapters })}</span>
                             <span>{formatDate(thesis.created_at)}</span>
                           </div>
                         </div>
@@ -317,10 +389,10 @@ const Dashboard = () => {
                 <div className="w-16 h-16 bg-gradient-to-br from-gray-200 to-gray-300 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Zap className="w-8 h-8 text-white" />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Nessun job ancora</h3>
-                <p className="text-sm text-gray-500 mb-6 max-w-xs mx-auto">Addestra un modello o genera contenuti per vederli qui.</p>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">{t('Nessun job ancora')}</h3>
+                <p className="text-sm text-gray-500 mb-6 max-w-xs mx-auto">{t('Addestra un modello o genera contenuti per vederli qui.')}</p>
                 <button onClick={() => navigate('/train')} className="btn btn-primary">
-                  Inizia ora
+                  {t('Inizia ora')}
                 </button>
               </div>
             )}
@@ -331,9 +403,9 @@ const Dashboard = () => {
         {activeTab === 'theses' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm text-gray-500">{theses.length} documenti</span>
+              <span className="text-sm text-gray-500">{t('{{n}} documenti', { n: theses.length })}</span>
               <button onClick={() => navigate('/thesis')} className="btn btn-primary btn-sm">
-                + Nuova Tesi
+                {t('+ Nuova Tesi')}
               </button>
             </div>
             {theses.map(thesis => {
@@ -343,7 +415,7 @@ const Dashboard = () => {
               const expanded = expandedThesis === thesis.id;
               return (
                 <div key={thesis.id} className="glass rounded-2xl overflow-hidden">
-                  <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/50 transition-colors" onClick={() => setExpandedThesis(expanded ? null : thesis.id)}>
+                  <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/50 transition-colors" onClick={() => { const willExpand = !expanded; setExpandedThesis(willExpand ? thesis.id : null); if (willExpand) ensureTemplates(); }}>
                     <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-lg flex-shrink-0">
                       <BookOpen className="w-5 h-5 text-white" />
                     </div>
@@ -355,7 +427,7 @@ const Dashboard = () => {
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                         <span>{formatDate(thesis.created_at)}</span>
-                        <span>{thesis.num_chapters} capitoli</span>
+                        <span>{t('{{n}} capitoli', { n: thesis.num_chapters })}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -374,7 +446,7 @@ const Dashboard = () => {
                     <div className="border-t border-gray-200/50 p-5 bg-gray-50/50 space-y-4">
                       {thesis.description && <p className="text-sm text-gray-600 bg-white rounded-xl p-3 border border-gray-100">{thesis.description}</p>}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {[{ l: 'Capitoli', v: thesis.num_chapters }, { l: 'Sez/Cap', v: thesis.sections_per_chapter }, { l: 'Parole/Sez', v: thesis.words_per_section?.toLocaleString() }, { l: 'Progresso', v: `${thesis.generation_progress || 0}%` }].map((s, i) => (
+                        {[{ l: t('Capitoli'), v: thesis.num_chapters }, { l: t('Sez/Cap'), v: thesis.sections_per_chapter }, { l: t('Parole/Sez'), v: thesis.words_per_section?.toLocaleString() }, { l: t('Progresso'), v: `${thesis.generation_progress || 0}%` }].map((s, i) => (
                           <div key={i} className="bg-white rounded-xl p-3 text-center border border-gray-100">
                             <div className="text-lg font-bold text-gray-900">{s.v}</div>
                             <div className="text-[10px] text-gray-500 uppercase tracking-wider">{s.l}</div>
@@ -390,15 +462,15 @@ const Dashboard = () => {
                         scan ? (
                           <div className="bg-white rounded-xl p-4 border border-gray-100">
                             <div className="flex items-center justify-between mb-3">
-                              <span className="text-xs font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> Detector AI</span>
-                              {scan.has_report && <button onClick={e => { e.stopPropagation(); handleDownloadScanReport(scan.scan_id); }} className="btn btn-ghost btn-sm text-purple-600"><Download className="w-3 h-3" /> Report</button>}
+                              <span className="text-xs font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> {t('Detector AI')}</span>
+                              {scan.has_report && <button onClick={e => { e.stopPropagation(); handleDownloadScanReport(scan.scan_id); }} className="btn btn-ghost btn-sm text-purple-600"><Download className="w-3 h-3" /> {t('Report')}</button>}
                             </div>
                             <div className="grid grid-cols-4 gap-2">
                               {[
-                                { v: scan.ai_generated_percent, l: 'AI', cls: getAIScoreColorInline(scan.ai_generated_percent) },
-                                { v: scan.similarity_percent, l: 'Similarita', cls: 'text-blue-700 bg-blue-50 border-blue-200' },
-                                { v: scan.global_score_percent, l: 'Globale', cls: 'text-gray-700 bg-gray-50 border-gray-200' },
-                                { v: scan.exact_percent, l: 'Esatti', cls: 'text-gray-700 bg-gray-50 border-gray-200' },
+                                { v: scan.ai_generated_percent, l: t('AI'), cls: getAIScoreColorInline(scan.ai_generated_percent) },
+                                { v: scan.similarity_percent, l: t('Similarita'), cls: 'text-blue-700 bg-blue-50 border-blue-200' },
+                                { v: scan.global_score_percent, l: t('Globale'), cls: 'text-gray-700 bg-gray-50 border-gray-200' },
+                                { v: scan.exact_percent, l: t('Esatti'), cls: 'text-gray-700 bg-gray-50 border-gray-200' },
                               ].map((m, i) => (
                                 <div key={i} className={`rounded-xl p-2.5 border text-center ${m.cls}`}>
                                   <div className="text-sm font-bold">{m.v?.toFixed(1)}%</div>
@@ -410,7 +482,7 @@ const Dashboard = () => {
                         ) : (
                           <button onClick={e => { e.stopPropagation(); handleThesisScan(thesis.id); }}
                             className="btn btn-secondary btn-sm">
-                            <Shield className="w-3.5 h-3.5" /> Scansione Detector AI
+                            <Shield className="w-3.5 h-3.5" /> {t('Scansione Detector AI')}
                           </button>
                         )
                       )}
@@ -419,8 +491,8 @@ const Dashboard = () => {
                           {templates.length > 0 && (
                             <select value={selectedTemplates[thesis.id] || ''} onChange={e => setSelectedTemplates({ ...selectedTemplates, [thesis.id]: e.target.value || null })} onClick={e => e.stopPropagation()}
                               className="input py-1.5 text-sm w-auto">
-                              <option value="">Template default</option>
-                              {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                              <option value="">{t('Template default')}</option>
+                              {templates.map(tpl => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
                             </select>
                           )}
                           <div className="flex items-center gap-2">
@@ -446,17 +518,17 @@ const Dashboard = () => {
         {activeTab === 'sessions' && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <span className="text-sm text-gray-500">{sessions.length} sessioni, {trainedSessions} addestrate</span>
+              <span className="text-sm text-gray-500">{t('{{s}} sessioni, {{n}} addestrate', { s: sessions.length, n: trainedSessions })}</span>
               <button onClick={() => navigate('/train')} className="btn btn-primary btn-sm">
-                + Nuova Sessione
+                {t('+ Nuova Sessione')}
               </button>
             </div>
             {sessions.length === 0 ? (
               <div className="glass rounded-2xl p-12 text-center">
                 <div className="w-16 h-16 bg-gradient-to-br from-gray-200 to-gray-300 rounded-2xl flex items-center justify-center mx-auto mb-4"><FileText className="w-8 h-8 text-white" /></div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Nessuna sessione</h3>
-                <p className="text-sm text-gray-500 mb-6">Crea la tua prima sessione di addestramento.</p>
-                <button onClick={() => navigate('/train')} className="btn btn-primary">Crea Sessione</button>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">{t('Nessuna sessione')}</h3>
+                <p className="text-sm text-gray-500 mb-6">{t('Crea la tua prima sessione di addestramento.')}</p>
+                <button onClick={() => navigate('/train')} className="btn btn-primary">{t('Crea Sessione')}</button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -487,15 +559,15 @@ const Dashboard = () => {
                     </div>
                     <div className="flex items-center gap-2 mb-4">
                       {session.is_trained
-                        ? <span className="badge badge-success"><CheckCircle2 className="w-3 h-3" /> Addestrata</span>
-                        : <span className="badge badge-warning"><Clock className="w-3 h-3" /> Non addestrata</span>
+                        ? <span className="badge badge-success"><CheckCircle2 className="w-3 h-3" /> {t('Addestrata')}</span>
+                        : <span className="badge badge-warning"><Clock className="w-3 h-3" /> {t('Non addestrata')}</span>
                       }
-                      <span className="text-xs text-gray-500">{session.conversation_length} conv. · {session.jobs.length} job</span>
+                      <span className="text-xs text-gray-500">{t('{{c}} conv. · {{j}} job', { c: session.conversation_length, j: session.jobs.length })}</span>
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => navigate(`/sessions/${session.session_id}`)}
                         className="btn btn-secondary flex-1 text-sm py-2.5">
-                        Dettagli
+                        {t('Dettagli')}
                       </button>
                       <button onClick={() => navigate(`/generate?session=${session.session_id}`)} disabled={!session.is_trained}
                         className={`flex-1 text-sm py-2.5 ${
@@ -503,7 +575,7 @@ const Dashboard = () => {
                             ? 'btn btn-primary'
                             : 'btn btn-secondary opacity-50 cursor-not-allowed'
                         }`}>
-                        {session.is_trained ? 'Genera' : 'Non pronta'}
+                        {session.is_trained ? t('Genera') : t('Non pronta')}
                       </button>
                     </div>
                   </div>

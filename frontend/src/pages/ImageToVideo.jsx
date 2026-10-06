@@ -4,7 +4,8 @@ import {
   Film, ArrowLeft, Plus, Trash2, Play, Download, AlertCircle,
   Loader2, CheckCircle2, XCircle, Clock, Settings2, ImagePlus, Info, Zap, Sparkles
 } from 'lucide-react';
-import { generateVideos, getVideoTasksStatus, getVideoProxyUrl } from '../services/api';
+import { generateVideos, getVideoTasksStatus, fetchVideoBlob, readBlobErrorDetail } from '../services/api';
+import { useTranslation } from 'react-i18next';
 
 // ── Models ──────────────────────────────────────────────────────────────────
 const MODELS = [
@@ -90,7 +91,9 @@ const StatBar = ({ label, value, color }) => (
 );
 
 // ── Toggle Component ────────────────────────────────────────────────────────
-const Toggle = ({ enabled, onChange, label, description }) => (
+const Toggle = ({ enabled, onChange, label, description }) => {
+  const { t } = useTranslation();
+  return (
   <div>
     <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
     <div
@@ -103,14 +106,16 @@ const Toggle = ({ enabled, onChange, label, description }) => (
         <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${enabled ? 'left-[18px]' : 'left-0.5'}`} />
       </div>
       <div>
-        <span className="text-sm text-slate-700">{enabled ? 'Attivo' : 'Disattivo'}</span>
+        <span className="text-sm text-slate-700">{enabled ? t('Attivo') : t('Disattivo')}</span>
         {description && <p className="text-xs text-slate-400 mt-0.5">{description}</p>}
       </div>
     </div>
   </div>
-);
+  );
+};
 
 const ImageToVideo = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
@@ -127,6 +132,13 @@ const ImageToVideo = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [showSettings, setShowSettings] = useState(true);
+  // Il video arriva come Blob (il proxy vuole l'Authorization in header, che un
+  // <video src> non puo' mandare). I blob URL stanno anche in una ref perche' il
+  // cleanup di unmount ha dep [] e da uno state leggerebbe il valore iniziale.
+  const [blobUrls, setBlobUrls] = useState({});
+  const [videoErrors, setVideoErrors] = useState({});
+  const blobUrlsRef = useRef({});
+  const fetchingRef = useRef(new Set());
 
   const selectedModel = useMemo(() => MODELS.find(m => m.value === model) || MODELS[0], [model]);
   const availableResolutions = useMemo(() => Object.keys(selectedModel.resolutions), [selectedModel]);
@@ -157,8 +169,8 @@ const ImageToVideo = () => {
   // Poll pending tasks
   useEffect(() => {
     const pendingIds = tasks
-      .filter(t => t.task_id && !['Success', 'Fail'].includes(t.status))
-      .map(t => t.task_id);
+      .filter(task => task.task_id && !['Success', 'Fail'].includes(task.status))
+      .map(task => task.task_id);
 
     if (pendingIds.length === 0) return;
 
@@ -167,14 +179,16 @@ const ImageToVideo = () => {
         const data = await getVideoTasksStatus(pendingIds);
         if (data.tasks) {
           setTasks(prev =>
-            prev.map(t => {
-              const updated = data.tasks.find(u => u.task_id === t.task_id);
-              if (!updated) return t;
+            prev.map(task => {
+              const updated = data.tasks.find(u => u.task_id === task.task_id);
+              if (!updated) return task;
               return {
-                ...t,
+                ...task,
                 status: updated.status,
-                video_url: updated.video_url || t.video_url,
-                error: updated.error || t.error,
+                // Il backend restituisce file_id da sempre, ma qui veniva
+                // scartato: e' l'unica cosa che serve al proxy.
+                file_id: updated.file_id || task.file_id,
+                error: updated.error || task.error,
               };
             })
           );
@@ -187,6 +201,52 @@ const ImageToVideo = () => {
     return () => clearInterval(interval);
   }, [tasks]);
 
+  // Chiave primitiva stabile: agganciare il fetch del blob all'effect di polling
+  // (dep [tasks]) lo farebbe ripartire a ogni tick, riscaricando il video ogni
+  // 5 secondi.
+  const readyIds = tasks
+    .filter(task => task.status === 'Success' && task.file_id)
+    .map(task => task.file_id)
+    .join(',');
+
+  useEffect(() => {
+    if (!readyIds) return;
+    let annullato = false;
+
+    readyIds.split(',').forEach(async (fileId) => {
+      // Guardia idempotente: in StrictMode l'effect parte due volte, e una
+      // stringa stabile non basta a evitare il doppio download.
+      if (fetchingRef.current.has(fileId) || blobUrlsRef.current[fileId]) return;
+      fetchingRef.current.add(fileId);
+      try {
+        const blob = await fetchVideoBlob(fileId);
+        if (annullato) return;
+        const url = URL.createObjectURL(blob);
+        blobUrlsRef.current[fileId] = url;
+        setBlobUrls(prev => ({ ...prev, [fileId]: url }));
+      } catch (err) {
+        if (annullato) return;
+        const detail = await readBlobErrorDetail(err);
+        setVideoErrors(prev => ({
+          ...prev,
+          [fileId]: detail || t('Errore nel caricamento del video'),
+        }));
+      } finally {
+        fetchingRef.current.delete(fileId);
+      }
+    });
+
+    return () => { annullato = true; };
+  }, [readyIds, t]);
+
+  // Un blob URL resta in memoria finche' non lo si revoca: qui si legge dalla
+  // ref, non dallo state, perche' la closure di un effect con dep [] catturerebbe
+  // il valore iniziale (cioe' nulla da revocare).
+  useEffect(() => () => {
+    Object.values(blobUrlsRef.current).forEach(URL.revokeObjectURL);
+    blobUrlsRef.current = {};
+  }, []);
+
   const formatFileSize = (bytes) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -195,11 +255,11 @@ const ImageToVideo = () => {
 
   const validateFile = (f) => {
     if (!ALLOWED_TYPES.includes(f.type)) {
-      setError('Formato non supportato. Usa JPG, PNG o WEBP.');
+      setError(t('Formato non supportato. Usa JPG, PNG o WEBP.'));
       return false;
     }
     if (f.size > MAX_SIZE) {
-      setError(`Immagine troppo grande (${formatFileSize(f.size)}). Massimo: 10MB`);
+      setError(t('Immagine troppo grande ({{size}}). Massimo: 10MB', { size: formatFileSize(f.size) }));
       return false;
     }
     return true;
@@ -237,7 +297,7 @@ const ImageToVideo = () => {
   const handleGenerate = async () => {
     const validPrompts = prompts.map(p => p.trim()).filter(Boolean);
     if (!file || validPrompts.length === 0) {
-      setError('Carica un\'immagine e inserisci almeno un prompt.');
+      setError(t('Carica un\'immagine e inserisci almeno un prompt.'));
       return;
     }
 
@@ -253,26 +313,29 @@ const ImageToVideo = () => {
         fastPretreatment: selectedModel.supportsFastPretreatment ? fastPretreatment : undefined,
         resolution,
       });
-      const newTasks = data.tasks.map(t => ({
-        task_id: t.task_id,
-        prompt: t.prompt,
-        status: t.error ? 'Fail' : 'Processing',
-        video_url: null,
-        error: t.error || null,
+      const newTasks = data.tasks.map(task => ({
+        task_id: task.task_id,
+        prompt: task.prompt,
+        status: task.error ? 'Fail' : 'Processing',
+        file_id: null,
+        error: task.error || null,
       }));
       setTasks(newTasks);
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Errore durante la generazione');
+      setError(err.response?.data?.detail || err.message || t('Errore durante la generazione'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleDownload = (task) => {
-    if (!task.video_url) return;
-    const proxyUrl = getVideoProxyUrl(task.video_url);
+    // Si riusa il blob URL del player e NON lo si revoca: e' lo stesso oggetto
+    // che <video src> sta usando, revocarlo qui spegnerebbe il video. Se ne
+    // occupa il cleanup di unmount.
+    const url = blobUrls[task.file_id];
+    if (!url) return;
     const link = document.createElement('a');
-    link.href = proxyUrl;
+    link.href = url;
     link.download = `video_${task.task_id}.mp4`;
     document.body.appendChild(link);
     link.click();
@@ -281,6 +344,11 @@ const ImageToVideo = () => {
 
   const handleReset = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    // I task se ne vanno: senza questo i loro blob URL resterebbero appesi.
+    Object.values(blobUrlsRef.current).forEach(URL.revokeObjectURL);
+    blobUrlsRef.current = {};
+    setBlobUrls({});
+    setVideoErrors({});
     setFile(null);
     setPreviewUrl(null);
     setPrompts(['']);
@@ -298,11 +366,11 @@ const ImageToVideo = () => {
 
   const statusLabel = (status) => {
     const labels = {
-      Queueing: 'In coda...',
-      Preparing: 'Preparazione...',
-      Processing: 'In elaborazione...',
-      Success: 'Completato',
-      Fail: 'Errore',
+      Queueing: t('In coda...'),
+      Preparing: t('Preparazione...'),
+      Processing: t('In elaborazione...'),
+      Success: t('Completato'),
+      Fail: t('Errore'),
     };
     return labels[status] || status;
   };
@@ -321,14 +389,14 @@ const ImageToVideo = () => {
         <div className="mb-8">
           <button onClick={() => navigate('/')} className="btn btn-secondary gap-2 mb-4">
             <ArrowLeft className="w-4 h-4" />
-            Torna alla Dashboard
+            {t('Torna alla Dashboard')}
           </button>
           <h1 className="text-3xl font-bold text-slate-900 mb-2 flex items-center gap-3">
             <Film className="w-8 h-8 text-violet-600" />
             Image to Video
           </h1>
           <p className="text-slate-600">
-            Carica un'immagine e genera video animati con l'AI MiniMax
+            {t('Carica un\'immagine e genera video animati con l\'AI MiniMax')}
           </p>
         </div>
 
@@ -338,7 +406,7 @@ const ImageToVideo = () => {
             {/* Upload Area */}
             <div className="card">
               <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-3">
-                Immagine di partenza
+                {t('Immagine di partenza')}
               </h3>
               <div
                 className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer ${
@@ -362,15 +430,15 @@ const ImageToVideo = () => {
                 />
                 {file && previewUrl ? (
                   <div className="space-y-3">
-                    <img src={previewUrl} alt="Anteprima" className="max-h-64 mx-auto rounded-lg shadow-md" />
+                    <img src={previewUrl} alt={t('Anteprima')} className="max-h-64 mx-auto rounded-lg shadow-md" />
                     <p className="font-medium text-slate-900">{file.name}</p>
                     <p className="text-sm text-slate-500">{formatFileSize(file.size)}</p>
                   </div>
                 ) : (
                   <>
                     <ImagePlus className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                    <p className="text-slate-600 mb-1">Trascina un'immagine o clicca per selezionare</p>
-                    <p className="text-sm text-slate-500">JPG, PNG, WEBP — max 10MB — lato corto min 300px — aspect ratio da 2:5 a 5:2</p>
+                    <p className="text-slate-600 mb-1">{t('Trascina un\'immagine o clicca per selezionare')}</p>
+                    <p className="text-sm text-slate-500">{t('JPG, PNG, WEBP — max 10MB — lato corto min 300px — aspect ratio da 2:5 a 5:2')}</p>
                   </>
                 )}
               </div>
@@ -380,11 +448,11 @@ const ImageToVideo = () => {
             <div className="card">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider">
-                  Prompt ({prompts.length}/{MAX_PROMPTS})
+                  {t('Prompt')} ({prompts.length}/{MAX_PROMPTS})
                 </h3>
                 {prompts.length < MAX_PROMPTS && (
                   <button onClick={addPrompt} className="btn btn-secondary btn-sm gap-1">
-                    <Plus className="w-3.5 h-3.5" /> Aggiungi
+                    <Plus className="w-3.5 h-3.5" /> {t('Aggiungi')}
                   </button>
                 )}
               </div>
@@ -394,7 +462,7 @@ const ImageToVideo = () => {
                     <textarea
                       value={prompt}
                       onChange={(e) => updatePrompt(idx, e.target.value)}
-                      placeholder={`Descrivi l'animazione desiderata... (es. "La persona sorride e gira la testa lentamente")`}
+                      placeholder={t('Descrivi l\'animazione desiderata... (es. "La persona sorride e gira la testa lentamente")')}
                       rows={4}
                       maxLength={2000}
                       className="input flex-1 resize-y min-h-[80px]"
@@ -406,7 +474,7 @@ const ImageToVideo = () => {
                     )}
                   </div>
                 ))}
-                <p className="text-xs text-slate-400">Max 2000 caratteri per prompt. {selectedModel.value === 'I2V-01-Director' && 'Supporta comandi camera: [truck left], [zoom in], [pan right], [tilt up], ecc.'}</p>
+                <p className="text-xs text-slate-400">{t('Max 2000 caratteri per prompt.')} {selectedModel.value === 'I2V-01-Director' && t('Supporta comandi camera: [truck left], [zoom in], [pan right], [tilt up], ecc.')}</p>
               </div>
             </div>
 
@@ -417,7 +485,7 @@ const ImageToVideo = () => {
                 className="flex items-center gap-2 text-sm font-medium text-slate-500 uppercase tracking-wider w-full"
               >
                 <Settings2 className="w-4 h-4" />
-                Parametri di generazione
+                {t('Parametri di generazione')}
                 <span className={`ml-auto transition-transform ${showSettings ? 'rotate-180' : ''}`}>&#9662;</span>
               </button>
 
@@ -426,7 +494,7 @@ const ImageToVideo = () => {
 
                   {/* ── Model Selection ── */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Modello</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">{t('Modello')}</label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {MODELS.map(m => (
                         <div
@@ -444,8 +512,8 @@ const ImageToVideo = () => {
                           </div>
                           <p className="text-xs text-slate-500 mb-2.5 leading-relaxed">{m.desc}</p>
                           <div className="space-y-1.5">
-                            <StatBar label="Qualita" value={m.quality} color="bg-gradient-to-r from-violet-400 to-violet-600" />
-                            <StatBar label="Velocita" value={m.speed} color="bg-gradient-to-r from-emerald-400 to-emerald-600" />
+                            <StatBar label={t('Qualita')} value={m.quality} color="bg-gradient-to-r from-violet-400 to-violet-600" />
+                            <StatBar label={t('Velocita')} value={m.speed} color="bg-gradient-to-r from-emerald-400 to-emerald-600" />
                           </div>
                         </div>
                       ))}
@@ -457,7 +525,7 @@ const ImageToVideo = () => {
                     {/* Resolution */}
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">
-                        Risoluzione
+                        {t('Risoluzione')}
                       </label>
                       <div className="flex gap-2">
                         {availableResolutions.map(r => (
@@ -475,14 +543,14 @@ const ImageToVideo = () => {
                         ))}
                       </div>
                       <p className="text-xs text-slate-400 mt-1.5">
-                        Risoluzione output. 1080P offre piu dettaglio ma richiede piu tempo (~30-50% in piu).
+                        {t('Risoluzione output. 1080P offre piu dettaglio ma richiede piu tempo (~30-50% in piu).')}
                       </p>
                     </div>
 
                     {/* Duration */}
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">
-                        Durata video
+                        {t('Durata video')}
                       </label>
                       <div className="flex gap-2">
                         {availableDurations.map(d => (
@@ -495,14 +563,14 @@ const ImageToVideo = () => {
                                 : 'border-slate-200 text-slate-600 hover:border-slate-300'
                             }`}
                           >
-                            {d} secondi
+                            {t('{{d}} secondi', { d })}
                           </button>
                         ))}
                       </div>
                       <p className="text-xs text-slate-400 mt-1.5">
                         {availableDurations.length > 1
-                          ? 'Durata del video. 10s raddoppia circa il tempo di generazione rispetto a 6s.'
-                          : 'Questo modello/risoluzione supporta solo 6 secondi.'}
+                          ? t('Durata del video. 10s raddoppia circa il tempo di generazione rispetto a 6s.')
+                          : t('Questo modello/risoluzione supporta solo 6 secondi.')}
                       </p>
                     </div>
                   </div>
@@ -512,16 +580,16 @@ const ImageToVideo = () => {
                     <Toggle
                       enabled={promptOptimizer}
                       onChange={() => setPromptOptimizer(!promptOptimizer)}
-                      label="Ottimizzazione Prompt"
-                      description="MiniMax riscrive il tuo prompt per migliorare il risultato. Disattiva se vuoi controllo preciso."
+                      label={t('Ottimizzazione Prompt')}
+                      description={t('MiniMax riscrive il tuo prompt per migliorare il risultato. Disattiva se vuoi controllo preciso.')}
                     />
 
                     {selectedModel.supportsFastPretreatment && (
                       <Toggle
                         enabled={fastPretreatment}
                         onChange={() => setFastPretreatment(!fastPretreatment)}
-                        label="Pre-elaborazione veloce"
-                        description="Riduce il tempo di ottimizzazione del prompt (~20-30% piu veloce). Solo con Prompt Optimizer attivo."
+                        label={t('Pre-elaborazione veloce')}
+                        description={t('Riduce il tempo di ottimizzazione del prompt (~20-30% piu veloce). Solo con Prompt Optimizer attivo.')}
                       />
                     )}
                   </div>
@@ -530,8 +598,8 @@ const ImageToVideo = () => {
                   <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <Info className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
                     <div className="text-xs text-slate-500 space-y-1">
-                      <p><strong>Tempo stimato:</strong> {selectedModel.time} per video ({resolution}, {duration}s)</p>
-                      <p><strong>Nota:</strong> 1080P aggiunge ~30-50% al tempo. 10s raddoppia circa rispetto a 6s. Il Fast Pretreatment risparmia ~20-30% sulla fase di preparazione.</p>
+                      <p><strong>{t('Tempo stimato:')}</strong> {t('{{time}} per video ({{resolution}}, {{duration}}s)', { time: selectedModel.time, resolution, duration })}</p>
+                      <p><strong>{t('Nota:')}</strong> {t('1080P aggiunge ~30-50% al tempo. 10s raddoppia circa rispetto a 6s. Il Fast Pretreatment risparmia ~20-30% sulla fase di preparazione.')}</p>
                     </div>
                   </div>
                 </div>
@@ -554,7 +622,7 @@ const ImageToVideo = () => {
               style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1)' }}
             >
               <Play className="w-5 h-5" />
-              Genera Video
+              {t('Genera Video')}
             </button>
           </div>
         )}
@@ -565,8 +633,8 @@ const ImageToVideo = () => {
             <div className="w-20 h-20 bg-violet-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <Loader2 className="w-10 h-10 text-violet-600 animate-spin" />
             </div>
-            <h3 className="text-xl font-semibold text-slate-900 mb-2">Invio in corso...</h3>
-            <p className="text-slate-500">Caricamento immagine e creazione task video</p>
+            <h3 className="text-xl font-semibold text-slate-900 mb-2">{t('Invio in corso...')}</h3>
+            <p className="text-slate-500">{t('Caricamento immagine e creazione task video')}</p>
           </div>
         )}
 
@@ -576,8 +644,8 @@ const ImageToVideo = () => {
             {/* Preview of source image */}
             {previewUrl && (
               <div className="card">
-                <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-3">Immagine sorgente</h3>
-                <img src={previewUrl} alt="Sorgente" className="max-h-48 rounded-lg shadow-md" />
+                <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-3">{t('Immagine sorgente')}</h3>
+                <img src={previewUrl} alt={t('Sorgente')} className="max-h-48 rounded-lg shadow-md" />
               </div>
             )}
 
@@ -597,20 +665,34 @@ const ImageToVideo = () => {
 
                   <p className="text-sm text-slate-600 mb-3 line-clamp-2">{task.prompt}</p>
 
-                  {task.status === 'Success' && task.video_url && (
+                  {task.status === 'Success' && task.file_id && (
                     <div className="space-y-3">
-                      <video
-                        controls
-                        loop
-                        className="w-full rounded-lg bg-black"
-                        src={getVideoProxyUrl(task.video_url)}
-                      />
-                      <button
-                        onClick={() => handleDownload(task)}
-                        className="btn btn-secondary btn-sm w-full gap-2"
-                      >
-                        <Download className="w-4 h-4" /> Scarica Video
-                      </button>
+                      {blobUrls[task.file_id] ? (
+                        <>
+                          <video
+                            controls
+                            loop
+                            className="w-full rounded-lg bg-black"
+                            src={blobUrls[task.file_id]}
+                          />
+                          <button
+                            onClick={() => handleDownload(task)}
+                            className="btn btn-secondary btn-sm w-full gap-2"
+                          >
+                            <Download className="w-4 h-4" /> {t('Scarica Video')}
+                          </button>
+                        </>
+                      ) : videoErrors[task.file_id] ? (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 text-red-600 text-sm">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          {videoErrors[task.file_id]}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-2 py-8 text-slate-500 text-sm">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          {t('Caricamento video...')}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -643,7 +725,7 @@ const ImageToVideo = () => {
             {/* Actions */}
             <button onClick={handleReset} className="w-full btn btn-secondary h-12 text-base gap-2">
               <ImagePlus className="w-5 h-5" />
-              Nuova Generazione
+              {t('Nuova Generazione')}
             </button>
           </div>
         )}

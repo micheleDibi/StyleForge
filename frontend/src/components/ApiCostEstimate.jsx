@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DollarSign, Loader } from 'lucide-react';
 import { estimateApiCost } from '../services/api';
 
@@ -75,6 +76,7 @@ const THEME = {
 };
 
 const ApiCostEstimate = (props) => {
+  const { t } = useTranslation();
   const { mode } = props;
   const [estimate, setEstimate] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -131,15 +133,15 @@ const ApiCostEstimate = (props) => {
         <div className="flex items-center gap-2">
           <DollarSign className="w-3.5 h-3.5" />
           <span className="font-bold text-sm">
-            Costo API stimato: ~{estimate.estimated_cost_eur.toFixed(4)} EUR
+            {t('Costo API stimato: ~{{cost}} EUR', { cost: estimate.estimated_cost_eur.toFixed(4) })}
           </span>
           {loading && <Loader className="w-3 h-3 animate-spin opacity-50" />}
         </div>
-        {needsApprox && <span className="text-[10px] opacity-60 italic">stima approssimativa</span>}
+        {needsApprox && <span className="text-[10px] opacity-60 italic">{t('stima approssimativa')}</span>}
       </div>
       <div className="flex gap-4 opacity-75">
-        <span>Input: ~{fmt(b.input_tokens)} tok ({b.input_cost_eur.toFixed(4)} EUR)</span>
-        <span>Output: ~{fmt(b.output_tokens)} tok ({b.output_cost_eur.toFixed(4)} EUR)</span>
+        <span>{t('Input: ~{{tokens}} tok ({{cost}} EUR)', { tokens: fmt(b.input_tokens), cost: b.input_cost_eur.toFixed(4) })}</span>
+        <span>{t('Output: ~{{tokens}} tok ({{cost}} EUR)', { tokens: fmt(b.output_tokens), cost: b.output_cost_eur.toFixed(4) })}</span>
       </div>
     </div>
   );

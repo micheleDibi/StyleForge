@@ -1,10 +1,12 @@
 """
 FastAPI Application per StyleForge.
 
-API scalabile per la generazione di contenuti con Claude Opus 4.5.
+API scalabile per la generazione di contenuti con Claude Opus 4.8.
 """
 
 import asyncio
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -18,8 +20,9 @@ import uvicorn
 from models import (
     TrainingRequest, TrainingResponse,
     GenerationRequest, GenerationResponse,
-    HumanizeRequest, HumanizeResponse,
+    HumanizeRequest, HumanizeResponse, HumanizeDocumentResponse,
     AntiAICorrectionRequest, AntiAICorrectionResponse,
+    ExtractTextResponse,
     CompilatioScanRequest, CompilatioScanResponse, CompilatioScanResult, CompilatioScanListResponse,
     RenameRequest,
     JobStatusResponse, SessionInfo, SessionListResponse,
@@ -39,8 +42,11 @@ from admin_routes import router as admin_router
 from external_api_routes import router as external_api_router
 from video_routes import router as video_router
 from research_routes import router as research_router
-from pagopa_routes import router as pagopa_router
-from pagopa_webhooks import router as pagopa_webhook_router
+from packages_routes import router as packages_router
+from distributor_routes import router as distributor_router
+from hierarchy_routes import router as hierarchy_router
+from notification_routes import router as notification_router
+from i18n_routes import public_router as i18n_public_router, admin_router as i18n_admin_router
 from db_models import User
 from database import init_db, get_db
 from ai_exceptions import InsufficientCreditsError
@@ -62,15 +68,16 @@ app = FastAPI(
 )
 
 # Rate Limiting
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-limiter = Limiter(key_func=get_remote_address, default_limits=[f"{config.RATE_LIMIT_PER_MINUTE}/minute"])
+from rate_limit import limiter
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS - Usa origini specifiche da config, fallback a * per sviluppo
+# CORS - allowlist esplicita da config (niente "*": con allow_credentials=True
+# e' una combinazione invalida per la spec)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -97,9 +104,21 @@ app.include_router(video_router)
 # Registra router ricerca accademica
 app.include_router(research_router)
 
-# Registra router PagoPA (acquisto crediti utente + webhook esito da SolutionPA)
-app.include_router(pagopa_router)
-app.include_router(pagopa_webhook_router)
+# Registra router listino pacchetti crediti (vetrina utente)
+app.include_router(packages_router)
+
+# Registra router dashboard distributore (sola lettura sui propri rivenditori)
+app.include_router(distributor_router)
+
+# Registra router gerarchia distribuzione (manager: creazione + assegnazione crediti)
+app.include_router(hierarchy_router)
+
+# Registra router notifiche in-app
+app.include_router(notification_router)
+
+# Registra router i18n (lingue + traduzioni: pubblico runtime + admin)
+app.include_router(i18n_public_router)
+app.include_router(i18n_admin_router)
 
 
 # ============================================================================
@@ -242,17 +261,30 @@ async def delete_session(
 # TRAINING ENDPOINTS
 # ============================================================================
 
-def train_session_task(session_id: str, file_path: Path, max_pages: int) -> str:
+def _pdf_page_count(path) -> int:
+    """Numero di pagine reali di un PDF (1 se non leggibile)."""
+    try:
+        import fitz
+        doc = fitz.open(str(path))
+        try:
+            return doc.page_count
+        finally:
+            doc.close()
+    except Exception:
+        return 1
+
+
+def train_session_task(session_id: str, file_path: Path, train_job_id: str = None) -> str:
     """
-    Task sincrono per l'addestramento di una sessione.
+    Task sincrono per l'addestramento di una sessione: analizza l'INTERO documento.
 
     Args:
         session_id: ID della sessione.
         file_path: Percorso del file PDF.
-        max_pages: Numero massimo di pagine da leggere.
+        train_job_id: ID del job per gli aggiornamenti di progresso (opzionale).
 
     Returns:
-        Risposta di Claude dopo l'addestramento.
+        Il profilo stilistico prodotto.
     """
     import PyPDF2
     import re
@@ -280,7 +312,8 @@ def train_session_task(session_id: str, file_path: Path, max_pages: int) -> str:
         session_manager.set_session_name(session_id, file_path.stem[:50])
 
     client = session_manager.get_session(session_id)
-    result = client.addestramento(str(file_path))
+    progress_cb = _make_job_progress_cb(train_job_id) if train_job_id else None
+    result = client.addestramento(str(file_path), progress_cb=progress_cb)
 
     # Salva la conversation history e lo stato trained
     session_manager.save_conversation_history(session_id)
@@ -325,13 +358,16 @@ async def train_session(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore nel salvataggio del file: {e}")
 
-    # Deduzione crediti
-    credit_estimate = estimate_credits('train', {'max_pages': max_pages}, db=db)
+    # Pagine effettive del PDF (vengono lette tutte): base per la stima crediti.
+    actual_pages = _pdf_page_count(file_path)
+
+    # Deduzione crediti sulle pagine reali
+    credit_estimate = estimate_credits('train', {'max_pages': actual_pages}, db=db)
     deduct_credits(
         user=current_user,
         amount=credit_estimate['credits_needed'],
         operation_type='train',
-        description=f"Addestramento modello ({max_pages} pagine)",
+        description=f"Addestramento modello ({actual_pages} pagine)",
         db=db
     )
 
@@ -342,16 +378,18 @@ async def train_session(
     else:
         session_id = session_manager.create_session(user_id, session_id)
 
-    # Crea job con nome auto-generato
+    # Crea job con job_id pre-generato (serve per il progresso)
     job_name = f"Training: {file.filename}"
-    job_id = job_manager.create_job(
+    job_id = f"job_{uuid_module.uuid4().hex[:12]}"
+    job_manager.create_job(
         session_id=session_id,
         user_id=user_id,
         job_type='training',
         task_func=train_session_task,
+        job_id=job_id,
         name=job_name,
         file_path=file_path,
-        max_pages=max_pages
+        train_job_id=job_id
     )
 
     # Aggiungi job alla sessione
@@ -369,6 +407,42 @@ async def train_session(
     )
 
 
+@app.post("/train/estimate", tags=["Training"])
+async def estimate_training(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_permission('train')),
+    db: Session = Depends(get_db)
+):
+    """
+    Stima i crediti per l'addestramento sulle pagine EFFETTIVE del PDF (file non
+    persistito). L'intero documento verrà analizzato; il costo scala con le pagine.
+    """
+    if not (file.filename or '').lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Solo file PDF sono supportati")
+    content = await file.read()
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        pages = _pdf_page_count(tmp_path)
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    result = estimate_credits('train', {'max_pages': pages}, db=db)
+    is_admin = is_admin_user(current_user)
+    return {
+        'pages': pages,
+        'credits_needed': result['credits_needed'],
+        'breakdown': result['breakdown'],
+        'current_balance': -1 if is_admin else current_user.credits,
+        'sufficient': is_admin or current_user.credits >= result['credits_needed'],
+    }
+
+
 # ============================================================================
 # GENERATION ENDPOINTS
 # ============================================================================
@@ -377,7 +451,8 @@ def generate_content_task(
     session_id: str,
     argomento: str,
     numero_parole: int,
-    destinatario: str
+    destinatario: str,
+    profile: str = 'academic'
 ) -> str:
     """
     Task sincrono per la generazione di contenuto.
@@ -387,6 +462,7 @@ def generate_content_task(
         argomento: Argomento del contenuto.
         numero_parole: Numero di parole.
         destinatario: Pubblico destinatario.
+        profile: Profilo anti-AI ('academic' o 'informal').
 
     Returns:
         Contenuto generato da Claude.
@@ -395,7 +471,8 @@ def generate_content_task(
     result = client.generazione(
         argomento=argomento,
         numero_parole=numero_parole,
-        destinatario=destinatario
+        destinatario=destinatario,
+        profile=profile
     )
 
     # Salva la conversation history
@@ -460,7 +537,8 @@ async def generate_content(
         name=job_name,
         argomento=request.argomento,
         numero_parole=request.numero_parole,
-        destinatario=request.destinatario
+        destinatario=request.destinatario,
+        profile=request.profile
     )
 
     # Aggiungi job alla sessione
@@ -482,27 +560,59 @@ async def generate_content(
 # HUMANIZE ENDPOINTS
 # ============================================================================
 
+def _make_job_progress_cb(progress_job_id: str):
+    """Crea una callback di progresso per un job: aggiorna sempre lo stato in memoria
+    e scrive in DB solo periodicamente (evita l'esaurimento delle connessioni NullPool).
+    Stesso schema di compilatio_scan_task."""
+    _state = {"count": 0, "last": 0}
+
+    def cb(progress: int):
+        try:
+            job = job_manager._active_jobs.get(progress_job_id)
+            if job:
+                job.progress = progress
+            _state["count"] += 1
+            if _state["count"] % 5 == 0 or progress >= 100 or progress - _state["last"] >= 20:
+                _state["last"] = progress
+                from database import SessionLocal
+                from db_models import Job as JobModel
+                db = SessionLocal()
+                try:
+                    db_job = db.query(JobModel).filter_by(job_id=progress_job_id).first()
+                    if db_job:
+                        db_job.progress = progress
+                        db.commit()
+                finally:
+                    db.close()
+        except Exception:
+            pass
+
+    return cb
+
+
 def humanize_content_task(
     session_id: str,
-    testo: str
+    testo: str,
+    profile: str = 'informal',
+    hum_job_id: str = None
 ) -> str:
     """
-    Task sincrono per l'umanizzazione di un testo AI.
+    Task sincrono per l'umanizzazione di un testo AI. Umanizza a CHUNK, così gestisce
+    anche testi lunghi senza superare il cap di output del modello.
 
     Args:
         session_id: ID della sessione addestrata.
         testo: Il testo generato da AI da riscrivere.
+        profile: Profilo anti-AI ('informal' o 'academic').
+        hum_job_id: ID del job per gli aggiornamenti di progresso (opzionale).
 
     Returns:
         Testo riscritto nello stile appreso e non rilevabile dai detector.
     """
+    from document_humanizer import humanize_long_text
     client = session_manager.get_session(session_id)
-    result = client.umanizzazione(testo_originale=testo)
-
-    # Salva la conversation history
-    session_manager.save_conversation_history(session_id)
-
-    return result
+    progress_cb = _make_job_progress_cb(hum_job_id) if hum_job_id else None
+    return humanize_long_text(testo, client, profile=profile, progress_cb=progress_cb)
 
 
 @app.post("/humanize", response_model=HumanizeResponse, tags=["Humanize"])
@@ -560,13 +670,17 @@ async def humanize_content(
     # Crea job con nome auto-generato
     testo_preview = request.testo[:40].replace('\n', ' ')
     job_name = f"Umanizzazione: {testo_preview}..."
-    job_id = job_manager.create_job(
+    job_id = f"job_{uuid_module.uuid4().hex[:12]}"
+    job_manager.create_job(
         session_id=request.session_id,
         user_id=user_id,
         job_type='humanization',
         task_func=humanize_content_task,
+        job_id=job_id,
         name=job_name,
-        testo=request.testo
+        testo=request.testo,
+        profile=request.profile,
+        hum_job_id=job_id
     )
 
     # Aggiungi job alla sessione
@@ -584,11 +698,171 @@ async def humanize_content(
     )
 
 
+def _resolve_docx_result(result):
+    """Se result è un .docx (path assoluto o filename in RESULTS_DIR) ed esiste,
+    ritorna il path assoluto del file; altrimenti None."""
+    if not isinstance(result, str) or not result.strip().lower().endswith('.docx'):
+        return None
+    cand = result.strip()
+    if os.path.exists(cand):
+        return cand
+    rel = str(config.RESULTS_DIR / os.path.basename(cand))
+    return rel if os.path.exists(rel) else None
+
+
+def humanize_document_task(
+    session_id: str,
+    src_path: str,
+    profile: str = 'academic',
+    doc_job_id: str = None
+) -> str:
+    """
+    Task: umanizza un .docx mantenendo il template originale (sostituisce solo il
+    testo del corpo). Restituisce il path del .docx prodotto (salvato in job.result).
+    Elimina sempre l'upload sorgente.
+    """
+    from document_humanizer import humanize_docx_inplace
+    import config
+    client = session_manager.get_session(session_id)
+    progress_cb = _make_job_progress_cb(doc_job_id) if doc_job_id else None
+    out_name = f"humanized_{doc_job_id or 'doc'}.docx"
+    dst = str(Path(config.RESULTS_DIR) / out_name)
+    try:
+        humanize_docx_inplace(src_path, dst, client, profile=profile, progress_cb=progress_cb)
+    finally:
+        try:
+            os.unlink(src_path)
+        except OSError:
+            pass
+    # Salva solo il filename (relativo a RESULTS_DIR): lo risolve _resolve_docx_result.
+    return out_name
+
+
+@app.post("/humanize-document", response_model=HumanizeDocumentResponse, tags=["Humanize"])
+async def humanize_document(
+    file: UploadFile = File(...),
+    session_id: str = Form(...),
+    profile: str = Form('academic'),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: User = Depends(require_permission('humanize')),
+    db: Session = Depends(get_db)
+):
+    """
+    Umanizza un documento .docx MANTENENDO il template/formattazione originale:
+    riscrive solo il testo del corpo (salta frontespizio, titoli, indice, bibliografia,
+    note, tabelle). Richiede una sessione addestrata. Restituisce un job_id; il
+    risultato si scarica con GET /results/{job_id}/docx.
+    """
+    from attachment_processor import validate_file, extract_text
+    import config
+
+    user_id = str(current_user.id)
+    filename = file.filename or "documento.docx"
+    if Path(filename).suffix.lower() != '.docx':
+        raise HTTPException(status_code=400, detail="Formato non supportato: carica un file .docx")
+    if profile not in ('informal', 'academic'):
+        profile = 'academic'
+
+    # Sessione esiste e addestrata
+    if not session_manager.session_exists(session_id, user_id):
+        raise HTTPException(status_code=404, detail=f"Sessione {session_id} non trovata")
+    client = session_manager.get_session(session_id, user_id)
+    if not client.is_trained:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sessione {session_id} non ancora addestrata. Esegui prima il training."
+        )
+
+    # Leggi e valida il file
+    if file.size is not None:
+        ok, err = validate_file(filename, file.size)
+        if not ok:
+            raise HTTPException(status_code=400, detail=err)
+    content = await file.read()
+    ok, err = validate_file(filename, len(content))
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+
+    # Persisti l'upload (servirà al task in background)
+    job_id = f"job_{uuid_module.uuid4().hex[:12]}"
+    docs_dir = Path(config.UPLOAD_DIR) / "humanize_docs"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    src_path = docs_dir / f"{job_id}.docx"
+    with open(src_path, "wb") as fh:
+        fh.write(content)
+
+    # Stima crediti sul testo estratto
+    try:
+        extracted = extract_text(src_path)
+    except Exception:
+        extracted = ""
+    text_len = len(extracted or "")
+    if text_len < 50:
+        try:
+            os.unlink(src_path)
+        except OSError:
+            pass
+        raise HTTPException(status_code=422, detail="Nessun testo estraibile dal documento (minimo 50 caratteri).")
+
+    credit_estimate = estimate_credits('humanize', {'text_length': text_len}, db=db)
+    deduct_credits(
+        user=current_user,
+        amount=credit_estimate['credits_needed'],
+        operation_type='humanize',
+        description=f"Umanizzazione documento ({filename}, {text_len} caratteri)",
+        db=db
+    )
+
+    job_name = f"Umanizzazione documento: {filename[:40]}"
+    job_manager.create_job(
+        session_id=session_id,
+        user_id=user_id,
+        job_type='humanization',
+        task_func=humanize_document_task,
+        job_id=job_id,
+        name=job_name,
+        src_path=str(src_path),
+        profile=profile,
+        doc_job_id=job_id
+    )
+    session_manager.add_job_to_session(session_id, job_id)
+    background_tasks.add_task(job_manager.execute_job, job_id)
+
+    return HumanizeDocumentResponse(
+        session_id=session_id,
+        job_id=job_id,
+        status='pending',
+        message=f"Umanizzazione documento avviata. Monitora con GET /jobs/{job_id}",
+        created_at=datetime.now()
+    )
+
+
+@app.get("/results/{job_id}/docx", tags=["Results"])
+async def download_result_docx(
+    job_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Scarica il risultato di un job di umanizzazione documento come .docx."""
+    job = job_manager.get_job(job_id, str(current_user.id))
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} non trovato")
+    if job.status != 'completed':
+        raise HTTPException(status_code=400, detail=f"Job {job_id} non ancora completato (stato: {job.status})")
+    docx_path = _resolve_docx_result(job.result)
+    if not docx_path:
+        raise HTTPException(status_code=404, detail="Nessun documento .docx disponibile per questo job")
+    return FileResponse(
+        path=docx_path,
+        filename=f"documento_umanizzato_{job_id}.docx",
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+
 # ============================================================================
 # ANTI-AI CORRECTION ENDPOINTS
 # ============================================================================
 
-def anti_ai_correction_task(testo: str) -> str:
+def anti_ai_correction_task(testo: str, profile: str = 'informal') -> str:
     """
     Task sincrono per la correzione Anti-AI.
 
@@ -597,12 +871,13 @@ def anti_ai_correction_task(testo: str) -> str:
 
     Args:
         testo: Il testo da correggere.
+        profile: Profilo anti-AI ('informal' o 'academic').
 
     Returns:
         Testo corretto con micro-modifiche.
     """
     from ai_client import anti_ai_correction
-    return anti_ai_correction(testo)
+    return anti_ai_correction(testo, profile=profile)
 
 
 @app.post("/anti-ai-correction", response_model=AntiAICorrectionResponse, tags=["Anti-AI Correction"])
@@ -647,7 +922,8 @@ async def anti_ai_correction_endpoint(
         job_type='humanization',
         task_func=anti_ai_correction_task,
         name=job_name,
-        testo=request.testo
+        testo=request.testo,
+        profile=request.profile
     )
 
     # Esegui job in background
@@ -658,6 +934,74 @@ async def anti_ai_correction_endpoint(
         status='pending',
         message=f"Correzione Anti-AI avviata. Monitora lo stato con GET /jobs/{job_id}",
         created_at=datetime.now()
+    )
+
+
+@app.post("/extract-text", response_model=ExtractTextResponse, tags=["Utility"])
+async def extract_text_from_upload(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Estrae il testo da un file caricato (PDF, DOCX, TXT) SENZA salvarlo su disco.
+
+    Usato dalle pagine Umanizzazione e Detector AI per caricare un documento
+    al posto di incollare il testo manualmente. Il file viene letto in memoria,
+    scritto su un file temporaneo solo per l'estrazione e subito eliminato.
+    Non consuma crediti.
+    """
+    from attachment_processor import validate_file, extract_text, sanitize_text_for_db
+
+    filename = file.filename or "documento"
+
+    # Guard pre-lettura: evita di caricare in RAM file enormi (se la size è nota)
+    if file.size is not None:
+        is_valid, error = validate_file(filename, file.size)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error)
+
+    # Leggi il contenuto in memoria e valida (estensione + dimensione)
+    content = await file.read()
+    is_valid, error = validate_file(filename, len(content))
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error)
+
+    # Estrai il testo da un file temporaneo NON persistente
+    ext = Path(filename).suffix.lower()
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        text = extract_text(Path(tmp_path))
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=422, detail=f"Impossibile estrarre il testo dal file: {e}")
+    finally:
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    text = sanitize_text_for_db(text or "").strip()
+
+    if len(text) < 50:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Nessun testo estraibile (minimo 50 caratteri). Il file potrebbe essere "
+                "vuoto o un PDF scansionato senza testo selezionabile."
+            )
+        )
+
+    word_count = len([w for w in text.split() if w])
+
+    return ExtractTextResponse(
+        text=text,
+        filename=filename,
+        word_count=word_count,
+        char_count=len(text),
     )
 
 
@@ -1349,6 +1693,16 @@ async def download_result(
         raise HTTPException(
             status_code=404,
             detail=f"Nessun risultato disponibile per job {job_id}"
+        )
+
+    # Se il risultato è un documento .docx (umanizzazione documento), servilo
+    # direttamente col template originale invece di generare un PDF.
+    docx_path = _resolve_docx_result(job.result)
+    if docx_path:
+        return FileResponse(
+            path=docx_path,
+            filename=f"documento_umanizzato_{job_id}.docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
 
     # Genera PDF con il contenuto

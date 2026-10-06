@@ -1,7 +1,9 @@
 import { ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const FilterPanel = ({ filters, onChange, disabled = false }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const update = (key, value) => {
@@ -22,7 +24,7 @@ const FilterPanel = ({ filters, onChange, disabled = false }) => {
       >
         <span className="flex items-center gap-2">
           <Filter className="w-4 h-4" />
-          Filtri avanzati
+          {t('Filtri avanzati')}
           {activeCount > 0 && (
             <span className="ml-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-xs font-semibold">
               {activeCount}
@@ -35,7 +37,7 @@ const FilterPanel = ({ filters, onChange, disabled = false }) => {
       {open && (
         <div className="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Anno minimo</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">{t('Anno minimo')}</label>
             <input
               type="number"
               value={filters.year_min ?? ''}
@@ -48,7 +50,7 @@ const FilterPanel = ({ filters, onChange, disabled = false }) => {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Anno massimo</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">{t('Anno massimo')}</label>
             <input
               type="number"
               value={filters.year_max ?? ''}
@@ -61,7 +63,7 @@ const FilterPanel = ({ filters, onChange, disabled = false }) => {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Citazioni minime</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">{t('Citazioni minime')}</label>
             <input
               type="number"
               value={filters.min_citations ?? ''}
@@ -81,10 +83,10 @@ const FilterPanel = ({ filters, onChange, disabled = false }) => {
               disabled={disabled}
               className="w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-400"
             />
-            <label htmlFor="oa-only" className="text-sm text-slate-700">Solo open access</label>
+            <label htmlFor="oa-only" className="text-sm text-slate-700">{t('Solo open access')}</label>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Rivista / venue contiene</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">{t('Rivista / venue contiene')}</label>
             <input
               type="text"
               value={filters.venue_contains ?? ''}
@@ -95,7 +97,7 @@ const FilterPanel = ({ filters, onChange, disabled = false }) => {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Autore contiene</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">{t('Autore contiene')}</label>
             <input
               type="text"
               value={filters.author_contains ?? ''}

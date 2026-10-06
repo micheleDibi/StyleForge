@@ -6,8 +6,10 @@ import {
 } from 'lucide-react';
 import { getSession, getJobs, trainSession, deleteSession, pollJobStatus } from '../services/api';
 import JobCard from '../components/JobCard';
+import { useTranslation } from 'react-i18next';
 
 const SessionDetail = () => {
+  const { t } = useTranslation();
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const [session, setSession] = useState(null);
@@ -38,7 +40,7 @@ const SessionDetail = () => {
       setJobs(jobsData.jobs || []);
     } catch (error) {
       console.error('Errore nel caricamento:', error);
-      alert('Errore nel caricamento della sessione');
+      alert(t('Errore nel caricamento della sessione'));
       navigate('/');
     } finally {
       setLoading(false);
@@ -55,11 +57,11 @@ const SessionDetail = () => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
       if (!selectedFile.name.endsWith('.pdf')) {
-        setError('Solo file PDF sono supportati');
+        setError(t('Solo file PDF sono supportati'));
         return;
       }
       if (selectedFile.size > 100 * 1024 * 1024) {
-        setError('Il file non può superare i 100MB');
+        setError(t('Il file non può superare i 100MB'));
         return;
       }
       setFile(selectedFile);
@@ -88,20 +90,20 @@ const SessionDetail = () => {
       await loadData();
       setFile(null);
     } catch (err) {
-      setError(err.message || 'Errore durante il training');
+      setError(err.message || t('Errore durante il training'));
     } finally {
       setUploading(false);
     }
   };
 
   const handleDeleteSession = async () => {
-    if (confirm('Sei sicuro di voler eliminare questa sessione? Tutti i job associati verranno eliminati.')) {
+    if (confirm(t('Sei sicuro di voler eliminare questa sessione? Tutti i job associati verranno eliminati.'))) {
       try {
         await deleteSession(sessionId);
         navigate('/');
       } catch (error) {
         console.error('Errore nell\'eliminazione:', error);
-        alert('Errore nell\'eliminazione della sessione');
+        alert(t('Errore nell\'eliminazione della sessione'));
       }
     }
   };
@@ -120,7 +122,7 @@ const SessionDetail = () => {
             <div className="absolute inset-0 rounded-full border-[3px] border-slate-200"></div>
             <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-orange-500 animate-spin"></div>
           </div>
-          <p className="text-sm text-slate-500 font-medium">Caricamento...</p>
+          <p className="text-sm text-slate-500 font-medium">{t('Caricamento...')}</p>
         </div>
       </div>
     );
@@ -140,7 +142,7 @@ const SessionDetail = () => {
             className="btn btn-secondary gap-2 mb-4"
           >
             <ArrowLeft className="w-4 h-4" />
-            Torna alla Dashboard
+            {t('Torna alla Dashboard')}
           </button>
 
           <div className="flex items-start justify-between">
@@ -157,14 +159,14 @@ const SessionDetail = () => {
                 <div className="flex items-center gap-2">
                   <span className={`inline-block w-2 h-2 rounded-full ${session.is_trained ? 'bg-green-500' : 'bg-slate-300'}`}></span>
                   <span className="text-sm text-slate-600">
-                    {session.is_trained ? 'Addestrata' : 'Non addestrata'}
+                    {session.is_trained ? t('Addestrata') : t('Non addestrata')}
                   </span>
                 </div>
                 <span className="text-sm text-slate-600">
-                  {session.conversation_length} conversazioni
+                  {t('{{count}} conversazioni', { count: session.conversation_length })}
                 </span>
                 <span className="text-sm text-slate-600">
-                  {jobs.length} job
+                  {t('{{count}} job', { count: jobs.length })}
                 </span>
               </div>
             </div>
@@ -176,7 +178,7 @@ const SessionDetail = () => {
                 disabled={refreshing}
               >
                 <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                Aggiorna
+                {t('Aggiorna')}
               </button>
               {session.is_trained && (
                 <button
@@ -184,7 +186,7 @@ const SessionDetail = () => {
                   className="btn btn-primary gap-2"
                 >
                   <Sparkles className="w-4 h-4" />
-                  Genera Contenuto
+                  {t('Genera Contenuto')}
                 </button>
               )}
               <button
@@ -192,7 +194,7 @@ const SessionDetail = () => {
                 className="btn btn-secondary gap-2 text-red-600 hover:bg-red-50"
               >
                 <Trash2 className="w-4 h-4" />
-                Elimina
+                {t('Elimina')}
               </button>
             </div>
           </div>
@@ -202,14 +204,14 @@ const SessionDetail = () => {
           {/* Jobs List */}
           <div>
             <h2 className="text-xl font-semibold text-slate-900 mb-4">
-              Job della Sessione ({jobs.length})
+              {t('Job della Sessione ({{count}})', { count: jobs.length })}
             </h2>
 
             {jobs.length === 0 ? (
               <div className="card text-center py-12">
                 <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                 <p className="text-slate-600">
-                  Nessun job per questa sessione
+                  {t('Nessun job per questa sessione')}
                 </p>
               </div>
             ) : (

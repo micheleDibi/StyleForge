@@ -12,11 +12,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
 
+from token_utils import cap_output_tokens
+
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Depends, Form
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, BackgroundTasks, Depends, Form
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import Session as DBSession, defer
 from sqlalchemy import text
 
 from models import (
@@ -29,9 +31,12 @@ from models import (
     WritingStyleResponse, ContentDepthResponse,
     AudienceKnowledgeLevelResponse, AudienceSizeResponse,
     IndustryResponse, TargetAudienceResponse,
-    ThesisStatus, ChapterInfo, ThesisUrlAttachmentRequest,
+    ThesisStatus, ThesisWikiStatus, ChapterInfo, ThesisUrlAttachmentRequest,
     ThesisResearchSearchRequest, ThesisResearchSummarizeRequest,
     ThesisAddPapersRequest, ThesisAddPapersResponse,
+    WikiIngestRequest, WikiStatusResponse, WikiLintReportResponse,
+    WikiContentResponse,
+    PaperKeywordSuggestResponse,
 )
 from db_models import (
     User, Thesis, ThesisAttachment, ThesisGenerationJob,
@@ -40,15 +45,50 @@ from db_models import (
 )
 from database import SessionLocal, get_db
 from auth import get_current_active_user, require_permission
-from credits import estimate_credits, deduct_credits
+from credits import estimate_credits, deduct_credits, add_credits
 from attachment_processor import (
     process_attachment, save_uploaded_file, delete_attachment_file,
-    build_attachments_context, cleanup_thesis_attachments
+    build_attachments_context, cleanup_thesis_attachments,
+    sanitize_text_for_db,
 )
 from ai_client import get_ai_client, humanize_text_with_claude
 from ai_exceptions import InsufficientCreditsError
 from session_manager import session_manager
 from template_service import get_template_by_id, get_page_dimensions, get_export_templates
+from thesis_assets import (
+    ChartRenderError,
+    HintAsset,
+    assign_asset_numbers,
+    add_docx_chart,
+    add_docx_hint,
+    add_docx_table,
+    build_figures_index,
+    build_tables_index,
+    count_words_excluding_assets,
+    format_caption,
+    parse_segments,
+    protect_asset_blocks,
+    render_chart_png,
+    restore_asset_blocks,
+    sanitize_generated_assets,
+    add_docx_math,
+    sanitize_math_outside_assets,
+    table_to_markdown,
+    table_to_plain_lines,
+    wrap_text_to_width,
+)
+from thesis_math import (
+    MathRenderError,
+    has_inline_math,
+    inline_math_to_unicode,
+    iter_inline_math,
+    latex_to_omml,
+    latex_to_unicode,
+    protect_math_spans,
+    render_math_png,
+    restore_math_spans,
+    unprotect_math_spans,
+)
 from research_providers import UnifiedPaper
 from research_service import DEFAULT_SOURCES, PROVIDER_REGISTRY, run_search_pipeline
 from research_summarizer import (
@@ -57,7 +97,10 @@ from research_summarizer import (
     render_paper_with_summary,
     summarize_paper,
 )
+from keyword_extractor import extract_paper_keywords_from_attachments
 import config
+import ssrf_guard
+from rate_limit import FETCH_LIMIT, limiter
 
 # Mime type convenzionale per allegati di tipo "paper accademico"
 PAPER_MIME_TYPE = "application/x-research-paper"
@@ -81,6 +124,79 @@ def get_thesis_by_id(db: DBSession, thesis_id: str, user_id: str) -> Thesis:
         raise HTTPException(status_code=404, detail="Tesi non trovata")
 
     return thesis
+
+
+_RESTRICT_INSTRUCTION = """
+
+═══════════════════════════════════════════════════════════════════════════════
+VINCOLO DI FONTE (RESTRICT)
+═══════════════════════════════════════════════════════════════════════════════
+Le informazioni autorevoli per questa tesi sono SOLO quelle nella BASE DI
+CONOSCENZA (LLM WIKI) sopra. Non aggiungere fatti, dati o citazioni provenienti
+dalla tua conoscenza generale.
+- Se un dato necessario non e' presente nel wiki, scrivi "[fonte non disponibile]"
+  invece di inventarlo.
+- Le citazioni inline ([1], {{nota:...}}) devono riferirsi UNICAMENTE a fonti
+  elencate nella sezione "Fonti citate" del wiki.
+- Non inventare autori, titoli, anni, DOI, dati statistici. Se il wiki non li
+  contiene, ometti la citazione e segnala "[fonte non disponibile]".
+"""
+
+
+def _build_context_for_thesis(thesis: Thesis, db: DBSession, query_extra: str = "") -> str:
+    """
+    Costruisce il context da iniettare nei prompt (chapters/sections/content).
+
+    Se la tesi ha un wiki gia' ingerito (wiki_status in {ingested, linted}),
+    usa il retriever che pesca da wiki/temi/sintesi/concetti/fonti con TF-IDF
+    sul query (titolo + key_topics + descrizione + query_extra). Quando
+    restrict_to_sources=True appende il blocco "VINCOLO DI FONTE (RESTRICT)"
+    direttamente al context: cosi' i prompt builder esistenti non devono
+    cambiare firma.
+
+    Altrimenti, fallback al vecchio build_attachments_context (back-compat per
+    tesi pre-feature o per chi disabilita lo step Knowledge Base). In quel
+    caso il VINCOLO viene comunque appeso se restrict_to_sources=True.
+    """
+    restrict = bool(thesis.restrict_to_sources)
+    wiki_status = (thesis.wiki_status or "none").lower()
+
+    base_context: str = ""
+    if wiki_status in ("ingested", "linted"):
+        try:
+            from llm_wiki import wiki_retriever as _wr
+            query_parts = [
+                thesis.title or "",
+                " ".join(thesis.key_topics or []),
+                thesis.description or "",
+                query_extra,
+            ]
+            query = " ".join(p for p in query_parts if p)
+            result = _wr.build_context(
+                str(thesis.id),
+                query=query,
+                max_chars=config.THESIS_MAX_CONTEXT_CHARS,
+                restrict_to_sources=restrict,
+            )
+            base_context = result.context
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Wiki retriever fallito tesi %s, fallback ad attachments_context",
+                thesis.id,
+            )
+
+    if not base_context:
+        # Fallback: back-compat (tesi pre-LLM-Wiki o wiki non ancora ingerita)
+        attachments = db.query(ThesisAttachment).filter(
+            ThesisAttachment.thesis_id == thesis.id
+        ).all()
+        base_context = build_attachments_context(
+            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
+        )
+
+    if restrict:
+        return base_context + _RESTRICT_INSTRUCTION
+    return base_context
 
 
 def build_thesis_data_dict(thesis: Thesis, db: DBSession) -> dict:
@@ -130,6 +246,47 @@ def build_thesis_data_dict(thesis: Thesis, db: DBSession) -> dict:
             data["target_audience_hint"] = target.prompt_hint or ""
 
     return data
+
+
+def _build_chapters_from_custom_outline(custom_outline: dict, include_sections: bool = False) -> dict:
+    """
+    Costruisce `chapters_structure` direttamente dai dati `custom_outline` forniti
+    dall'utente, senza chiamare l'AI. Usato come short-circuit quando
+    thesis.use_custom_outline == True.
+
+    Args:
+        custom_outline: dict con chiave "chapters" -> list di {title, brief_description, sections}.
+        include_sections: se True include le sezioni in ogni capitolo (fase 2).
+                           Se False (fase 1), restituisce solo titolo+descrizione capitolo.
+
+    Returns:
+        dict {"chapters": [...]} compatibile con il formato gia' usato dal frontend.
+    """
+    chapters_out = []
+    for idx, ch in enumerate((custom_outline or {}).get("chapters", []) or [], start=1):
+        title = (ch.get("title") or "").strip()
+        brief = (ch.get("brief_description") or "").strip()
+        entry = {
+            "index": idx,
+            "chapter_index": idx,
+            "title": title,
+            "chapter_title": title,
+            "brief_description": brief,
+            "description": brief,
+        }
+        if include_sections:
+            sections_out = []
+            for sidx, sec in enumerate(ch.get("sections", []) or [], start=1):
+                sec_title = (sec.get("title") or "").strip()
+                kps = [str(kp).strip() for kp in (sec.get("key_points") or []) if str(kp).strip()]
+                sections_out.append({
+                    "index": sidx,
+                    "title": sec_title,
+                    "key_points": kps,
+                })
+            entry["sections"] = sections_out
+        chapters_out.append(entry)
+    return {"chapters": chapters_out}
 
 
 # ============================================================================
@@ -262,9 +419,8 @@ async def create_thesis(
     Crea una nuova tesi/relazione.
 
     Richiede tutti i parametri di configurazione.
-    Addebita la tariffa flat in base al tipo ente dell'utente
-    (250 ente privato, 125 ente di formazione, configurabili da admin).
-    Gli admin StyleForge non vengono addebitati.
+    Addebita la tariffa flat tesi unica (default 1000 crediti, uguale per tutti
+    gli utenti, configurabile da admin). Gli admin StyleForge non vengono addebitati.
     """
     # Verifica sessione se specificata
     session_uuid = None
@@ -276,30 +432,21 @@ async def create_thesis(
         if session:
             session_uuid = session.id
 
-    # Addebito flat in base al tipo di ente (solo per non-admin)
-    entity_type = (getattr(current_user, 'entity_type', None) or 'private').strip().lower()
-    if entity_type not in ('private', 'training'):
-        entity_type = 'private'
+    # Nessun addebito alla creazione: la tesi si paga PER STEP (Capitoli/Sezioni/
+    # Contenuto). Gli admin non pagano nulla; le tesi nuove non-admin pagano per step.
 
-    flat_charged = False
-    if not current_user.is_admin:
-        estimate = estimate_credits(
-            'thesis_total',
-            {'entity_type': entity_type},
-            db,
-        )
-        cost = int(estimate.get('credits_needed', 0) or 0)
-        if cost > 0:
-            label_ente = 'ente di formazione' if entity_type == 'training' else 'ente privato'
-            title_short = (request.title or 'Tesi senza titolo')[:80]
-            deduct_credits(
-                current_user,
-                cost,
-                'thesis_total',
-                f"Tesi flat ({label_ente}): {title_short}",
-                db,
-            )
-            flat_charged = True
+    # Indice custom (se l'utente ha scelto la modalita' "definisci tu l'indice")
+    use_custom_outline = bool(getattr(request, 'use_custom_outline', False))
+    custom_outline_dict = None
+    custom_num_chapters = request.num_chapters
+    custom_sections_per_chapter = request.sections_per_chapter
+    if use_custom_outline and request.custom_outline is not None:
+        custom_outline_dict = request.custom_outline.model_dump()
+        chapters_in = custom_outline_dict.get("chapters") or []
+        if chapters_in:
+            custom_num_chapters = len(chapters_in)
+            total_sec = sum(len(c.get("sections") or []) for c in chapters_in)
+            custom_sections_per_chapter = max(1, round(total_sec / len(chapters_in)))
 
     # Crea la tesi
     thesis = Thesis(
@@ -310,19 +457,25 @@ async def create_thesis(
         key_topics=request.key_topics,
         writing_style_id=request.writing_style_id,
         content_depth_id=request.content_depth_id,
-        num_chapters=request.num_chapters,
-        sections_per_chapter=request.sections_per_chapter,
+        num_chapters=custom_num_chapters,
+        sections_per_chapter=custom_sections_per_chapter,
         words_per_section=request.words_per_section,
         knowledge_level_id=request.knowledge_level_id,
         audience_size_id=request.audience_size_id,
         industry_id=request.industry_id,
         target_audience_id=request.target_audience_id,
-        ai_provider=request.ai_provider.value if request.ai_provider else "openai",
+        ai_provider=request.ai_provider.value if request.ai_provider else config.THESIS_AI_PROVIDER,
         citation_style=request.citation_style or "footnotes",
         status='draft',
-        # Marca come "già pagata" sia per addebito flat che per admin
-        # (così gli step successivi non riaddebitano)
-        credits_charged=(flat_charged or bool(current_user.is_admin)),
+        # True solo per admin (gratis) -> nessun addebito per step. Le tesi nuove
+        # non-admin restano False e pagano per step (Capitoli/Sezioni/Contenuto).
+        credits_charged=bool(current_user.is_admin),
+        # LLM Wiki: vincolo "solo fonti selezionate" (default ON)
+        restrict_to_sources=bool(getattr(request, 'restrict_to_sources', True)),
+        wiki_status='none',
+        # Indice custom (alternativa ai parametri numerici)
+        use_custom_outline=use_custom_outline,
+        custom_outline=custom_outline_dict,
     )
 
     db.add(thesis)
@@ -338,8 +491,14 @@ async def list_theses(
     current_user: User = Depends(get_current_active_user),
     db: DBSession = Depends(get_db)
 ):
-    """Elenca tutte le tesi dell'utente."""
-    query = db.query(Thesis).filter(Thesis.user_id == current_user.id)
+    """Elenca tutte le tesi dell'utente (payload leggero: niente corpo generato)."""
+    # Deferisce i campi pesanti: non vengono nemmeno letti dal DB per la lista.
+    query = db.query(Thesis).filter(Thesis.user_id == current_user.id).options(
+        defer(Thesis.generated_content),
+        defer(Thesis.chapters_structure),
+        defer(Thesis.custom_outline),
+        defer(Thesis.wiki_lint_report),
+    )
 
     if status:
         query = query.filter(Thesis.status == status)
@@ -347,7 +506,7 @@ async def list_theses(
     theses = query.order_by(Thesis.created_at.desc()).all()
 
     return ThesisListResponse(
-        theses=[ThesisResponse(**t.to_dict()) for t in theses],
+        theses=[ThesisResponse(**t.to_summary_dict()) for t in theses],
         total=len(theses)
     )
 
@@ -374,6 +533,13 @@ async def delete_thesis(
 
     # Elimina allegati dal filesystem
     cleanup_thesis_attachments(thesis_id)
+
+    # Elimina cartella LLM Wiki (se presente)
+    try:
+        from llm_wiki import wiki_workspace as _ww
+        _ww.cleanup(thesis_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("Errore cleanup wiki tesi %s", thesis_id)
 
     # Elimina dal database (cascade eliminerà allegati e job)
     db.delete(thesis)
@@ -500,9 +666,11 @@ async def delete_attachment(
 
 
 @router.post("/{thesis_id}/attachments/urls", response_model=ThesisAttachmentsListResponse)
+@limiter.limit(FETCH_LIMIT)
 async def add_url_attachments(
     thesis_id: str,
-    request: ThesisUrlAttachmentRequest,
+    request: Request,
+    payload: ThesisUrlAttachmentRequest,
     current_user: User = Depends(get_current_active_user),
     db: DBSession = Depends(get_db)
 ):
@@ -521,75 +689,114 @@ async def add_url_attachments(
         ThesisAttachment.thesis_id == thesis.id
     ).count()
 
-    if existing_count + len(request.urls) > config.THESIS_MAX_ATTACHMENTS:
+    if existing_count + len(payload.urls) > config.THESIS_MAX_ATTACHMENTS:
         raise HTTPException(
             status_code=400,
             detail=f"Superato il limite di {config.THESIS_MAX_ATTACHMENTS} allegati"
         )
 
+    # TUTTI gli URL si validano PRIMA di fetchare qualsiasi cosa, e uno solo
+    # rifiutato ferma l'intera richiesta.
+    #
+    # Non e' pignoleria: validare-e-fetchare in un ciclo unico lascerebbe un
+    # oracolo di scansione. Con gli errori silenziati per-URL, i tempi di
+    # risposta raccontano la rete interna (connessione rifiutata = subito,
+    # filtrata = 20s, aperta = contenuto). Rifiutando prima di ogni I/O, un URL
+    # bloccato costa sempre uguale e non dice niente.
+    validati = []
+    for url in payload.urls:
+        try:
+            validati.append(ssrf_guard.check_url_shape(url).url)
+        except ssrf_guard.SsrfBlocked as e:
+            logger.warning("URL allegato rifiutato (%s): %s", e.reason, url)
+            raise HTTPException(status_code=400, detail=f"URL non consentito: {url}")
+
     uploaded = []
 
-    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-        for url in request.urls:
+    for url in validati:
+        try:
             try:
-                response = await client.get(url, headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; StyleForge/1.0)"
-                })
-                response.raise_for_status()
-
-                soup = BeautifulSoup(response.text, 'html.parser')
-
-                # Estrai titolo
-                og_title = soup.find('meta', property='og:title')
-                title = og_title['content'] if og_title and og_title.get('content') else ''
-                if not title:
-                    title_tag = soup.find('title')
-                    title = title_tag.get_text(strip=True) if title_tag else url
-
-                # Estrai contenuto
-                content_text = ''
-                for selector in ['.entry-content', '.post-content', 'article .content', 'article', 'main']:
-                    el = soup.select_one(selector)
-                    if el:
-                        for tag in el.find_all(['script', 'style', 'nav', 'aside', 'footer']):
-                            tag.decompose()
-                        content_text = el.get_text(separator='\n', strip=True)
-                        break
-
-                if not content_text:
-                    body = soup.find('body')
-                    if body:
-                        for tag in body.find_all(['script', 'style', 'nav', 'header', 'footer', 'aside']):
-                            tag.decompose()
-                        content_text = body.get_text(separator='\n', strip=True)
-
-                if len(content_text) > 8000:
-                    content_text = content_text[:8000] + "\n[...contenuto troncato...]"
-
-                if not content_text:
-                    logger.warning(f"Nessun contenuto estratto da URL: {url}")
-                    continue
-
-                attachment = ThesisAttachment(
-                    thesis_id=thesis.id,
-                    filename=f"url_{uuid.uuid4().hex[:8]}.html",
-                    original_filename=title or url,
-                    file_path=url,
-                    file_size=len(content_text),
-                    mime_type="text/html",
-                    extracted_text=content_text
+                response = await ssrf_guard.safe_get(
+                    url,
+                    max_bytes=config.THESIS_URL_MAX_BYTES,
+                    deadline_s=config.THESIS_URL_TIMEOUT,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; StyleForge/1.0)"},
                 )
+            except ssrf_guard.SsrfBlocked as e:
+                # La forma era a posto ma la destinazione no (IP interno dietro
+                # un nome pubblico, o un redirect verso l'interno).
+                logger.warning("Destinazione bloccata dalla guard: %s", e)
+                raise HTTPException(status_code=400, detail=f"URL non consentito: {url}")
 
-                db.add(attachment)
-                db.commit()
-                db.refresh(attachment)
+            if response.status_code >= 400:
+                logger.warning("Errore HTTP per URL %s: %s", url, response.status_code)
+                continue
 
-                uploaded.append(ThesisAttachmentResponse(**attachment.to_dict()))
+            soup = BeautifulSoup(response.text, 'html.parser')
 
-            except httpx.HTTPStatusError as e:
-                logger.warning(f"Errore HTTP per URL {url}: {e.response.status_code}")
-            except Exception as e:
-                logger.warning(f"Errore recupero URL {url}: {e}")
+            # Estrai titolo
+            og_title = soup.find('meta', property='og:title')
+            title = og_title['content'] if og_title and og_title.get('content') else ''
+            if not title:
+                title_tag = soup.find('title')
+                title = title_tag.get_text(strip=True) if title_tag else url
+
+            # original_filename e' String(500): un <title> piu' lungo faceva
+            # esplodere l'insert dentro l'except generico qui sotto, e l'URL
+            # spariva senza spiegazioni.
+            title = title[:500]
+
+            # Estrai contenuto
+            content_text = ''
+            for selector in ['.entry-content', '.post-content', 'article .content', 'article', 'main']:
+                el = soup.select_one(selector)
+                if el:
+                    for tag in el.find_all(['script', 'style', 'nav', 'aside', 'footer']):
+                        tag.decompose()
+                    content_text = el.get_text(separator='\n', strip=True)
+                    break
+
+            if not content_text:
+                body = soup.find('body')
+                if body:
+                    for tag in body.find_all(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+                        tag.decompose()
+                    content_text = body.get_text(separator='\n', strip=True)
+
+            if len(content_text) > 8000:
+                content_text = content_text[:8000] + "\n[...contenuto troncato...]"
+
+            if not content_text:
+                logger.warning(f"Nessun contenuto estratto da URL: {url}")
+                continue
+
+            attachment = ThesisAttachment(
+                thesis_id=thesis.id,
+                filename=f"url_{uuid.uuid4().hex[:8]}.html",
+                original_filename=title or url[:500],
+                file_path=url,
+                file_size=len(content_text),
+                mime_type="text/html",
+                extracted_text=content_text
+            )
+
+            db.add(attachment)
+            db.commit()
+            db.refresh(attachment)
+
+            uploaded.append(ThesisAttachmentResponse(**attachment.to_dict()))
+
+        except HTTPException:
+            # Il 400 di una destinazione bloccata NON va inghiottito dall'except
+            # generico qui sotto: rifiutare in silenzio e' esattamente il modo in
+            # cui questo endpoint nascondeva la SSRF.
+            raise
+        except ssrf_guard.GuardError as e:
+            logger.warning("Fetch abortito dalla guard per %s: %s", url, e)
+        except httpx.HTTPError as e:
+            logger.warning(f"Errore HTTP per URL {url}: {e}")
+        except Exception as e:
+            logger.warning(f"Errore recupero URL {url}: {e}")
 
     if not uploaded:
         raise HTTPException(
@@ -632,9 +839,8 @@ async def thesis_research_search(
     else:
         sources = DEFAULT_SOURCES
 
-    # Per tesi pre-tariffa-flat (credits_charged=False) addebito per step (back-compat).
-    # Le tesi nuove pagano flat alla creazione e qui non vengono addebitate.
-    if not getattr(thesis, 'credits_charged', False):
+    # Ricerca paper a pagamento (gratis per admin e vecchie tesi flat).
+    if not thesis.credits_charged:
         credit_estimate = estimate_credits("research_search", {"num_sources": len(sources)}, db=db)
         deduct_credits(
             user=current_user,
@@ -683,8 +889,8 @@ async def thesis_research_summarize(
     except Exception:
         raise HTTPException(status_code=400, detail="Paper non valido")
 
-    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
-    if not getattr(thesis, 'credits_charged', False):
+    # Riassunto paper a pagamento (gratis per admin e vecchie tesi flat).
+    if not thesis.credits_charged:
         credit_estimate = estimate_credits("research_summary", {}, db=db)
         deduct_credits(
             user=current_user,
@@ -703,18 +909,96 @@ async def thesis_research_summarize(
     return summary
 
 
+@router.post("/{thesis_id}/suggest-paper-keywords", response_model=PaperKeywordSuggestResponse)
+async def suggest_paper_keywords(
+    thesis_id: str,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Suggerisce 5-8 termini di ricerca utili per cercare paper accademici,
+    estratti dai documenti gia' caricati dall'utente (allegati non-paper con
+    extracted_text). Pensato per la search bar dello step "Paper" del wizard
+    tesi, dopo che l'utente ha caricato i propri documenti nello step "Allegati".
+    """
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    eligible = [
+        a for a in db.query(ThesisAttachment).filter(
+            ThesisAttachment.thesis_id == thesis.id,
+            ThesisAttachment.mime_type != PAPER_MIME_TYPE,
+        ).all()
+        if a.extracted_text and len(a.extracted_text.strip()) >= 100
+    ]
+
+    if not eligible:
+        raise HTTPException(
+            status_code=400,
+            detail="Nessun documento testuale disponibile. Carica almeno un PDF/DOCX/TXT prima di richiedere i suggerimenti.",
+        )
+
+    # Cap: massimo 5 documenti per contenere costo e token.
+    eligible_used = eligible[:5]
+
+    # Suggerimento keyword a pagamento (gratis per admin e vecchie tesi flat).
+    credits_consumed = 0
+    if not thesis.credits_charged:
+        credit_estimate = estimate_credits(
+            "paper_keyword_suggest",
+            {"num_attachments": len(eligible_used)},
+            db=db,
+        )
+        credits_consumed = int(credit_estimate.get("credits_needed", 0))
+        deduct_credits(
+            user=current_user,
+            amount=credits_consumed,
+            operation_type="paper_keyword_suggest",
+            description=f"Suggerimento keyword paper da {len(eligible_used)} documenti",
+            db=db,
+        )
+
+    try:
+        keywords = await extract_paper_keywords_from_attachments(
+            [a.extracted_text or "" for a in eligible_used],
+            title=thesis.title,
+            topics=thesis.key_topics,
+        )
+    except InsufficientCreditsError:
+        raise
+    except Exception as e:
+        logger.exception("Errore estrazione keyword da allegati")
+        raise HTTPException(status_code=500, detail=f"Errore nell'estrazione delle keyword: {str(e)[:200]}")
+
+    return PaperKeywordSuggestResponse(
+        thesis_id=str(thesis.id),
+        keywords=keywords,
+        eligible_attachments_count=len(eligible_used),
+        credits_consumed=credits_consumed,
+    )
+
+
 @router.post("/{thesis_id}/attachments/papers", response_model=ThesisAddPapersResponse)
+@limiter.limit(FETCH_LIMIT)
 async def add_paper_attachments(
     thesis_id: str,
-    request: ThesisAddPapersRequest,
+    request: Request,
+    payload: ThesisAddPapersRequest,
     current_user: User = Depends(require_permission('thesis')),
     db: DBSession = Depends(get_db),
 ):
     """
     Salva i paper selezionati come allegati della tesi.
-    Per ogni paper privo di summary in input, genera il riassunto AI
-    server-side (consumando 'research_summary' in crediti).
-    L'extracted_text combina sempre paper completo + riassunto AI.
+
+    Dal 2026-05 (introduzione LLM Wiki): NON viene piu' generato un riassunto
+    AI per-paper qui. Il riassunto/sintesi e' compito del workflow INGEST del
+    wiki (eseguito poi via /wiki/ingest), che opera in modo cross-fonti e
+    riconcilia entita'/concetti/contraddizioni. Quindi:
+
+      - extracted_text = solo metadati + abstract (compatto, no chiamata LLM)
+      - summary fornito dal client e' ancora accettato per back-compat ma NON
+        viene piu' generato server-side; tesi gia' create con summary li usano
+        come prima (no rotture)
+      - summarized_count e credits_consumed restano per back-compat = 0
     """
     thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
 
@@ -722,25 +1006,22 @@ async def add_paper_attachments(
         ThesisAttachment.thesis_id == thesis.id
     ).count()
 
-    if existing_count + len(request.items) > config.THESIS_MAX_ATTACHMENTS:
+    if existing_count + len(payload.items) > config.THESIS_MAX_ATTACHMENTS:
         raise HTTPException(
             status_code=400,
             detail=f"Superato il limite di {config.THESIS_MAX_ATTACHMENTS} allegati",
         )
 
-    summary_cost = estimate_credits("research_summary", {}, db=db)["credits_needed"]
-    summarized_count = 0
-    credits_consumed = 0
-
     created: List[ThesisAttachmentResponse] = []
 
-    for item in request.items:
+    for item in payload.items:
         try:
             paper = UnifiedPaper(**item.paper)
         except Exception:
             raise HTTPException(status_code=400, detail="Paper non valido nel payload")
 
-        # Riusa summary fornito o generalo (a costo di crediti)
+        # Se il client ha gia' un summary (vecchio flusso), lo include per
+        # massima retro-compatibilita'. Non genera piu' niente server-side.
         summary: Optional[SummaryResult] = None
         if item.summary is not None:
             try:
@@ -748,32 +1029,30 @@ async def add_paper_attachments(
             except Exception:
                 summary = None
 
-        if summary is None:
-            # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
-            if not getattr(thesis, 'credits_charged', False):
-                # Deduce crediti PRIMA di chiamare il provider (pattern coerente col resto del codice)
-                deduct_credits(
-                    user=current_user,
-                    amount=summary_cost,
-                    operation_type="research_summary",
-                    description=f"Riassunto paper aggiunto a tesi: {paper.title[:80]}",
-                    db=db,
-                )
-            try:
-                summary = await summarize_paper(paper)
-            except Exception:
-                logger.exception("Riassunto fallito per paper '%s', salvo solo metadati", paper.title[:80])
-                summary = None  # Salvo comunque l'attachment con solo metadati
-            else:
-                summarized_count += 1
-                if not getattr(thesis, 'credits_charged', False):
-                    credits_consumed += summary_cost
-
-        extracted_text = render_paper_with_summary(paper, summary)
+        if summary is not None:
+            extracted_text = sanitize_text_for_db(render_paper_with_summary(paper, summary))
+        else:
+            # Solo metadati + abstract: il wiki-ingest ricavera' i takeaway.
+            extracted_text = sanitize_text_for_db(paper_to_attachment_text(paper))
 
         # Placeholder per file_path (la colonna è NOT NULL)
+        #
+        # full_text_url arriva dal payload del client e la pipeline wiki lo
+        # scarica dopo (paper_downloader._download_pdf): senza questo controllo
+        # e' una SSRF differita e persistente. Qui si valida la FORMA, senza
+        # rete: il DNS puo' cambiare fra ora e il download, quindi la verifica
+        # sugli IP la rifa' la guard al momento del fetch. Validare solo al
+        # fetch lascerebbe URL avvelenati in tabella; solo qui non proteggerebbe
+        # le righe gia' salvate. Servono entrambi.
         if paper.full_text_url:
-            file_path = paper.full_text_url
+            try:
+                file_path = ssrf_guard.check_url_shape(paper.full_text_url).url
+            except ssrf_guard.SsrfBlocked as e:
+                logger.warning("URL paper rifiutato: %s", e)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"URL del paper non consentito: {paper.full_text_url}",
+                )
         elif paper.doi:
             file_path = f"doi:{paper.doi}"
         else:
@@ -799,8 +1078,475 @@ async def add_paper_attachments(
     return ThesisAddPapersResponse(
         attachments=created,
         total=len(created),
-        summarized_count=summarized_count,
-        credits_consumed=credits_consumed,
+        summarized_count=0,
+        credits_consumed=0,
+    )
+
+
+# ============================================================================
+# LLM WIKI (second-brain) ENDPOINTS
+# ============================================================================
+
+def _refund_wiki_if_charged(db, thesis_id: str, user_id: str):
+    """
+    Se l'analisi documenti/paper era stata addebitata, rimborsa la quota e azzera
+    il flag (così l'ingest è ri-tentabile). Usato quando l'ingest fallisce.
+    """
+    try:
+        thesis = db.query(Thesis).get(thesis_id)
+        if not thesis or not thesis.wiki_charged:
+            return
+        user = db.query(User).get(user_id)
+        n_sources = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis_id).count()
+        cost = int(estimate_credits('wiki_ingest', {'num_sources': n_sources}, db).get('credits_needed', 0) or 0)
+        if user and cost > 0:
+            add_credits(
+                user, cost,
+                f"Rimborso analisi documenti/paper (fallita) - {(thesis.title or '')[:50]}",
+                db, transaction_type='refund',
+            )
+        thesis.wiki_charged = False
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("Rimborso analisi KB fallito tesi %s", thesis_id)
+
+
+def _wiki_ingest_task(thesis_id: str, user_id: str):
+    """Background task: scarica paper, materializza upload, lancia ingest+lint."""
+    from filelock import Timeout as _LockTimeout
+
+    from llm_wiki import (
+        paper_downloader as _pd,
+        wiki_runner as _wr,
+        wiki_workspace as _ww,
+    )
+
+    db = SessionLocal()
+    lock = None
+    try:
+        thesis = db.query(Thesis).get(thesis_id)
+        if not thesis:
+            logger.error("Wiki ingest: tesi %s non trovata", thesis_id)
+            return
+
+        # Acquisisci lock filesystem (non bloccante: se gia' in corso, esci)
+        try:
+            lock = _ww.acquire_lock(thesis_id, timeout=0)
+        except _LockTimeout:
+            logger.warning("Wiki ingest: tesi %s gia' in corso (lock attivo)", thesis_id)
+            return
+
+        # Bootstrap (idempotente) + snapshot di backup
+        _ww.bootstrap(thesis_id)
+        backup = _ww.snapshot_wiki(thesis_id)
+
+        # Progresso granulare (per la UI): scrive theses.wiki_progress su DB.
+        _started_iso = datetime.utcnow().isoformat()
+
+        def _set_progress(phase, percent, message, files=None):
+            try:
+                db.query(Thesis).filter(Thesis.id == thesis_id).update(
+                    {Thesis.wiki_progress: {
+                        "phase": phase,
+                        "percent": (int(percent) if percent is not None else None),
+                        "message": message,
+                        "files": files or [],
+                        "started_at": _started_iso,
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }},
+                    synchronize_session=False,
+                )
+                db.commit()
+            except Exception:  # noqa: BLE001
+                logger.exception("Wiki progress update fallito tesi %s", thesis_id)
+                db.rollback()
+
+        def _clear_progress():
+            try:
+                db.query(Thesis).filter(Thesis.id == thesis_id).update(
+                    {Thesis.wiki_progress: None}, synchronize_session=False)
+                db.commit()
+            except Exception:  # noqa: BLE001
+                db.rollback()
+
+        # 1. Scarica paper / fallback abstract
+        _set_progress("download", 2, "Scarico i paper selezionati…")
+        attachments = db.query(ThesisAttachment).filter(
+            ThesisAttachment.thesis_id == thesis.id
+        ).all()
+        try:
+            _pd.materialize_papers(thesis_id, attachments)
+        except Exception:  # noqa: BLE001
+            logger.exception("Wiki ingest: errore materialize_papers tesi %s", thesis_id)
+
+        # 2. Materializza upload utente
+        _set_progress("prepare", 8, "Preparo i documenti caricati…")
+        try:
+            _ww.materialize_user_uploads(thesis_id, attachments)
+        except Exception:  # noqa: BLE001
+            logger.exception("Wiki ingest: errore materialize_user_uploads tesi %s", thesis_id)
+
+        # 3. Aggiorna stato + path
+        thesis.wiki_status = "ingesting"
+        thesis.wiki_path = str(_ww.get_wiki_root(thesis_id))
+        db.commit()
+
+        # 4. INGEST con SDK Anthropic. run_ingest emette progresso 0..100 sui batch;
+        # lo rimappiamo sulla fascia 10..90 dell'avanzamento complessivo.
+        _set_progress("ingest", 10, "Indicizzo i documenti…")
+        try:
+            ingest_summary = _wr.run_ingest(
+                thesis_id,
+                on_progress=lambda pct, msg, files=None: _set_progress(
+                    "ingest", 10 + int(pct * 0.8), msg, files,
+                ),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Wiki ingest fallito tesi %s", thesis_id)
+            _clear_progress()
+            thesis = db.query(Thesis).get(thesis_id)
+            if thesis:
+                thesis.wiki_status = "failed"
+                thesis.wiki_lint_report = {"error": str(e)[:500]}
+                db.commit()
+            _refund_wiki_if_charged(db, thesis_id, user_id)
+            # Rollback al backup pre-ingest
+            if backup is not None:
+                try:
+                    _ww.restore_snapshot(thesis_id, backup)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Restore snapshot fallito tesi %s", thesis_id)
+            return
+
+        # Se nessuna pagina e' stata creata e ci sono fonti raw, l'ingest e' fallito
+        # silenziosamente (es. modello non ha usato i tool). Marca come failed.
+        if ingest_summary.sources_count > 0 and ingest_summary.pages_created == 0:
+            logger.error(
+                "Wiki ingest tesi %s: %d fonti ma 0 pagine create, tool_calls=%d, errors=%s",
+                thesis_id, ingest_summary.sources_count,
+                ingest_summary.total_tool_calls, ingest_summary.errors,
+            )
+            _clear_progress()
+            thesis = db.query(Thesis).get(thesis_id)
+            if thesis:
+                thesis.wiki_status = "failed"
+                thesis.wiki_lint_report = {
+                    "error": "Ingest completato senza scrivere pagine. Il modello non ha "
+                             "popolato il wiki. Verifica i log del backend.",
+                    "_ingest_summary": {
+                        "sources_count": ingest_summary.sources_count,
+                        "pages_created": ingest_summary.pages_created,
+                        "total_tool_calls": ingest_summary.total_tool_calls,
+                        "duration_sec": ingest_summary.duration_sec,
+                        "errors": ingest_summary.errors[:5],
+                    },
+                }
+                db.commit()
+            _refund_wiki_if_charged(db, thesis_id, user_id)
+            if backup is not None:
+                try:
+                    _ww.restore_snapshot(thesis_id, backup)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Restore snapshot fallito tesi %s", thesis_id)
+            return
+
+        thesis = db.query(Thesis).get(thesis_id)
+        if thesis:
+            thesis.wiki_status = "ingested"
+            thesis.wiki_ingested_at = datetime.utcnow()
+            db.commit()
+
+        _ww.cleanup_old_snapshots(thesis_id, keep=2)
+
+        # 5. LINT (chained). Errori lint non rendono failed l'ingest.
+        thesis = db.query(Thesis).get(thesis_id)
+        if thesis:
+            thesis.wiki_status = "linting"
+            db.commit()
+        _set_progress("lint", 90, "Controllo qualità del wiki…")
+        try:
+            # Lint + auto-fix: se il lint trova mancanze correggibili, un round di
+            # AI le sistema e poi ri-controlla, così il report finale è già pulito.
+            report, _fixed = _wr.run_lint_and_autofix(
+                thesis_id,
+                on_progress=lambda pct, msg, files=None: _set_progress("lint", pct, msg),
+            )
+            thesis = db.query(Thesis).get(thesis_id)
+            if thesis:
+                thesis.wiki_status = "linted"
+                thesis.wiki_lint_report = report
+                thesis.wiki_linted_at = datetime.utcnow()
+                db.commit()
+            _clear_progress()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Wiki lint fallito tesi %s", thesis_id)
+            _clear_progress()
+            thesis = db.query(Thesis).get(thesis_id)
+            if thesis:
+                # Resta 'ingested' (utilizzabile, il lint e' opzionale)
+                thesis.wiki_status = "ingested"
+                thesis.wiki_lint_report = {"error": str(e)[:500]}
+                db.commit()
+    finally:
+        if lock is not None:
+            try:
+                lock.release()
+            except Exception:  # noqa: BLE001
+                pass
+        db.close()
+
+
+@router.post("/{thesis_id}/wiki/ingest", response_model=WikiStatusResponse)
+async def start_wiki_ingest(
+    thesis_id: str,
+    request: WikiIngestRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Avvia ingest + lint del wiki della tesi (in background).
+
+    - 409 se gia' in corso (wiki_status in ingesting/linting).
+    - 200 con stato corrente se gia' completato e force=False.
+    - 200 + ripartenza se force=True o se wiki_status in {none, failed, ingested}.
+    """
+    from llm_wiki import wiki_workspace as _ww
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    # Stati transitori -> 409
+    if thesis.wiki_status in ("ingesting", "linting"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Wiki gia' in elaborazione (stato={thesis.wiki_status})",
+        )
+
+    # Se gia' linted e force=False, non rifare niente
+    if thesis.wiki_status == "linted" and not request.force:
+        return WikiStatusResponse(
+            thesis_id=str(thesis.id),
+            wiki_status=ThesisWikiStatus.LINTED,
+            wiki_path=thesis.wiki_path,
+            sources_count=len(_ww.list_raw_files(thesis_id)),
+            pages_count=_ww.count_wiki_pages(thesis_id),
+            wiki_ingested_at=thesis.wiki_ingested_at,
+            wiki_linted_at=thesis.wiki_linted_at,
+        )
+
+    # Addebito dell'analisi documenti/paper (Knowledge Base), una sola volta per
+    # tesi. Salta admin/vecchie tesi flat (credits_charged) e se già addebitata.
+    # Un eventuale 402 (saldo insufficiente) blocca qui senza cambiare lo stato.
+    if not thesis.credits_charged and not thesis.wiki_charged:
+        n_sources = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis.id).count()
+        wiki_estimate = estimate_credits('wiki_ingest', {'num_sources': n_sources}, db=db)
+        deduct_credits(
+            user=current_user,
+            amount=int(wiki_estimate['credits_needed']),
+            operation_type='wiki_ingest',
+            description=f"Analisi documenti/paper (Knowledge Base) - {thesis.title[:50]}",
+            db=db,
+        )
+        thesis.wiki_charged = True
+        db.commit()
+
+    # Reset stato e schedula task
+    _now_iso = datetime.utcnow().isoformat()
+    thesis.wiki_status = "ingesting"
+    thesis.wiki_lint_report = None
+    thesis.wiki_progress = {
+        "phase": "starting",
+        "percent": 0,
+        "message": "Avvio dell'indicizzazione…",
+        "files": [],
+        "started_at": _now_iso,
+        "updated_at": _now_iso,
+    }
+    db.commit()
+
+    background_tasks.add_task(_wiki_ingest_task, str(thesis.id), str(current_user.id))
+
+    return WikiStatusResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus.INGESTING,
+        wiki_path=thesis.wiki_path,
+        sources_count=0,
+        pages_count=0,
+        progress=thesis.wiki_progress,
+    )
+
+
+@router.post("/{thesis_id}/wiki/lint", response_model=WikiStatusResponse)
+async def start_wiki_lint(
+    thesis_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """Rilancia il SOLO lint (l'ingest deve essere gia' avvenuto)."""
+    from llm_wiki import wiki_workspace as _ww
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    if thesis.wiki_status not in ("ingested", "linted"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Wiki non ancora ingestita (stato={thesis.wiki_status})",
+        )
+
+    def _lint_only(tid: str):
+        from llm_wiki import wiki_runner as _wr
+        d = SessionLocal()
+        try:
+            t = d.query(Thesis).get(tid)
+            if not t:
+                return
+            t.wiki_status = "linting"
+            d.commit()
+            try:
+                report, _fixed = _wr.run_lint_and_autofix(tid)
+                t = d.query(Thesis).get(tid)
+                if t:
+                    t.wiki_status = "linted"
+                    t.wiki_lint_report = report
+                    t.wiki_linted_at = datetime.utcnow()
+                    t.wiki_progress = None
+                    d.commit()
+            except Exception as e:  # noqa: BLE001
+                logger.exception("Lint fallito")
+                t = d.query(Thesis).get(tid)
+                if t:
+                    t.wiki_status = "ingested"
+                    t.wiki_lint_report = {"error": str(e)[:500]}
+                    t.wiki_progress = None
+                    d.commit()
+        finally:
+            d.close()
+
+    _now_iso = datetime.utcnow().isoformat()
+    thesis.wiki_progress = {
+        "phase": "lint",
+        "percent": 92,
+        "message": "Controllo qualità del wiki…",
+        "files": [],
+        "started_at": _now_iso,
+        "updated_at": _now_iso,
+    }
+    db.commit()
+
+    background_tasks.add_task(_lint_only, str(thesis.id))
+
+    return WikiStatusResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus.LINTING,
+        wiki_path=thesis.wiki_path,
+        sources_count=len(_ww.list_raw_files(thesis_id)),
+        pages_count=_ww.count_wiki_pages(thesis_id),
+        progress=thesis.wiki_progress,
+    )
+
+
+@router.post("/{thesis_id}/wiki/cancel", response_model=WikiStatusResponse)
+async def cancel_wiki_ingest(
+    thesis_id: str,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Sblocca manualmente un wiki bloccato in stato ingesting/linting.
+    Forza wiki_status='failed' e rilascia il filelock se presente.
+    Utile quando il processo backend e' stato killato lasciando lo stato
+    transitorio nel DB.
+    """
+    from llm_wiki import wiki_workspace as _ww
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    # Forza failed (anche se non e' transitorio: l'admin/utente vuole sbloccare)
+    thesis.wiki_status = "failed"
+    if not thesis.wiki_lint_report:
+        thesis.wiki_lint_report = {"error": "Cancellato manualmente dall'utente"}
+    db.commit()
+
+    # Tenta di rilasciare il lock filesystem (best-effort)
+    try:
+        lock_file = _ww.get_wiki_root(thesis_id) / ".ingest.lock"
+        if lock_file.exists():
+            lock_file.unlink()
+    except Exception:  # noqa: BLE001
+        logger.exception("Impossibile rimuovere lock per tesi %s", thesis_id)
+
+    return WikiStatusResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus.FAILED,
+        wiki_path=thesis.wiki_path,
+        sources_count=len(_ww.list_raw_files(thesis_id)) if thesis.wiki_path else 0,
+        pages_count=_ww.count_wiki_pages(thesis_id) if thesis.wiki_path else 0,
+    )
+
+
+@router.get("/{thesis_id}/wiki/status", response_model=WikiStatusResponse)
+async def get_wiki_status(
+    thesis_id: str,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """Stato del wiki: per polling lato client."""
+    from llm_wiki import wiki_workspace as _ww
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    return WikiStatusResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus(thesis.wiki_status or "none"),
+        wiki_path=thesis.wiki_path,
+        sources_count=len(_ww.list_raw_files(thesis_id)) if thesis.wiki_path else 0,
+        pages_count=_ww.count_wiki_pages(thesis_id) if thesis.wiki_path else 0,
+        progress=thesis.wiki_progress,
+        wiki_ingested_at=thesis.wiki_ingested_at,
+        wiki_linted_at=thesis.wiki_linted_at,
+    )
+
+
+@router.get("/{thesis_id}/wiki/report", response_model=WikiLintReportResponse)
+async def get_wiki_report(
+    thesis_id: str,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """Restituisce il lint report del wiki (se disponibile)."""
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+
+    return WikiLintReportResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus(thesis.wiki_status or "none"),
+        report=thesis.wiki_lint_report,
+        generated_at=thesis.wiki_linted_at,
+    )
+
+
+@router.get("/{thesis_id}/wiki/content", response_model=WikiContentResponse)
+async def get_wiki_content(
+    thesis_id: str,
+    current_user: User = Depends(require_permission('thesis')),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Informazioni estratte dai documenti (vista utente): pagine del wiki
+    raggruppate per categoria (fonti/entità/concetti/temi/sintesi/domande)
+    con titolo, riassunto e tag. Sostituisce il report tecnico per l'utente.
+    """
+    from llm_wiki import wiki_workspace as _ww
+
+    thesis = get_thesis_by_id(db, thesis_id, str(current_user.id))
+    data = _ww.read_extracted_content(thesis_id) if thesis.wiki_path else {
+        "totals": {"pages": 0, "sources": 0}, "categories": [],
+    }
+    return WikiContentResponse(
+        thesis_id=str(thesis.id),
+        wiki_status=ThesisWikiStatus(thesis.wiki_status or "none"),
+        totals=data.get("totals", {}),
+        categories=data.get("categories", []),
     )
 
 
@@ -816,19 +1562,34 @@ def generate_chapters_task(thesis_id: str, user_id: str):
         if not thesis:
             return
 
+        # Short-circuit: l'utente ha fornito un indice custom.
+        # Skip della chiamata AI, popolazione diretta da custom_outline.
+        if getattr(thesis, 'use_custom_outline', False) and thesis.custom_outline:
+            logger.info(f"[custom_outline] generate_chapters_task: skip AI, popolo da custom_outline (tesi {thesis_id})")
+            result = _build_chapters_from_custom_outline(thesis.custom_outline, include_sections=False)
+            thesis.chapters_structure = result
+            thesis.status = 'chapters_pending'
+            thesis.current_phase = 1
+            thesis.num_chapters = len(result.get("chapters", []))
+            job = db.query(ThesisGenerationJob).filter(
+                ThesisGenerationJob.thesis_id == thesis.id,
+                ThesisGenerationJob.phase == 'chapters'
+            ).order_by(ThesisGenerationJob.created_at.desc()).first()
+            if job:
+                job.status = 'completed'
+                job.result = json.dumps(result)
+                job.completed_at = datetime.utcnow()
+            db.commit()
+            return
+
         # Costruisci i dati per il prompt
         thesis_data = build_thesis_data_dict(thesis, db)
 
-        # Costruisci contesto allegati
-        attachments = db.query(ThesisAttachment).filter(
-            ThesisAttachment.thesis_id == thesis.id
-        ).all()
-        attachments_context = build_attachments_context(
-            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
-        )
+        # Costruisci contesto: Wiki retriever se disponibile, altrimenti fallback
+        attachments_context = _build_context_for_thesis(thesis, db)
 
         # Genera capitoli con il provider AI selezionato
-        provider = thesis.ai_provider or "openai"
+        provider = thesis.ai_provider or config.THESIS_AI_PROVIDER
         client = get_ai_client(provider)
         logger.info(f"Generazione capitoli con provider: {provider}")
         result = client.generate_chapters(thesis_data, attachments_context)
@@ -909,36 +1670,59 @@ async def generate_chapters(
             detail=f"Impossibile generare capitoli: stato attuale '{thesis.status}'"
         )
 
-    # Calcola caratteri allegati per crediti
+    # Short-circuit: indice custom fornito dall'utente.
+    # Nessuna chiamata AI, nessun debit di crediti aggiuntivi.
+    if getattr(thesis, 'use_custom_outline', False) and thesis.custom_outline:
+        try:
+            result = _build_chapters_from_custom_outline(thesis.custom_outline, include_sections=False)
+            thesis.chapters_structure = result
+            thesis.status = 'chapters_pending'
+            thesis.current_phase = 1
+            thesis.num_chapters = len(result.get("chapters", []))
+            db.commit()
+            return {
+                "thesis_id": str(thesis.id),
+                "status": "chapters_pending",
+                "chapters": result.get("chapters", []),
+                "message": "Capitoli caricati dall'indice personalizzato. Puoi modificarli prima di confermare.",
+                "from_custom_outline": True,
+            }
+        except Exception as e:
+            thesis.status = 'failed'
+            db.commit()
+            raise HTTPException(status_code=500, detail=f"Errore nel caricamento dell'indice personalizzato: {str(e)}")
+
+    # Caratteri allegati per lo scaling del costo capitoli.
     ch_attachments = db.query(ThesisAttachment).filter(ThesisAttachment.thesis_id == thesis.id).all()
     ch_attachment_chars = sum(len(a.extracted_text or '') for a in ch_attachments)
 
-    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
-    # Le tesi nuove sono già pagate flat alla creazione (credits_charged=True).
-    if not getattr(thesis, 'credits_charged', False):
+    # Addebito PER STEP (quota fissa + scaling). Salta se "tutto pagato" (admin /
+    # vecchie flat) o se la fase è già stata addebitata (idempotenza su retry).
+    charged_chapters_now = False
+    chapters_cost = 0
+    if not thesis.credits_charged and not thesis.chapters_charged:
         credit_estimate = estimate_credits('thesis_chapters', {'attachment_chars': ch_attachment_chars}, db=db)
+        chapters_cost = int(credit_estimate['credits_needed'])
         deduct_credits(
             user=current_user,
-            amount=credit_estimate['credits_needed'],
+            amount=chapters_cost,
             operation_type='thesis_chapters',
             description=f"Generazione struttura capitoli - {thesis.title[:50]}",
-            db=db
+            db=db,
         )
+        thesis.chapters_charged = True
+        charged_chapters_now = True
+        db.commit()
 
     try:
         # Costruisci i dati per il prompt
         thesis_data = build_thesis_data_dict(thesis, db)
 
-        # Costruisci contesto allegati
-        attachments = db.query(ThesisAttachment).filter(
-            ThesisAttachment.thesis_id == thesis.id
-        ).all()
-        attachments_context = build_attachments_context(
-            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
-        )
+        # Costruisci contesto: Wiki retriever se disponibile, altrimenti fallback
+        attachments_context = _build_context_for_thesis(thesis, db)
 
         # Genera capitoli con il provider AI selezionato (sincrono)
-        provider = thesis.ai_provider or "openai"
+        provider = thesis.ai_provider or config.THESIS_AI_PROVIDER
         client = get_ai_client(provider)
         logger.info(f"Generazione capitoli (sincrono) con provider: {provider}")
         result = client.generate_chapters(thesis_data, attachments_context)
@@ -959,6 +1743,9 @@ async def generate_chapters(
         }
 
     except InsufficientCreditsError as e:
+        if charged_chapters_now:
+            add_credits(current_user, chapters_cost, f"Rimborso generazione capitoli (fallita) - {thesis.title[:50]}", db, transaction_type='refund')
+            thesis.chapters_charged = False
         thesis.status = 'failed'
         db.commit()
         raise HTTPException(
@@ -966,6 +1753,9 @@ async def generate_chapters(
             detail=e.user_message
         )
     except Exception as e:
+        if charged_chapters_now:
+            add_credits(current_user, chapters_cost, f"Rimborso generazione capitoli (fallita) - {thesis.title[:50]}", db, transaction_type='refund')
+            thesis.chapters_charged = False
         thesis.status = 'failed'
         db.commit()
         raise HTTPException(
@@ -1055,20 +1845,42 @@ def generate_sections_task(thesis_id: str, user_id: str):
         if not thesis:
             return
 
+        # Short-circuit: indice custom -> sezioni gia' definite dall'utente.
+        if getattr(thesis, 'use_custom_outline', False) and thesis.custom_outline:
+            logger.info(f"[custom_outline] generate_sections_task: skip AI, popolo sezioni da custom_outline (tesi {thesis_id})")
+            result = _build_chapters_from_custom_outline(thesis.custom_outline, include_sections=True)
+            thesis.chapters_structure = result
+            thesis.status = 'sections_pending'
+            thesis.current_phase = 2
+            chapters_out = result.get("chapters", [])
+            if chapters_out:
+                total_sec = sum(len(c.get("sections") or []) for c in chapters_out)
+                avg_sec = max(1, round(total_sec / len(chapters_out)))
+                thesis.sections_per_chapter = avg_sec
+            job = db.query(ThesisGenerationJob).filter(
+                ThesisGenerationJob.thesis_id == thesis.id,
+                ThesisGenerationJob.phase == 'sections'
+            ).order_by(ThesisGenerationJob.created_at.desc()).first()
+            if job:
+                job.status = 'completed'
+                job.result = json.dumps(result)
+                job.completed_at = datetime.utcnow()
+            db.commit()
+            return
+
         # Costruisci dati
         thesis_data = build_thesis_data_dict(thesis, db)
         chapters = thesis.chapters_structure.get("chapters", [])
 
-        # Costruisci contesto allegati
-        attachments = db.query(ThesisAttachment).filter(
-            ThesisAttachment.thesis_id == thesis.id
-        ).all()
-        attachments_context = build_attachments_context(
-            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
+        # Costruisci contesto: Wiki retriever (query include titoli capitoli) se
+        # disponibile, altrimenti fallback ai vecchi extracted_text
+        chapter_titles_q = " ".join(
+            c.get("chapter_title") or c.get("title") or "" for c in chapters
         )
+        attachments_context = _build_context_for_thesis(thesis, db, query_extra=chapter_titles_q)
 
         # Genera sezioni con il provider AI selezionato
-        provider = thesis.ai_provider or "openai"
+        provider = thesis.ai_provider or config.THESIS_AI_PROVIDER
         client = get_ai_client(provider)
         logger.info(f"Generazione sezioni con provider: {provider}")
         result = client.generate_sections(thesis_data, chapters, attachments_context)
@@ -1146,33 +1958,61 @@ async def generate_sections(
             detail=f"Devi prima confermare i capitoli. Stato attuale: '{thesis.status}'"
         )
 
-    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
-    # Le tesi nuove sono già pagate flat alla creazione (credits_charged=True).
-    if not getattr(thesis, 'credits_charged', False):
-        credit_estimate = estimate_credits('thesis_sections', {}, db=db)
+    # Short-circuit: indice custom -> bypass AI e debit crediti
+    if getattr(thesis, 'use_custom_outline', False) and thesis.custom_outline:
+        try:
+            result = _build_chapters_from_custom_outline(thesis.custom_outline, include_sections=True)
+            thesis.chapters_structure = result
+            thesis.status = 'sections_pending'
+            thesis.current_phase = 2
+            chapters_out = result.get("chapters", [])
+            if chapters_out:
+                total_sec = sum(len(c.get("sections") or []) for c in chapters_out)
+                avg_sec = max(1, round(total_sec / len(chapters_out)))
+                thesis.sections_per_chapter = avg_sec
+            db.commit()
+            return {
+                "thesis_id": str(thesis.id),
+                "status": "sections_pending",
+                "chapters": chapters_out,
+                "message": "Sezioni caricate dall'indice personalizzato. Puoi modificarle prima di confermare.",
+                "from_custom_outline": True,
+            }
+        except Exception as e:
+            thesis.status = 'failed'
+            db.commit()
+            raise HTTPException(status_code=500, detail=f"Errore nel caricamento delle sezioni custom: {str(e)}")
+
+    # Addebito PER STEP (quota fissa), idempotente per fase.
+    charged_sections_now = False
+    sections_cost = 0
+    if not thesis.credits_charged and not thesis.sections_charged:
+        credit_estimate = estimate_credits('thesis_sections', {'num_chapters': thesis.num_chapters}, db=db)
+        sections_cost = int(credit_estimate['credits_needed'])
         deduct_credits(
             user=current_user,
-            amount=credit_estimate['credits_needed'],
+            amount=sections_cost,
             operation_type='thesis_sections',
             description=f"Generazione struttura sezioni - {thesis.title[:50]}",
-            db=db
+            db=db,
         )
+        thesis.sections_charged = True
+        charged_sections_now = True
+        db.commit()
 
     try:
         # Costruisci dati
         thesis_data = build_thesis_data_dict(thesis, db)
         chapters = thesis.chapters_structure.get("chapters", [])
 
-        # Costruisci contesto allegati
-        attachments = db.query(ThesisAttachment).filter(
-            ThesisAttachment.thesis_id == thesis.id
-        ).all()
-        attachments_context = build_attachments_context(
-            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
+        # Costruisci contesto: Wiki retriever con query mirata ai capitoli
+        chapter_titles_q = " ".join(
+            c.get("chapter_title") or c.get("title") or "" for c in chapters
         )
+        attachments_context = _build_context_for_thesis(thesis, db, query_extra=chapter_titles_q)
 
         # Genera sezioni con il provider AI selezionato (sincrono)
-        provider = thesis.ai_provider or "openai"
+        provider = thesis.ai_provider or config.THESIS_AI_PROVIDER
         client = get_ai_client(provider)
         logger.info(f"Generazione sezioni (sincrono) con provider: {provider}")
         result = client.generate_sections(thesis_data, chapters, attachments_context)
@@ -1193,6 +2033,9 @@ async def generate_sections(
         }
 
     except InsufficientCreditsError as e:
+        if charged_sections_now:
+            add_credits(current_user, sections_cost, f"Rimborso generazione sezioni (fallita) - {thesis.title[:50]}", db, transaction_type='refund')
+            thesis.sections_charged = False
         thesis.status = 'failed'
         db.commit()
         raise HTTPException(
@@ -1200,6 +2043,9 @@ async def generate_sections(
             detail=e.user_message
         )
     except Exception as e:
+        if charged_sections_now:
+            add_credits(current_user, sections_cost, f"Rimborso generazione sezioni (fallita) - {thesis.title[:50]}", db, transaction_type='refund')
+            thesis.sections_charged = False
         thesis.status = 'failed'
         db.commit()
         raise HTTPException(
@@ -1256,13 +2102,17 @@ def _humanize_content(content: str, trained_session_client, section_name: str = 
         client = trained_session_client
         word_count = len(content.split())
         estimated_tokens = int(word_count * 2.5) + 2000
-        dynamic_max_tokens = max(estimated_tokens, 8192)
+        dynamic_max_tokens = cap_output_tokens(max(estimated_tokens, 8192))
 
         style_prompt = f"""Riscrivi il seguente testo accademico applicando lo stile di scrittura
 che hai appreso durante l'addestramento. Mantieni il registro formale e accademico.
 NON aggiungere incisi informali, trattini, parentetiche colloquiali o espressioni come
 "almeno", "diciamo", "va detto", "cioè". Il testo deve restare professionale.
 Mantieni INTATTE tutte le citazioni e i riferimenti bibliografici.
+Se compaiono token ZZASSETnZZ o ZZMATHnZZ (segnaposto di tabelle/figure/formule),
+mantienili INTATTI: quelli su riga isolata restano su riga isolata, quelli in
+mezzo a una frase restano ESATTAMENTE nella stessa posizione sintattica della
+frase; non rimuoverli, non duplicarli, non spostarli in fondo.
 Output SOLO il testo riscritto.
 
 ---
@@ -1293,6 +2143,43 @@ Output SOLO il testo riscritto.
         return content
 
 
+def _apply_anti_ai(content: str, label: str = "Sezione", target_words: int = 0,
+                   seed: Optional[int] = None) -> str:
+    """
+    Applica gli stage anti-rilevamento AI al contenuto di una tesi:
+      0) PARAFRASI CONTROLLATA ricorsiva (DIPPER-style): max diversità lessicale +
+         riordino, applicata 2x (leva principale). Flag THESIS_PARAPHRASE_ENABLED.
+      1) (legacy/opzionale) riscrittura de-AI accademica via LLM. THESIS_REWRITE_ENABLED.
+      2) pass algoritmico register-safe (anti_ai_processor, profilo 'academic').
+
+    La parafrasi e la riscrittura preservano citazioni [x], note {{nota}}, registro
+    e lunghezza (floor interno al 90%). NON va usato sulla bibliografia (lista formale).
+    """
+    import config
+    from anti_ai_pipeline import apply_anti_ai_pipeline
+
+    if not getattr(config, 'THESIS_ANTI_AI_ENABLED', True):
+        return content
+    if not content or not content.strip():
+        return content
+
+    # Delega alla pipeline anti-AI condivisa con i flag specifici della Tesi
+    # (comportamento invariato: profilo 'academic', stessi default THESIS_*).
+    return apply_anti_ai_pipeline(
+        content,
+        profile=getattr(config, 'THESIS_ANTI_AI_PROFILE', 'academic'),
+        target_words=target_words,
+        seed=seed,
+        paraphrase_enabled=getattr(config, 'THESIS_PARAPHRASE_ENABLED', True),
+        paraphrase_rounds=getattr(config, 'THESIS_PARAPHRASE_ROUNDS', 2),
+        paraphrase_model=getattr(config, 'THESIS_PARAPHRASE_MODEL', None),
+        rewrite_enabled=getattr(config, 'THESIS_REWRITE_ENABLED', False),
+        rewrite_model=getattr(config, 'THESIS_REWRITE_MODEL', None),
+        algo_enabled=getattr(config, 'THESIS_ALGO_ENABLED', True),
+        label=label,
+    )
+
+
 def _ensure_word_count(client, content: str, target_words: int, context_info: str, max_tokens: int) -> str:
     """
     Verifica che il contenuto raggiunga il target di parole.
@@ -1300,7 +2187,8 @@ def _ensure_word_count(client, content: str, target_words: int, context_info: st
     Effettua al massimo 2 tentativi di continuazione.
     """
     for attempt in range(2):
-        current_words = len(content.split())
+        # le tabelle/grafici/HINT non contano come prosa: il target è sul testo
+        current_words = count_words_excluding_assets(content)
         if current_words >= target_words * 0.70:
             return content
 
@@ -1320,6 +2208,10 @@ REGOLE:
 - NON scrivere "in conclusione" o "per riassumere" — stai CONTINUANDO, non chiudendo
 - Mantieni lo stesso stile e tono del testo esistente
 - Se il testo contiene citazioni [x], mantienile e puoi aggiungerne di nuove (solo fonti REALI)
+- Se il testo contiene blocchi [TABELLA]/[GRAFICO] o righe HINT, NON riprodurli
+  né aggiungerne di nuovi nella continuazione: scrivi solo prosa
+- Se il testo contiene formule tra $...$ o $$...$$, NON riprodurle nella
+  continuazione; nuove formule solo se davvero necessarie al discorso
 
 TESTO ESISTENTE DA CONTINUARE:
 
@@ -1338,6 +2230,77 @@ SCRIVI la continuazione (almeno {missing_words} parole):"""
     return content
 
 
+def _refund_content_if_charged(db, thesis_id: str, user_id: str):
+    """
+    Se il contenuto era stato addebitato, rimborsa la quota e azzera il flag
+    (così la generazione contenuto è ri-tentabile). Usato quando il task fallisce.
+    """
+    try:
+        thesis = db.query(Thesis).get(thesis_id)
+        if not thesis or not thesis.content_charged:
+            return
+        user = db.query(User).get(user_id)
+        cost = int(estimate_credits('thesis_content', {
+            'num_chapters': thesis.num_chapters,
+            'sections_per_chapter': thesis.sections_per_chapter,
+            'words_per_section': thesis.words_per_section,
+        }, db).get('credits_needed', 0) or 0)
+        if user and cost > 0:
+            add_credits(
+                user, cost,
+                f"Rimborso generazione contenuto (fallita) - {(thesis.title or '')[:50]}",
+                db, transaction_type='refund',
+            )
+        thesis.content_charged = False
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("Rimborso contenuto fallito tesi %s", thesis_id)
+
+
+def _extract_human_style_examples(thesis, db, max_examples: int = 2, words_each: int = 160) -> str:
+    """
+    Estrae 1-2 brani brevi di prosa UMANA dalle fonti della tesi (allegati con
+    extracted_text o file raw/ del wiki) come ancora di stile (few-shot) nel prompt.
+    Ritorna stringa vuota se non ci sono fonti testuali sufficienti.
+    """
+    texts = []
+    try:
+        atts = db.query(ThesisAttachment).filter(
+            ThesisAttachment.thesis_id == thesis.id,
+            ThesisAttachment.extracted_text.isnot(None),
+        ).all()
+        texts = [a.extracted_text.strip() for a in atts
+                 if a.extracted_text and len(a.extracted_text.split()) >= 80]
+    except Exception:  # noqa: BLE001
+        logger.exception("Esempi stile umano: errore lettura allegati tesi %s", thesis.id)
+
+    if not texts and getattr(thesis, 'wiki_path', None):
+        try:
+            from llm_wiki import wiki_workspace as _ww
+            for p in _ww.list_raw_files(str(thesis.id))[:3]:
+                try:
+                    t = p.read_text(encoding="utf-8", errors="replace").strip()
+                    if len(t.split()) >= 80:
+                        texts.append(t)
+                except OSError:
+                    continue
+        except Exception:  # noqa: BLE001
+            logger.exception("Esempi stile umano: errore lettura raw wiki tesi %s", thesis.id)
+
+    if not texts:
+        return ""
+
+    examples = []
+    for t in texts[:max_examples]:
+        words = t.split()
+        # Brano "centrale" (evita header/abstract iniziali)
+        start = min(len(words) // 4, max(0, len(words) - words_each))
+        snippet = " ".join(words[start:start + words_each]).strip()
+        if snippet:
+            examples.append(f"--- Esempio ---\n{snippet}")
+    return "\n\n".join(examples)
+
+
 def generate_content_task(thesis_id: str, user_id: str):
     """Task background per generare il contenuto completo."""
     db = SessionLocal()
@@ -1349,13 +2312,11 @@ def generate_content_task(thesis_id: str, user_id: str):
         thesis_data = build_thesis_data_dict(thesis, db)
         chapters = thesis.chapters_structure.get("chapters", [])
 
-        # Costruisci contesto allegati
-        attachments = db.query(ThesisAttachment).filter(
-            ThesisAttachment.thesis_id == thesis.id
-        ).all()
-        attachments_context = build_attachments_context(
-            [a.to_dict() | {"extracted_text": a.extracted_text} for a in attachments]
-        )
+        # Costruisci contesto: Wiki retriever se disponibile, altrimenti fallback
+        attachments_context = _build_context_for_thesis(thesis, db)
+
+        # Few-shot di prosa umana (dalle fonti) per un draft meno rilevabile come AI.
+        human_examples = _extract_human_style_examples(thesis, db)
 
         # Verifica se c'è una sessione addestrata per umanizzazione avanzata
         trained_session_client = None
@@ -1378,7 +2339,7 @@ def generate_content_task(thesis_id: str, user_id: str):
                     trained_session_client = None
 
         # Usa il provider AI selezionato per la generazione contenuto
-        provider = thesis.ai_provider or "openai"
+        provider = thesis.ai_provider or config.THESIS_AI_PROVIDER
         client = get_ai_client(provider)
         logger.info(f"Generazione contenuto con provider: {provider}")
 
@@ -1395,7 +2356,7 @@ def generate_content_task(thesis_id: str, user_id: str):
 
         # Calcola max_tokens dinamico per le generazioni
         words_per_section = thesis_data.get('words_per_section', 5000)
-        dynamic_max_tokens = max(int(words_per_section * 2.5) + 2000, 16000)
+        dynamic_max_tokens = cap_output_tokens(max(int(words_per_section * 2.5) + 2000, 16000))
 
         # Raccoglie titoli dei capitoli per i prompt di intro/conclusione
         chapters_titles = [
@@ -1418,8 +2379,15 @@ def generate_content_task(thesis_id: str, user_id: str):
                     section=section,
                     previous_sections_summary=previous_summary,
                     attachments_context=attachments_context,
-                    author_style_context=author_style_context
+                    author_style_context=author_style_context,
+                    human_style_examples=human_examples
                 )
+
+                # Normalizza gli asset generati (tabelle pareggiate, grafici con
+                # JSON rotto degradati a HINT, marcatori orfani rimossi) e la
+                # matematica (\(..\)/\[..\] → $/$$, display su riga isolata)
+                raw_content = sanitize_generated_assets(raw_content)
+                raw_content = sanitize_math_outside_assets(raw_content)
 
                 # Verifica word count e richiedi continuazione se troppo corto
                 section_label = f"Cap. {chapter.get('chapter_index', '?')} - {section.get('title', 'Sezione')}"
@@ -1427,12 +2395,26 @@ def generate_content_task(thesis_id: str, user_id: str):
                     client, raw_content, words_per_section,
                     section_label, dynamic_max_tokens
                 )
+                raw_content = sanitize_generated_assets(raw_content)
+                raw_content = sanitize_math_outside_assets(raw_content)
 
                 # Salva contenuto raw per la bibliografia (con citazioni [x] intatte)
                 raw_chapter_content += f"\n{raw_content}\n"
 
-                # Applica umanizzazione
-                content = _humanize_content(raw_content, trained_session_client, section.get('title', 'Sezione'))
+                # Proteggi tabelle/grafici/HINT e formule con sentinelle: le
+                # riscritture LLM (stile autore + anti-AI) non devono toccarli.
+                # Prima gli asset (la matematica nelle celle è già sequestrata),
+                # poi le formule del testo.
+                protected_content, section_asset_map = protect_asset_blocks(raw_content)
+                protected_content, section_math_map = protect_math_spans(protected_content)
+
+                # Applica umanizzazione (stile autore, solo se sessione addestrata)
+                content = _humanize_content(protected_content, trained_session_client, section.get('title', 'Sezione'))
+                # Anti-AI come ultimo layer: riscrittura de-AI accademica + pass algoritmico
+                content = _apply_anti_ai(content, section_label, target_words=words_per_section)
+                # Ripristina formule e asset al posto delle sentinelle (mai persi)
+                content = restore_math_spans(content, section_math_map)
+                content = restore_asset_blocks(content, section_asset_map)
 
                 section_text = f"\n## {section.get('title', 'Sezione')}\n\n{content}\n"
                 chapter_content += section_text
@@ -1446,7 +2428,7 @@ def generate_content_task(thesis_id: str, user_id: str):
                 # Aggiorna progress
                 progress = int((completed_sections / total_sections) * 100)
                 thesis.generation_progress = progress
-                thesis.total_words_generated += len(content.split())
+                thesis.total_words_generated += count_words_excluding_assets(content)
                 db.commit()
 
             generated_chapters_content.append(chapter_content)
@@ -1463,15 +2445,24 @@ def generate_content_task(thesis_id: str, user_id: str):
             author_style_context=author_style_context
         )
         intro_content = client.generate_text(intro_prompt, max_tokens=dynamic_max_tokens)
+        intro_content = sanitize_generated_assets(intro_content)
+        intro_content = sanitize_math_outside_assets(intro_content)
         intro_content = _ensure_word_count(
             client, intro_content, words_per_section, "Introduzione", dynamic_max_tokens
         )
-        intro_content = _humanize_content(intro_content, trained_session_client, "Introduzione")
+        # Protezione difensiva: l'introduzione non dovrebbe contenere asset,
+        # ma se il modello ne emette non devono essere mangiati dalle riscritture
+        protected_intro, intro_asset_map = protect_asset_blocks(intro_content)
+        protected_intro, intro_math_map = protect_math_spans(protected_intro)
+        intro_content = _humanize_content(protected_intro, trained_session_client, "Introduzione")
+        intro_content = _apply_anti_ai(intro_content, "Introduzione", target_words=words_per_section)
+        intro_content = restore_math_spans(intro_content, intro_math_map)
+        intro_content = restore_asset_blocks(intro_content, intro_asset_map)
 
         completed_sections += 1
         progress = int((completed_sections / total_sections) * 100)
         thesis.generation_progress = progress
-        thesis.total_words_generated += len(intro_content.split())
+        thesis.total_words_generated += count_words_excluding_assets(intro_content)
         db.commit()
 
         # ===================================================================
@@ -1487,15 +2478,22 @@ def generate_content_task(thesis_id: str, user_id: str):
             author_style_context=author_style_context
         )
         conclusion_content = client.generate_text(conclusion_prompt, max_tokens=dynamic_max_tokens)
+        conclusion_content = sanitize_generated_assets(conclusion_content)
+        conclusion_content = sanitize_math_outside_assets(conclusion_content)
         conclusion_content = _ensure_word_count(
             client, conclusion_content, words_per_section, "Conclusione", dynamic_max_tokens
         )
-        conclusion_content = _humanize_content(conclusion_content, trained_session_client, "Conclusione")
+        protected_conclusion, conclusion_asset_map = protect_asset_blocks(conclusion_content)
+        protected_conclusion, conclusion_math_map = protect_math_spans(protected_conclusion)
+        conclusion_content = _humanize_content(protected_conclusion, trained_session_client, "Conclusione")
+        conclusion_content = _apply_anti_ai(conclusion_content, "Conclusione", target_words=words_per_section)
+        conclusion_content = restore_math_spans(conclusion_content, conclusion_math_map)
+        conclusion_content = restore_asset_blocks(conclusion_content, conclusion_asset_map)
 
         completed_sections += 1
         progress = int((completed_sections / total_sections) * 100)
         thesis.generation_progress = progress
-        thesis.total_words_generated += len(conclusion_content.split())
+        thesis.total_words_generated += count_words_excluding_assets(conclusion_content)
         db.commit()
 
         # ===================================================================
@@ -1503,14 +2501,18 @@ def generate_content_task(thesis_id: str, user_id: str):
         # ===================================================================
         logger.info("Generazione Bibliografia...")
         # Usa il contenuto RAW (pre-umanizzazione) per trovare le citazioni [x]
-        # perché l'umanizzazione potrebbe averle alterate
-        all_raw_text = "\n".join(raw_chapters_content)
+        # perché l'umanizzazione potrebbe averle alterate.
+        # I blocchi asset e le formule vengono esclusi: i JSON dei grafici e i
+        # pedici LaTeX contengono [numeri] che falserebbero la regex citazioni.
+        all_raw_text, _ = protect_asset_blocks("\n".join(raw_chapters_content))
+        all_raw_text, _ = protect_math_spans(all_raw_text)
         # Fallback: se il raw non ha citazioni, prova anche con il contenuto umanizzato
         import re as _re
         raw_citations = _re.findall(r'\[\d+\]', all_raw_text)
         if not raw_citations:
             # Prova con il contenuto umanizzato (l'anti-AI ora preserva le citazioni)
-            all_raw_text = "\n".join(generated_chapters_content)
+            all_raw_text, _ = protect_asset_blocks("\n".join(generated_chapters_content))
+            all_raw_text, _ = protect_math_spans(all_raw_text)
         bibliography_prompt = build_bibliography_prompt(
             thesis_data=thesis_data,
             all_content=all_raw_text
@@ -1638,6 +2640,7 @@ def generate_content_task(thesis_id: str, user_id: str):
         if thesis:
             thesis.status = 'failed'
             db.commit()
+        _refund_content_if_charged(db, thesis_id, user_id)
 
     except Exception as e:
         job = db.query(ThesisGenerationJob).filter(
@@ -1654,6 +2657,7 @@ def generate_content_task(thesis_id: str, user_id: str):
         if thesis:
             thesis.status = 'failed'
             db.commit()
+        _refund_content_if_charged(db, thesis_id, user_id)
 
     finally:
         db.close()
@@ -1682,21 +2686,22 @@ async def start_content_generation(
     chapters = thesis.chapters_structure.get("chapters", [])
     total_sections = sum(len(c.get("sections", [])) for c in chapters)
 
-    # Pay-per-step solo per tesi pre-tariffa-flat (back-compat).
-    # Le tesi nuove sono già pagate flat alla creazione (credits_charged=True).
-    if not getattr(thesis, 'credits_charged', False):
+    # Addebito PER STEP (quota fissa), idempotente per fase. Il rimborso in caso di
+    # fallimento avviene nel task generate_content_task (vedi gestione 'failed').
+    if not thesis.credits_charged and not thesis.content_charged:
         credit_estimate = estimate_credits('thesis_content', {
             'num_chapters': thesis.num_chapters,
             'sections_per_chapter': thesis.sections_per_chapter,
-            'words_per_section': thesis.words_per_section
+            'words_per_section': thesis.words_per_section,
         }, db=db)
         deduct_credits(
             user=current_user,
-            amount=credit_estimate['credits_needed'],
+            amount=int(credit_estimate['credits_needed']),
             operation_type='thesis_content',
-            description=f"Generazione contenuto tesi - {thesis.title[:50]} ({thesis.num_chapters} cap, {thesis.sections_per_chapter} sez/cap)",
-            db=db
+            description=f"Generazione contenuto tesi - {thesis.title[:50]}",
+            db=db,
         )
+        thesis.content_charged = True
 
     # Aggiorna stato
     thesis.status = 'generating'
@@ -1856,19 +2861,23 @@ def strip_footnotes_for_plain(content: str, start_num: int = 1) -> tuple:
     """
     Per export TXT/MD: sostituisce {{nota:...}} con numeri e raccoglie le note.
     Ritorna (testo_processato, lista_note, next_num).
+
+    Le formule vengono protette prima del match: le graffe }} del LaTeX
+    (es. \\sqrt{\\frac{a}{b}}) non devono chiudere prematuramente la {{nota:}}.
     """
     notes = []
     num = start_num
+    protected, math_map = protect_math_spans(content)
 
     def replacer(m):
         nonlocal num
-        note_text = m.group(1).strip()
+        note_text = unprotect_math_spans(m.group(1).strip(), math_map)
         notes.append((num, note_text))
         result = f"[{num}]"
         num += 1
         return result
 
-    processed = _FOOTNOTE_PATTERN.sub(replacer, content)
+    processed = unprotect_math_spans(_FOOTNOTE_PATTERN.sub(replacer, protected), math_map)
     return processed, notes, num
 
 
@@ -1983,19 +2992,62 @@ async def export_thesis(
     # Genera l'indice
     toc = generate_table_of_contents(thesis.chapters_structure, format)
 
+    # Segmenta il contenuto (testo / tabelle / grafici / HINT) e numera gli
+    # asset per capitolo; i contenuti senza marcatori restano un solo segmento
+    # di testo e tutti i percorsi si comportano come prima.
+    segments = parse_segments(content)
+    assign_asset_numbers(segments, thesis.chapters_structure or {})
+    tables_index = build_tables_index(segments)
+    figures_index = build_figures_index(segments)
+
     if format == "txt":
         # Export TXT con indice e note a piè di pagina come endnotes
         has_footnotes = cit_style == 'footnotes'
-        processed_content, all_notes, _ = strip_footnotes_for_plain(content) if has_footnotes else (content, [], 1)
-        # In plain text gli asterischi del corsivo Markdown non hanno senso → rimuovi
-        processed_content = strip_italic_markers(processed_content)
+        all_notes = []
+        next_note_num = 1
+        parts = []
+        for seg in segments:
+            if seg.kind == 'text':
+                seg_text = seg.text
+                if has_footnotes:
+                    seg_text, seg_notes, next_note_num = strip_footnotes_for_plain(seg_text, next_note_num)
+                    all_notes.extend(seg_notes)
+                # Formule inline in Unicode leggibile (β, ω, √)
+                seg_text = inline_math_to_unicode(seg_text)
+                # In plain text gli asterischi del corsivo Markdown non hanno senso → rimuovi
+                parts.append(strip_italic_markers(seg_text))
+            elif seg.kind == 'table':
+                t_lines = [format_caption(seg.asset), ''] + table_to_plain_lines(seg.asset)
+                if seg.asset.source:
+                    t_lines.append(f"Fonte: {seg.asset.source}")
+                parts.append('\n'.join(t_lines))
+            elif seg.kind == 'chart':
+                parts.append(
+                    f"{format_caption(seg.asset)}\n[Grafico disponibile negli export PDF/DOCX]"
+                )
+            elif seg.kind == 'math':
+                eq_line = f"    {latex_to_unicode(seg.asset.latex)}"
+                if seg.asset.label:
+                    eq_line += f"    {seg.asset.label}"
+                parts.append(eq_line)
+            elif seg.kind == 'hint':
+                parts.append(f">>> HINT (da sostituire): {seg.asset.text} <<<")
+        processed_content = '\n\n'.join(parts)
+
         full_content = f"{thesis.title}\n{'=' * len(thesis.title)}\n\n"
         full_content += toc
+        for idx_title, idx_entries in (("INDICE DELLE TABELLE", tables_index),
+                                       ("INDICE DELLE FIGURE", figures_index)):
+            if idx_entries:
+                full_content += f"{idx_title}\n"
+                for label, caption in idx_entries:
+                    full_content += f"    {label} – {caption}\n"
+                full_content += "\n"
         full_content += processed_content
         if all_notes:
             full_content += "\n\n" + "=" * 60 + "\nNOTE\n" + "=" * 60 + "\n\n"
             for num, note_text in all_notes:
-                full_content += f"[{num}] {strip_italic_markers(note_text)}\n"
+                full_content += f"[{num}] {strip_italic_markers(inline_math_to_unicode(note_text))}\n"
 
         file_path = config.RESULTS_DIR / f"thesis_{safe_title}_{timestamp}.txt"
         file_path.write_text(full_content, encoding='utf-8')
@@ -2009,9 +3061,59 @@ async def export_thesis(
     elif format == "md":
         # Export Markdown con indice e note come footnotes
         has_footnotes = cit_style == 'footnotes'
-        processed_content, all_notes, _ = strip_footnotes_for_plain(content) if has_footnotes else (content, [], 1)
+        all_notes = []
+        next_note_num = 1
+        parts = []
+        for seg in segments:
+            if seg.kind == 'text':
+                seg_text = seg.text
+                if has_footnotes:
+                    seg_text, seg_notes, next_note_num = strip_footnotes_for_plain(seg_text, next_note_num)
+                    all_notes.extend(seg_notes)
+                parts.append(seg_text)
+            elif seg.kind == 'table':
+                block = f"**{format_caption(seg.asset)}**\n\n{table_to_markdown(seg.asset)}"
+                if seg.asset.source:
+                    block += f"\n\n*Fonte: {seg.asset.source}*"
+                parts.append(block)
+            elif seg.kind == 'chart':
+                block = f"**{format_caption(seg.asset)}**"
+                if seg.asset.spec and not seg.asset.error:
+                    # fallback leggibile: i dati del grafico come tabella markdown
+                    spec = seg.asset.spec
+                    labels = [str(l) for l in spec.get('labels', [])]
+                    header = '| ' + ' | '.join([''] + [s.get('name') or f"Serie {i+1}"
+                                                       for i, s in enumerate(spec.get('series', []))]) + ' |'
+                    sep = '|' + '|'.join([' --- '] * (len(spec.get('series', [])) + 1)) + '|'
+                    data_rows = []
+                    for li, lab in enumerate(labels):
+                        row = [lab]
+                        for s in spec.get('series', []):
+                            vals = s.get('values', [])
+                            row.append(str(vals[li]) if li < len(vals) else '')
+                        data_rows.append('| ' + ' | '.join(row) + ' |')
+                    block += '\n\n' + '\n'.join([header, sep] + data_rows)
+                    if spec.get('source'):
+                        block += f"\n\n*Fonte: {spec['source']}*"
+                block += "\n\n*Grafico renderizzato negli export PDF e DOCX.*"
+                parts.append(block)
+            elif seg.kind == 'math':
+                # $..$ / $$..$$ sono math markdown standard: sorgente verbatim
+                tag = f" \\tag{{{seg.asset.label.strip('()')}}}" if seg.asset.label else ""
+                parts.append(f"$$ {seg.asset.latex}{tag} $$")
+            elif seg.kind == 'hint':
+                parts.append(f"> ⚠️ **HINT (da sostituire):** {seg.asset.text}")
+        processed_content = '\n\n'.join(parts)
+
         md_content = f"# {thesis.title}\n\n"
         md_content += toc
+        for idx_title, idx_entries in (("Indice delle tabelle", tables_index),
+                                       ("Indice delle figure", figures_index)):
+            if idx_entries:
+                md_content += f"## {idx_title}\n\n"
+                for label, caption in idx_entries:
+                    md_content += f"- **{label}** – {caption}\n"
+                md_content += "\n"
         md_content += processed_content
         if all_notes:
             md_content += "\n\n---\n\n### Note\n\n"
@@ -2348,33 +3450,78 @@ async def export_thesis(
                             run.font.size = Pt(font_sz - 2)
                             run.font.name = font_name
 
+            # ── Indici delle tabelle/figure (solo se presenti) ──
+            for idx_title, idx_entries in (("Indice delle tabelle", tables_index),
+                                           ("Indice delle figure", figures_index)):
+                if not idx_entries:
+                    continue
+                idx_heading = doc.add_heading(idx_title, level=1)
+                for run in idx_heading.runs:
+                    run.font.name = font_name
+                for label, caption in idx_entries:
+                    idx_para = doc.add_paragraph()
+                    idx_run = idx_para.add_run(f"{label} – {caption}")
+                    idx_run.font.size = Pt(font_sz - 1)
+                    idx_run.font.name = font_name
+
             doc.add_page_break()
 
         # ── Contenuto con body_alignment e footnotes ──
-        for line in content.split('\n'):
+        def _append_math_run(para, latex):
+            """Formula inline: OMML nativo → PNG mathtext → testo Unicode corsivo."""
+            try:
+                para._p.append(latex_to_omml(latex))
+                return
+            except MathRenderError as e:
+                logger.warning(f"Formula inline non convertita in OMML: {e}")
+            try:
+                from io import BytesIO
+                mp = render_math_png(latex, fontsize=float(font_sz), dpi=300)
+                para.add_run().add_picture(BytesIO(mp.png), width=Pt(min(mp.width_pt, 420.0)))
+                return
+            except MathRenderError as e:
+                logger.warning(f"Formula inline non renderizzata in PNG: {e}")
+            run = para.add_run(latex_to_unicode(latex))
+            run.font.name = font_name
+            run.font.size = Pt(font_sz)
+            run.italic = True
+
+        def render_docx_text_line(line):
             if line.startswith('# '):
-                h = doc.add_heading(line[2:], level=1)
+                h = doc.add_heading(inline_math_to_unicode(line[2:]), level=1)
                 h.paragraph_format.space_before = Pt(chapter_sp_before)
                 for run in h.runs:
                     run.font.name = font_name
             elif line.startswith('## '):
-                h = doc.add_heading(line[3:], level=2)
+                h = doc.add_heading(inline_math_to_unicode(line[3:]), level=2)
                 h.paragraph_format.space_before = Pt(section_sp_before)
                 for run in h.runs:
                     run.font.name = font_name
             elif line.strip():
-                footnotes_in_line = extract_footnotes_from_line(line)
+                # Estrazione note sulla riga con formule PROTETTE: le graffe
+                # }} del LaTeX (\frac{a}{b}}) non devono chiudere la {{nota:}}
+                pline, line_math_map = protect_math_spans(line)
+                footnotes_in_line = extract_footnotes_from_line(pline)
 
                 def _add_runs_with_italic(para, text):
-                    """Aggiunge run al paragrafo rispettando il Markdown *italic*."""
-                    for seg_text, seg_italic in iter_italic_segments(text):
-                        if not seg_text:
+                    """Run del paragrafo: Markdown *italic* + formule $...$ (OMML).
+
+                    Le formule vengono estratte PRIMA dello split del corsivo,
+                    così un asterisco dentro la matematica non viene
+                    interpretato come marcatore.
+                    """
+                    for kind, latex, raw in iter_inline_math(text):
+                        if kind == 'math':
+                            _append_math_run(para, latex)
                             continue
-                        run = para.add_run(seg_text)
-                        run.font.name = font_name
-                        run.font.size = Pt(font_sz)
-                        if seg_italic:
-                            run.italic = True
+                        for seg_text, seg_italic in iter_italic_segments(raw):
+                            if not seg_text:
+                                continue
+                            run = para.add_run(seg_text)
+                            run.font.name = font_name
+                            run.font.size = Pt(font_sz)
+                            if seg_italic:
+                                run.italic = True
 
                 if footnotes_in_line:
                     para = doc.add_paragraph()
@@ -2385,12 +3532,15 @@ async def export_thesis(
                     last_end = 0
                     for fn_start, fn_end, fn_text in footnotes_in_line:
                         # Testo prima della nota (con eventuale italic Markdown)
-                        before_text = line[last_end:fn_start]
+                        before_text = unprotect_math_spans(pline[last_end:fn_start], line_math_map)
                         if before_text:
                             _add_runs_with_italic(para, before_text)
                         # Aggiungi la footnote (italic gestito dentro add_footnote)
+                        fn_text = unprotect_math_spans(fn_text, line_math_map)
                         try:
-                            add_footnote(doc, para, fn_text, docx_footnote_id[0], font_name, font_sz - 2)
+                            # Eventuale matematica nel testo della nota → Unicode
+                            add_footnote(doc, para, inline_math_to_unicode(fn_text),
+                                         docx_footnote_id[0], font_name, font_sz - 2)
                             docx_footnote_id[0] += 1
                         except Exception:
                             # Fallback: aggiungi come testo in apice
@@ -2402,7 +3552,7 @@ async def export_thesis(
                         last_end = fn_end
 
                     # Testo dopo l'ultima nota
-                    remaining = line[last_end:]
+                    remaining = unprotect_math_spans(pline[last_end:], line_math_map)
                     if remaining:
                         _add_runs_with_italic(para, remaining)
                 else:
@@ -2412,6 +3562,31 @@ async def export_thesis(
                     para.paragraph_format.line_spacing = line_sp
                     _add_runs_with_italic(para, line)
             # Righe vuote: non aggiungere nulla (spazio naturale)
+
+        for seg in segments:
+            if seg.kind == 'text':
+                for line in seg.text.split('\n'):
+                    render_docx_text_line(line)
+                continue
+            # Un asset malformato non deve MAI far fallire l'export:
+            # degrada a riquadro HINT.
+            try:
+                if seg.kind == 'table':
+                    add_docx_table(doc, seg.asset, ds)
+                elif seg.kind == 'chart':
+                    add_docx_chart(doc, seg.asset, ds)
+                elif seg.kind == 'math':
+                    add_docx_math(doc, seg.asset, ds)
+                elif seg.kind == 'hint':
+                    add_docx_hint(doc, seg.asset, ds)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Asset non renderizzabile nel DOCX: {e}")
+                try:
+                    add_docx_hint(doc, HintAsset(
+                        text=f"Elemento non renderizzabile: {format_caption(seg.asset) or 'elemento visivo'}"
+                    ), ds)
+                except Exception:  # noqa: BLE001
+                    pass
 
         doc.save(str(file_path))
 
@@ -2653,6 +3828,33 @@ async def export_thesis(
 
                 y += 5  # Spazio tra capitoli
 
+            # ── Indici delle tabelle/figure (solo se presenti) ──
+            for idx_title, idx_entries in (("INDICE DELLE TABELLE", tables_index),
+                                           ("INDICE DELLE FIGURE", figures_index)):
+                if not idx_entries:
+                    continue
+                if y + font_section_size + line_height * 2 > page_height - margin_bottom:
+                    current_page = new_pdf_page()
+                    y = margin_top
+                y += 10
+                current_page.insert_text((margin_left, y), idx_title,
+                                         fontsize=font_section_size, fontname=font_body)
+                y += font_section_size + 8
+                for idx_label, idx_caption in idx_entries:
+                    entry_text = strip_italic_markers(f"{idx_label} - {idx_caption}")
+                    entry_lines = wrap_text_to_width(
+                        entry_text, content_width - 20,
+                        lambda s: fitz.get_text_length(s, fontname=font_body, fontsize=font_size - 1)
+                    )
+                    for entry_line in entry_lines:
+                        if y + line_height > page_height - margin_bottom:
+                            current_page = new_pdf_page()
+                            y = margin_top
+                        current_page.insert_text((margin_left + 20, y), entry_line,
+                                                 fontsize=font_size - 1, fontname=font_body)
+                        y += line_height * 0.9
+                y += 5
+
             # Separatore dopo indice
             y += 15
             current_page.draw_line(
@@ -2755,16 +3957,457 @@ async def export_thesis(
                 current_page = new_pdf_page()
                 y = margin_top
 
+        # ── Renderer asset (tabelle / grafici / riquadri HINT) ──
+        _bold_font_map = {'helv': 'hebo', 'tiro': 'tibo', 'cour': 'cobo'}
+        font_body_bold = _bold_font_map.get(font_body, font_body)
+        # capacità verticale di una pagina vuota (per troncare contenuti monstre)
+        page_capacity = page_height - margin_top - margin_bottom - fn_separator_space
+
+        def _pdf_safe(s):
+            """I font base-14 non coprono tutti i glifi Unicode: normalizza i più comuni."""
+            return (str(s).replace('–', '-').replace('—', '-')
+                    .replace('‘', "'").replace('’', "'")
+                    .replace('“', '"').replace('”', '"')
+                    .replace('…', '...').replace('⚠', '').replace('️', '').strip())
+
+        def _latin1_math(s):
+            """Formule inline → Unicode SOLO se i glifi restano latin-1 (base-14):
+            per il greco meglio il sorgente LaTeX leggibile che glifi persi."""
+            if '$' not in s:
+                return s
+            converted = inline_math_to_unicode(s)
+            try:
+                converted.encode('latin-1')
+                return converted
+            except UnicodeEncodeError:
+                return s
+
+        def render_pdf_caption(text):
+            """Didascalia centrata in grigio sotto/sopra un asset."""
+            nonlocal y
+            cap_size = max(8, font_size - 1)
+            cap_lines = wrap_text_to_width(
+                _pdf_safe(strip_italic_markers(text)), content_width,
+                lambda s: fitz.get_text_length(s, fontname=font_body, fontsize=cap_size))
+            for cap_line in cap_lines:
+                check_new_page_needed(cap_size + 4)
+                cl_w = fitz.get_text_length(cap_line, fontname=font_body, fontsize=cap_size)
+                current_page.insert_text((margin_left + (content_width - cl_w) / 2, y), cap_line,
+                                         fontsize=cap_size, fontname=font_body, color=(0.25, 0.25, 0.25))
+                y += cap_size + 3
+            y += 6
+
+        def render_pdf_table(table):
+            """Tabella a griglia: header ripetuto ai salti pagina, celle wrappate."""
+            nonlocal y
+            n = max(1, len(table.header))
+            cell_size = max(7.0, font_size - 1.5)
+            cell_lh = cell_size * 1.25
+            pad = 4
+            col_w = content_width / n
+            inner_w = max(10.0, col_w - 2 * pad)
+            grid_color = (0.35, 0.35, 0.35)
+            max_cell_lines = max(1, int((page_capacity - 2 * pad) / cell_lh) - 2)
+
+            cell_space_w = fitz.get_text_length(' ', fontname=font_body, fontsize=cell_size)
+
+            def _cell_lines_one(text, fname):
+                """Righe di una cella: liste di [(item, spazio_prima)] con altezza
+                e ascendente propri. Item ('t', parola, w) | ('m', MathPng, w, h, d):
+                le formule $...$ diventano PNG mathtext allineati al baseline."""
+                def _t(word):
+                    return ('t', word, fitz.get_text_length(
+                        word, fontname=fname, fontsize=cell_size))
+
+                text = str(text)
+                if not has_inline_math(text):
+                    wrapped = wrap_text_to_width(
+                        _pdf_safe(strip_italic_markers(text)), inner_w,
+                        lambda s: fitz.get_text_length(s, fontname=fname, fontsize=cell_size))
+                    return [([(_t(ln), False)], cell_lh, cell_size) for ln in wrapped]
+
+                # Cluster = item senza spazio interno nel sorgente: la
+                # punteggiatura resta attaccata alla formula (come nel corpo)
+                glued_clusters = []
+
+                def add_item(item, glued):
+                    if glued and glued_clusters:
+                        glued_clusters[-1].append(item)
+                    else:
+                        glued_clusters.append([item])
+
+                last_ends_nospace = False
+                for kind, latex, raw in iter_inline_math(text):
+                    if kind == 'math':
+                        try:
+                            mp = render_math_png(latex, fontsize=cell_size, dpi=300)
+                            scale = min(1.0, inner_w / mp.width_pt) if mp.width_pt else 1.0
+                            add_item(('m', mp, mp.width_pt * scale,
+                                      mp.height_pt * scale, mp.depth_pt * scale),
+                                     last_ends_nospace)
+                            last_ends_nospace = True
+                            continue
+                        except MathRenderError as e:
+                            logger.warning(f"Formula non renderizzata in cella PDF: {e}")
+                            raw = _latin1_math(raw)  # sorgente/Unicode come testo
+                    starts_ws = raw[:1].isspace()
+                    words = _pdf_safe(strip_italic_markers(raw)).split()
+                    if not words:
+                        if raw:
+                            last_ends_nospace = False  # soli spazi: separa
+                        continue
+                    for wi, w_ in enumerate(words):
+                        add_item(_t(w_), glued=(wi == 0 and not starts_ws
+                                                and last_ends_nospace))
+                    last_ends_nospace = not raw[-1:].isspace()
+
+                def cluster_w(cluster):
+                    return sum(it[2] for it in cluster)
+
+                # cluster più largo della cella: meglio spezzarlo che sbordare
+                clusters = [c for cluster in glued_clusters
+                            for c in ([[it] for it in cluster]
+                                      if len(cluster) > 1 and cluster_w(cluster) > inner_w
+                                      else [cluster])]
+                wrapped, cur, cur_w = [], [], 0.0
+                for cluster in clusters:
+                    cw = cluster_w(cluster)
+                    needed = cw if not cur else cur_w + cell_space_w + cw
+                    if cur and needed > inner_w:
+                        wrapped.append(cur)
+                        cur, cur_w = [cluster], cw
+                    else:
+                        cur.append(cluster)
+                        cur_w = needed
+                if cur:
+                    wrapped.append(cur)
+
+                out = []
+                for ln_clusters in wrapped:
+                    flat = [(it, ci > 0 and ii == 0)
+                            for ci, cluster in enumerate(ln_clusters)
+                            for ii, it in enumerate(cluster)]
+                    asc, desc = cell_size, cell_size * 0.25
+                    for it, _sp in flat:
+                        if it[0] == 'm':
+                            asc = max(asc, it[3] - it[4])
+                            desc = max(desc, it[4])
+                    out.append((flat, max(cell_lh, asc + desc + 2), asc))
+                return out
+
+            def cell_lines(cells, fname):
+                out = []
+                for ctext in cells:
+                    cl = _cell_lines_one(ctext, fname)
+                    if len(cl) > max_cell_lines:
+                        logger.warning("Cella di tabella più alta di una pagina: contenuto troncato nel PDF")
+                        cl = cl[:max_cell_lines]
+                        flat, lh, asc = cl[-1]
+                        cl[-1] = (flat + [(('t', '...', fitz.get_text_length(
+                            '...', fontname=fname, fontsize=cell_size)), True)], lh, asc)
+                    out.append(cl)
+                return out
+
+            def row_height(lines_per_cell):
+                return max(sum(lh for _, lh, _ in cl) for cl in lines_per_cell) + 2 * pad
+
+            def draw_row(lines_per_cell, fname, fill=None):
+                nonlocal y
+                rh = row_height(lines_per_cell)
+                if fill:
+                    current_page.draw_rect(
+                        fitz.Rect(margin_left, y, margin_left + content_width, y + rh),
+                        fill=fill, color=None)
+                for c in range(n + 1):
+                    grid_x = margin_left + c * col_w
+                    current_page.draw_line(fitz.Point(grid_x, y), fitz.Point(grid_x, y + rh),
+                                           color=grid_color, width=0.5)
+                current_page.draw_line(fitz.Point(margin_left, y + rh),
+                                       fitz.Point(margin_left + content_width, y + rh),
+                                       color=grid_color, width=0.5)
+                for c, cl in enumerate(lines_per_cell):
+                    slot_top = y + pad
+                    for flat, lh, asc in cl:
+                        baseline = slot_top + asc
+                        tx = margin_left + c * col_w + pad
+                        for it, spaced in flat:
+                            if spaced:
+                                tx += cell_space_w
+                            if it[0] == 't':
+                                current_page.insert_text((tx, baseline), it[1],
+                                                         fontsize=cell_size, fontname=fname)
+                            else:
+                                mp_h, mp_d = it[3], it[4]
+                                current_page.insert_image(
+                                    fitz.Rect(tx, baseline - (mp_h - mp_d),
+                                              tx + it[2], baseline + mp_d),
+                                    stream=it[1].png)
+                            tx += it[2]
+                        slot_top += lh
+                y += rh
+
+            header_lines = cell_lines(table.header, font_body_bold)
+            header_h = row_height(header_lines)
+
+            def start_table_block():
+                nonlocal y
+                current_page.draw_line(fitz.Point(margin_left, y),
+                                       fitz.Point(margin_left + content_width, y),
+                                       color=grid_color, width=0.5)
+                draw_row(header_lines, font_body_bold, fill=(0.93, 0.93, 0.93))
+
+            # didascalia + header + prima riga restano insieme
+            first_row_h = row_height(cell_lines(table.rows[0], font_body)) if table.rows else 0
+            caption_est = (font_size + 2) * 2 + 6
+            check_new_page_needed(caption_est + header_h + first_row_h)
+
+            render_pdf_caption(format_caption(table))
+            start_table_block()
+            for row in table.rows:
+                lines_per_cell = cell_lines(row, font_body)
+                rh = row_height(lines_per_cell)
+                if y + rh > get_available_y():
+                    check_new_page_needed(rh)   # footnotes + nuova pagina
+                    start_table_block()          # header ripetuto
+                draw_row(lines_per_cell, font_body)
+
+            if table.source:
+                src_size = max(7, font_size - 2)
+                y += src_size + 3  # baseline sotto il bordo inferiore della tabella
+                src_lines = wrap_text_to_width(
+                    _pdf_safe(f"Fonte: {table.source}"), content_width,
+                    lambda s: fitz.get_text_length(s, fontname=font_body, fontsize=src_size))
+                for src_line in src_lines:
+                    check_new_page_needed(src_size + 3)
+                    sl_w = fitz.get_text_length(src_line, fontname=font_body, fontsize=src_size)
+                    current_page.insert_text((margin_left + (content_width - sl_w) / 2, y), src_line,
+                                             fontsize=src_size, fontname=font_body, color=(0.35, 0.35, 0.35))
+                    y += src_size + 3
+            y += 10
+
+        def render_pdf_hint(hint):
+            """Riquadro ambra ben visibile: segnaposto da sostituire manualmente."""
+            nonlocal y
+            h_size = max(8, font_size - 1)
+            h_lh = h_size * 1.35
+            pad = 8
+            body_lines = wrap_text_to_width(
+                _pdf_safe(hint.text), content_width - 2 * pad,
+                lambda s: fitz.get_text_length(s, fontname=font_body, fontsize=h_size))
+            max_hint_lines = max(1, int((page_capacity - 2 * pad) / h_lh) - 2)
+            if len(body_lines) > max_hint_lines:
+                body_lines = body_lines[:max_hint_lines - 1] + [body_lines[max_hint_lines - 1] + '...']
+            box_h = (len(body_lines) + 1) * h_lh + 2 * pad
+            check_new_page_needed(box_h + 8)
+            current_page.draw_rect(
+                fitz.Rect(margin_left, y, margin_left + content_width, y + box_h),
+                fill=(1.0, 0.953, 0.804), color=(0.72, 0.53, 0.04), width=1)
+            ty = y + pad + h_size
+            current_page.insert_text((margin_left + pad, ty), "SUGGERIMENTO - DA SOSTITUIRE:",
+                                     fontsize=h_size, fontname=font_body_bold, color=(0.45, 0.32, 0.02))
+            ty += h_lh
+            for body_line in body_lines:
+                current_page.insert_text((margin_left + pad, ty), body_line,
+                                         fontsize=h_size, fontname=font_body, color=(0.25, 0.2, 0.05))
+                ty += h_lh
+            y += box_h + 10
+
+        def render_pdf_chart(chart):
+            """Grafico PNG centrato con didascalia sotto; su errore → riquadro HINT."""
+            nonlocal y
+            try:
+                png = render_chart_png(chart)
+            except ChartRenderError as e:
+                logger.warning(f"Grafico '{(chart.caption or '')[:60]}' non renderizzato nel PDF: {e}")
+                render_pdf_hint(HintAsset(
+                    text=f"Grafico non generabile ({e}). Inserire manualmente: {chart.caption}"))
+                return
+            pix = fitz.Pixmap(png)
+            aspect = (pix.height / pix.width) if pix.width else 0.62
+            disp_w = min(content_width, 430)
+            disp_h = disp_w * aspect
+            if disp_h > page_capacity - 60:
+                disp_h = page_capacity - 60
+                disp_w = disp_h / aspect
+            check_new_page_needed(disp_h + 10 + (font_size + 2) * 2)
+            img_x = margin_left + (content_width - disp_w) / 2
+            current_page.insert_image(fitz.Rect(img_x, y, img_x + disp_w, y + disp_h), stream=png)
+            y += disp_h + 8
+            render_pdf_caption(format_caption(chart))
+
+        def render_pdf_math(math_asset):
+            """Equazione display: PNG mathtext centrato, numero "(N.M)" a destra.
+
+            Su MathRenderError degrada al sorgente LaTeX come testo (ASCII: i
+            font base-14 non hanno i glifi greci, il PNG sì)."""
+            nonlocal y
+            try:
+                # display=True applica già il fattore 1.15 dentro render_math_png
+                mp = render_math_png(math_asset.latex, fontsize=font_size,
+                                     dpi=300, display=True)
+            except MathRenderError as e:
+                logger.warning(f"Equazione display non renderizzata nel PDF: {e}")
+                fallback = f"$$ {math_asset.latex} $$"
+                if math_asset.label:
+                    fallback += f" {math_asset.label}"
+                render_pdf_text_line(_pdf_safe(fallback))
+                return
+            num_w = 0.0
+            if math_asset.label:
+                num_w = fitz.get_text_length(math_asset.label, fontname=font_body,
+                                             fontsize=font_size)
+            # la formula è centrata su content_width: perché non tocchi il
+            # numero a destra deve restare dentro content_width - 2*num_w
+            max_w = content_width - (2 * num_w + 12 if num_w else 0)
+            scale = 1.0
+            disp_w, disp_h = mp.width_pt, mp.height_pt
+            if disp_w > max_w:
+                scale = max_w / disp_w
+                disp_w, disp_h = disp_w * scale, disp_h * scale
+            if disp_h > page_capacity - 40:
+                s2 = (page_capacity - 40) / disp_h
+                scale *= s2
+                disp_w, disp_h = disp_w * s2, disp_h * s2
+            check_new_page_needed(disp_h + 12)
+            y += 6
+            img_x = margin_left + (content_width - disp_w) / 2
+            current_page.insert_image(
+                fitz.Rect(img_x, y, img_x + disp_w, y + disp_h), stream=mp.png)
+            if math_asset.label:
+                # numero al margine destro, allineato al baseline della formula
+                baseline = y + disp_h - mp.depth_pt * scale
+                current_page.insert_text(
+                    (page_width - margin_right - num_w, baseline),
+                    math_asset.label, fontsize=font_size, fontname=font_body)
+            y += disp_h + 6
+
+        def render_pdf_inline_math_line(line):
+            """Riga di corpo con formule $...$: parole e PNG inline sul baseline.
+
+            Wrap greedy a item (parola o formula) sulla larghezza colonna;
+            giustificazione a gap uniforme come insert_justified_line; le
+            formule sono allineate al baseline tramite la metrica depth."""
+            nonlocal y
+            # Cluster = sequenza indivisibile di item senza spazio interno, così
+            # la punteggiatura resta attaccata alla formula ("ω/ωₙ," e non "ω/ωₙ ,")
+            # e il wrap non spezza mai formula e virgola.
+            clusters = []  # lista di liste di ('word', testo, w, _) | ('math', MathPng, w, scala)
+
+            def add_item(item, glued):
+                if glued and clusters:
+                    clusters[-1].append(item)
+                else:
+                    clusters.append([item])
+
+            last_ends_nospace = False
+            for kind, latex, raw in iter_inline_math(line):
+                if kind == 'math':
+                    try:
+                        mp = render_math_png(latex, fontsize=font_size, dpi=300)
+                        scale = min(1.0, content_width / mp.width_pt) if mp.width_pt else 1.0
+                        add_item(('math', mp, mp.width_pt * scale, scale), last_ends_nospace)
+                        last_ends_nospace = True
+                        continue
+                    except MathRenderError as e:
+                        logger.warning(f"Formula inline non renderizzata nel PDF: {e}")
+                        raw = _pdf_safe(raw)  # sorgente come testo
+                chunk = strip_italic_markers(raw)
+                words = chunk.split()
+                if not words:
+                    if chunk:
+                        last_ends_nospace = False  # soli spazi: separa
+                    continue
+                starts_ws = chunk[0].isspace()
+                for wi, w in enumerate(words):
+                    item = ('word', w, fitz.get_text_length(
+                        w, fontname=font_body, fontsize=font_size), 1.0)
+                    add_item(item, glued=(wi == 0 and not starts_ws and last_ends_nospace))
+                last_ends_nospace = not chunk[-1].isspace()
+            if not clusters:
+                return
+            space_w = fitz.get_text_length(' ', fontname=font_body, fontsize=font_size)
+
+            def cluster_w(cluster):
+                return sum(it[2] for it in cluster)
+
+            # Un cluster più largo della colonna (formula quasi a tutta pagina
+            # + punteggiatura incollata) sborderebbe: meglio spezzarlo che
+            # uscire dal margine destro.
+            clusters = [c for cluster in clusters
+                        for c in ([[it] for it in cluster]
+                                  if len(cluster) > 1 and cluster_w(cluster) > content_width
+                                  else [cluster])]
+
+            rows, row, row_w = [], [], 0.0
+            for cluster in clusters:
+                cw = cluster_w(cluster)
+                needed = cw if not row else row_w + space_w + cw
+                if row and needed > content_width:
+                    rows.append(row)
+                    row, row_w = [cluster], cw
+                else:
+                    row.append(cluster)
+                    row_w = needed
+            if row:
+                rows.append(row)
+
+            text_asc = font_size * 0.8    # ascendente tipico dei font base-14
+            text_desc = font_size * 0.25
+            for ri, current_row in enumerate(rows):
+                asc, desc = text_asc, text_desc
+                for cluster in current_row:
+                    for item in cluster:
+                        if item[0] == 'math':
+                            mp, scale = item[1], item[3]
+                            asc = max(asc, (mp.height_pt - mp.depth_pt) * scale)
+                            desc = max(desc, mp.depth_pt * scale)
+                row_h = max(line_height, asc + desc + 2)
+                check_new_page_needed(row_h)
+                # il baseline scende se la matematica è più alta del testo
+                baseline = y + (asc - text_asc)
+                is_last = ri == len(rows) - 1
+                total_w = sum(cluster_w(c) for c in current_row)
+                gaps = len(current_row) - 1
+                if body_align == "justify" and not is_last and gaps > 0:
+                    gap = (content_width - total_w) / gaps
+                else:
+                    gap = space_w
+                # stesso allineamento del fast path (calc_text_x)
+                row_total = total_w + gaps * gap
+                if body_align == "center":
+                    cx = margin_left + max(0.0, content_width - row_total) / 2
+                elif body_align == "right":
+                    cx = margin_left + max(0.0, content_width - row_total)
+                else:
+                    cx = margin_left
+                for cluster in current_row:
+                    for item in cluster:
+                        if item[0] == 'word':
+                            current_page.insert_text((cx, baseline), item[1],
+                                                     fontsize=font_size, fontname=font_body)
+                        else:
+                            mp, scale = item[1], item[3]
+                            h, d = mp.height_pt * scale, mp.depth_pt * scale
+                            current_page.insert_image(
+                                fitz.Rect(cx, baseline - (h - d), cx + item[2], baseline + d),
+                                stream=mp.png)
+                        cx += item[2]
+                    cx += gap
+                y += row_h
+            if paragraph_spacing > 0:
+                y += paragraph_spacing
+
         # Contenuto con footnotes
-        for line in content.split('\n'):
+        def render_pdf_text_line(line):
+            nonlocal y
             check_new_page_needed(line_height)
 
             # Gestisci titoli
             if line.startswith('# '):
                 y += chapter_spacing
                 check_new_page_needed(font_chapter_size + 10)
-                # Word-wrap chapter title
-                ch_title_text = line[2:]
+                # Word-wrap chapter title (eventuale math → Unicode se latin-1)
+                ch_title_text = _latin1_math(line[2:])
                 ch_words = ch_title_text.split()
                 ch_current_line = []
                 for ch_word in ch_words:
@@ -2786,8 +4429,8 @@ async def export_thesis(
             elif line.startswith('## '):
                 y += section_spacing
                 check_new_page_needed(font_section_size + 8)
-                # Word-wrap section title
-                sec_title_text = line[3:]
+                # Word-wrap section title (eventuale math → Unicode se latin-1)
+                sec_title_text = _latin1_math(line[3:])
                 sec_words = sec_title_text.split()
                 sec_current_line = []
                 for sec_word in sec_words:
@@ -2806,8 +4449,10 @@ async def export_thesis(
                     current_page.insert_text((margin_left, y), ' '.join(sec_current_line), fontsize=font_section_size, fontname=font_body)
                     y += font_section_size + 3
             elif line.strip():
-                # Check for footnotes in line
-                footnotes_in_line = extract_footnotes_from_line(line)
+                # Estrazione note sulla riga con formule PROTETTE: le graffe
+                # }} del LaTeX (\frac{a}{b}}) non devono chiudere la {{nota:}}
+                pline, line_math_map = protect_math_spans(line)
+                footnotes_in_line = extract_footnotes_from_line(pline)
 
                 if footnotes_in_line:
                     # Process line: strip {{nota:...}} and replace with superscript numbers
@@ -2815,15 +4460,22 @@ async def export_thesis(
                     last_end = 0
                     line_fn_nums = []
                     for fn_start, fn_end, fn_text in footnotes_in_line:
-                        processed_line += line[last_end:fn_start]
+                        processed_line += pline[last_end:fn_start]
                         fn_num = pdf_footnote_num[0]
                         processed_line += f"[{fn_num}]"
+                        fn_text = _latin1_math(unprotect_math_spans(fn_text, line_math_map))
                         line_fn_nums.append((fn_num, fn_text))
                         page_footnotes.append((fn_num, fn_text))
                         pdf_footnote_num[0] += 1
                         last_end = fn_end
-                    processed_line += line[last_end:]
-                    line = processed_line
+                    processed_line += pline[last_end:]
+                    line = unprotect_math_spans(processed_line, line_math_map)
+
+                # Formule inline: layout a run dedicato (PNG sul baseline).
+                # Va PRIMA dello strip corsivi: un * dentro $...$ non è Markdown.
+                if has_inline_math(line):
+                    render_pdf_inline_math_line(line)
+                    return
 
                 # PDF non gestisce nativamente il corsivo Markdown: rimuoviamo gli asterischi
                 # così i titoli APA non appaiono come letterali. (Il DOCX usa run italic.)
@@ -2861,6 +4513,31 @@ async def export_thesis(
                     y += paragraph_spacing
             else:
                 y += line_height * 0.5
+
+        for seg in segments:
+            if seg.kind == 'text':
+                for line in seg.text.split('\n'):
+                    render_pdf_text_line(line)
+                continue
+            # Un asset malformato non deve MAI far fallire l'export:
+            # degrada a riquadro HINT.
+            try:
+                if seg.kind == 'table':
+                    render_pdf_table(seg.asset)
+                elif seg.kind == 'chart':
+                    render_pdf_chart(seg.asset)
+                elif seg.kind == 'math':
+                    render_pdf_math(seg.asset)
+                elif seg.kind == 'hint':
+                    render_pdf_hint(seg.asset)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Asset non renderizzabile nel PDF: {e}")
+                try:
+                    render_pdf_hint(HintAsset(
+                        text=f"Elemento non renderizzabile: {format_caption(seg.asset) or 'elemento visivo'}"
+                    ))
+                except Exception:  # noqa: BLE001
+                    pass
 
         # Renderizza le ultime footnotes
         render_page_footnotes()
@@ -2977,7 +4654,8 @@ async def export_thesis(
                     color=(0.5, 0.5, 0.5)
                 )
 
-        pdf_doc.save(file_path)
+        # deflate: comprime gli stream (i PNG dei grafici altrimenti restano raw)
+        pdf_doc.save(file_path, deflate=True)
         pdf_doc.close()
 
         return FileResponse(

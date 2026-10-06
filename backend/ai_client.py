@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv, find_dotenv
 from ai_exceptions import InsufficientCreditsError, check_openai_error, check_claude_error
+from token_utils import cap_output_tokens
 
 load_dotenv(find_dotenv())
 
@@ -19,7 +20,7 @@ load_dotenv(find_dotenv())
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL_ID", "o3")
-DEFAULT_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-opus-4-6")
+DEFAULT_CLAUDE_MODEL = os.getenv("THESIS_CLAUDE_MODEL", "claude-opus-4-8")
 MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "16000"))
 
 
@@ -202,7 +203,7 @@ class BaseAIClient(ABC):
         num_chapters = len(chapters)
         # ~200 token per sezione (titolo + key_points) + overhead JSON
         estimated_tokens = num_chapters * sections_per_chapter * 200 + 1000
-        max_tokens = max(estimated_tokens, MAX_TOKENS)
+        max_tokens = cap_output_tokens(max(estimated_tokens, MAX_TOKENS))
         return self.generate_json(prompt, max_tokens=max_tokens)
 
     def generate_section_content(
@@ -212,7 +213,8 @@ class BaseAIClient(ABC):
         section: Dict[str, Any],
         previous_sections_summary: str = "",
         attachments_context: str = "",
-        author_style_context: str = ""
+        author_style_context: str = "",
+        human_style_examples: str = ""
     ) -> str:
         """Genera il contenuto di una singola sezione."""
         from thesis_prompts import build_section_content_prompt
@@ -223,16 +225,25 @@ class BaseAIClient(ABC):
             section=section,
             previous_sections_summary=previous_sections_summary,
             attachments_context=attachments_context,
-            author_style_context=author_style_context
+            author_style_context=author_style_context,
+            human_style_examples=human_style_examples
         )
 
         # Calcola max_tokens in base alle parole richieste
         # ~2.5 token per parola italiana + margine
         words_per_section = thesis_data.get('words_per_section', 5000)
         estimated_tokens = int(words_per_section * 2.5) + 2000
-        max_tokens = max(estimated_tokens, MAX_TOKENS)
+        max_tokens = cap_output_tokens(max(estimated_tokens, MAX_TOKENS))
 
-        return self.generate_text(prompt, max_tokens=max_tokens)
+        # Sampling ad alta varietà (più perplessità => meno rilevabile). Ignorato
+        # dai modelli reasoning OpenAI; efficace con modelli sampling-capable (Claude).
+        try:
+            temperature = float(os.getenv("THESIS_GEN_TEMPERATURE", "1.0"))
+            top_p = float(os.getenv("THESIS_GEN_TOP_P", "0.95"))
+        except (TypeError, ValueError):
+            temperature, top_p = None, None
+
+        return self.generate_text(prompt, max_tokens=max_tokens, temperature=temperature, top_p=top_p)
 
 
 class OpenAIClient(BaseAIClient):
@@ -254,14 +265,25 @@ class OpenAIClient(BaseAIClient):
         self.max_tokens = MAX_TOKENS
         self.provider = "openai"
 
-    def generate_text(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+    def generate_text(
+        self, prompt: str, max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None, top_p: Optional[float] = None,
+    ) -> str:
         try:
-            response = self.client.chat.completions.create(
-                model=self.model_id,
-                messages=[{"role": "user", "content": prompt}],
-                max_completion_tokens=max_tokens or self.max_tokens,
-                timeout=300.0
-            )
+            kwargs = {
+                "model": self.model_id,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_completion_tokens": max_tokens or self.max_tokens,
+                "timeout": 300.0,
+            }
+            # I modelli reasoning (o1/o3/o4...) NON accettano temperature/top_p.
+            is_reasoning = str(self.model_id).lower().startswith(("o1", "o3", "o4", "o5"))
+            if not is_reasoning:
+                if temperature is not None:
+                    kwargs["temperature"] = temperature
+                if top_p is not None:
+                    kwargs["top_p"] = top_p
+            response = self.client.chat.completions.create(**kwargs)
             return response.choices[0].message.content
         except InsufficientCreditsError:
             raise  # Rilancia direttamente senza wrapping
@@ -289,15 +311,27 @@ class ClaudeClient(BaseAIClient):
         self.max_tokens = MAX_TOKENS
         self.provider = "claude"
 
-    def generate_text(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+    def generate_text(
+        self, prompt: str, max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None, top_p: Optional[float] = None,
+    ) -> str:
         try:
-            message = self.client.messages.create(
-                model=self.model_id,
-                max_tokens=max_tokens or self.max_tokens,
-                messages=[{"role": "user", "content": prompt}],
-                timeout=300.0
-            )
-            return message.content[0].text
+            kwargs = {
+                "model": self.model_id,
+                "max_tokens": max_tokens or self.max_tokens,
+                "messages": [{"role": "user", "content": prompt}],
+                "timeout": 300.0,
+            }
+            # Anthropic: usare temperature OPPURE top_p, non entrambi.
+            if temperature is not None:
+                kwargs["temperature"] = temperature
+            elif top_p is not None:
+                kwargs["top_p"] = top_p
+            # Streaming: necessario per output lunghi. L'SDK rifiuta le richieste
+            # non-streaming la cui durata stimata supera i 10 minuti (max_tokens alto).
+            with self.client.messages.stream(**kwargs) as stream:
+                final_message = stream.get_final_message()
+            return final_message.content[0].text
         except InsufficientCreditsError:
             raise  # Rilancia direttamente senza wrapping
         except Exception as e:
@@ -457,7 +491,7 @@ REGOLE FINALI:
         client = get_claude_client()
         # Calcola max_tokens necessari: ~1.5 token per parola italiana + margine
         estimated_tokens = int(word_count * 2.5) + 2000
-        max_tokens = max(estimated_tokens, 20000)  # Minimo 20000 tokens
+        max_tokens = cap_output_tokens(max(estimated_tokens, 20000))  # Minimo 20000 tokens
         rewritten = client.generate_text(humanize_prompt, max_tokens=max_tokens)
 
         # Applica anche l'algoritmo anti-AI post-processing
@@ -471,7 +505,7 @@ REGOLE FINALI:
         return humanize_text_post_processing(text)
 
 
-def anti_ai_correction(text: str) -> str:
+def anti_ai_correction(text: str, profile: str = 'informal') -> str:
     """
     Correzione Anti-AI: applica SOLO micro-modifiche conservative al testo
     per ridurre la percentuale di rilevamento AI, senza riscriverlo da zero.
@@ -486,6 +520,8 @@ def anti_ai_correction(text: str) -> str:
 
     Args:
         text: Il testo da correggere
+        profile: Profilo del post-processing anti-AI ('informal' o 'academic').
+            'academic' mantiene il registro formale e protegge citazioni/note.
 
     Returns:
         Il testo con micro-correzioni anti-AI
@@ -565,18 +601,282 @@ REGOLE FINALI:
     try:
         client = get_claude_client()
         estimated_tokens = int(word_count * 2.5) + 2000
-        max_tokens = max(estimated_tokens, 20000)
+        max_tokens = cap_output_tokens(max(estimated_tokens, 20000))
         corrected = client.generate_text(correction_prompt, max_tokens=max_tokens)
 
         # Applica anche l'algoritmo anti-AI post-processing (leggero)
         from anti_ai_processor import humanize_text_post_processing
-        return humanize_text_post_processing(corrected)
+        return humanize_text_post_processing(corrected, profile=profile)
     except InsufficientCreditsError:
         raise
     except Exception as e:
         # Fallback: solo algoritmo anti-AI
         from anti_ai_processor import humanize_text_post_processing
-        return humanize_text_post_processing(text)
+        return humanize_text_post_processing(text, profile=profile)
+
+
+# ============================================================================
+# DE-AI ACCADEMICA (per le tesi)
+# ============================================================================
+# Template a segnaposto (NON f-string) per non dover escapare le graffe di
+# {{nota: ...}} che il testo accademico usa per le note.
+_ACADEMIC_DEAI_TEMPLATE = """Sei un revisore editoriale di tesi universitarie. Ricevi un brano di una tesi in italiano. Il tuo compito e' RISCRIVERLO mantenendolo un testo accademico serio e formale, ma facendo in modo che NON sembri generato da un'intelligenza artificiale. I rilevatori AI riconoscono i pattern stilistici troppo regolari: il tuo obiettivo e' eliminarli senza toccare contenuto, dati e argomentazione.
+
+═══════════════════════════════════════════════════════════════
+COSA DEVI ROMPERE (firme tipiche dei testi AI)
+═══════════════════════════════════════════════════════════════
+- Triadi e quadriadi: serie di 3-4 elementi paralleli ("definire, giustificare, metodizzare e misurare"; "X, Y e Z"). Spezzale, riducile a due, o distribuiscile su frasi distinte di lunghezza diversa.
+- Antitesi bilanciate: "non solo... ma anche", "da un lato... dall'altro", "tanto... quanto", "non X; e' Y". Riformula in modo asimmetrico.
+- Strutture parallele tra frasi vicine ("Una scuola che... Una scuola che..."; "Non bastano X, non bastano Y"). Cambia la costruzione di una delle due.
+- Transizioni formulaiche e connettivi da manuale: "Inoltre", "Pertanto", "Dunque", "Tuttavia", "Di conseguenza", "In conclusione", "In sintesi", "In questo contesto", "E' importante notare/sottolineare che". Usa nessi piu' naturali oppure, a volte, nessuna transizione esplicita.
+- Scaffolding saggistico: paragrafi costruiti tutti allo stesso modo (frase-tema -> sviluppo -> chiusura a effetto). Evita la chiusura a effetto e la frase riassuntiva alla fine di ogni paragrafo.
+- Ritmo uniforme: frasi e paragrafi quasi della stessa lunghezza.
+
+═══════════════════════════════════════════════════════════════
+COME DEVE DIVENTARE
+═══════════════════════════════════════════════════════════════
+- Ritmo irregolare (burstiness): alterna frasi brevi e dirette (8-14 parole) a frasi lunghe e articolate (30-45 parole con subordinate). Qualche frase molto semplice, qualcuna complessa.
+- Paragrafi di lunghezza chiaramente diversa tra loro (da 3-4 frasi a 9-10).
+- Non iniziare due frasi o due paragrafi vicini nello stesso modo.
+- A volte lascia implicito il nesso logico tra due frasi, senza connettivo.
+- Lessico accademico vario: evita di ripetere gli stessi termini e le stesse strutture.
+
+═══════════════════════════════════════════════════════════════
+REGISTRO — VINCOLI INDEROGABILI
+═══════════════════════════════════════════════════════════════
+- Resta FORMALE e accademico. VIETATO introdurre colloquialismi, interiezioni ("beh", "cioe'", "diciamo", "insomma", "ecco"), autocorrezioni ("anzi no", "o meglio"), incisi informali tra trattini, parentetiche ironiche, domande retoriche seguite dalla risposta, esclamazioni.
+- Niente "errori finti": il testo deve restare corretto e scorrevole, solo meno meccanico.
+
+═══════════════════════════════════════════════════════════════
+DA PRESERVARE OBBLIGATORIAMENTE
+═══════════════════════════════════════════════════════════════
+- LUNGHEZZA: la riscrittura deve avere ALMENO __WORDCOUNT__ parole (come l'originale). Non riassumere, non tagliare contenuti; semmai approfondisci.
+- CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni nel formato [n] (es. [1], [2]) e tutte le note nel formato {{nota: ...}}. Non rimuoverle, non rinumerarle, non modificarne il contenuto, non spostarle fuori dalla frase cui appartengono.
+- Dati, numeri, percentuali, nomi propri, titoli di opere e termini tecnici vanno mantenuti identici.
+- SEGNAPOSTO ZZASSETnZZ: se compaiono token come ZZASSET0ZZ, ZZASSET1ZZ (segnaposto di tabelle/figure), mantienili INTATTI su riga isolata, nella stessa posizione logica del discorso: non rimuoverli, non duplicarli, non spostarli in fondo.
+- FORMULE: i token ZZMATHnZZ (es. ZZMATH0ZZ) sono segnaposto di formule matematiche: mantienili INTATTI, senza rimuoverli né duplicarli; quelli dentro una frase restano nella stessa posizione sintattica della frase, quelli su riga isolata restano isolati. Eventuali formule LaTeX esplicite ($...$ o $$...$$) vanno copiate INVARIATE carattere per carattere.
+
+═══════════════════════════════════════════════════════════════
+TESTO DA RISCRIVERE (__WORDCOUNT__ parole)
+═══════════════════════════════════════════════════════════════
+__TEXTBODY__
+
+═══════════════════════════════════════════════════════════════
+Restituisci SOLO il testo riscritto, senza commenti, titoli aggiunti o premesse."""
+
+
+# Cache dei client di riscrittura per modello (evita di re-istanziare l'SDK)
+_rewrite_clients: Dict[str, ClaudeClient] = {}
+
+
+def _get_rewrite_client(model_id: str) -> ClaudeClient:
+    client = _rewrite_clients.get(model_id)
+    if client is None:
+        client = ClaudeClient(model_id=model_id)
+        _rewrite_clients[model_id] = client
+    return client
+
+
+def academic_deai_rewrite(text: str, model_id: Optional[str] = None) -> str:
+    """
+    Riscrive un testo accademico per ridurre il punteggio dei detector AI
+    (es. Compilatio) SENZA scendere di registro: mantiene il tono formale di una
+    tesi ma rompe i pattern stilometrici tipici dei testi generati da AI
+    (parallelismi/tricolon, antitesi bilanciate, transizioni formulaiche, ritmo
+    uniforme) introducendo la naturale irregolarita' della scrittura umana.
+
+    A differenza di humanize_text_with_claude(): NON introduce colloquialismi e
+    NON applica l'anti_ai_processor (il pass algoritmico e' uno stage separato,
+    gestito dal chiamante in modo da poterne misurare il contributo).
+
+    Preserva lunghezza (>= originale), citazioni [x] e note {{nota:...}}, dati,
+    nomi e terminologia. In caso di errore (non crediti) ritorna il testo
+    originale invariato.
+    """
+    if not text or not text.strip():
+        return text
+
+    word_count = len(text.split())
+    estimated_tokens = int(word_count * 2.5) + 2000
+    max_tokens = cap_output_tokens(max(estimated_tokens, 8192))
+
+    prompt = (
+        _ACADEMIC_DEAI_TEMPLATE
+        .replace("__WORDCOUNT__", str(word_count))
+        .replace("__TEXTBODY__", text)
+    )
+
+    model = model_id or os.getenv("THESIS_REWRITE_MODEL", DEFAULT_CLAUDE_MODEL)
+    try:
+        client = _get_rewrite_client(model)
+        rewritten = client.generate_text(prompt, max_tokens=max_tokens)
+        return rewritten.strip() if rewritten else text
+    except InsufficientCreditsError:
+        raise  # l'utente deve sapere dei crediti
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"academic_deai_rewrite fallita ({e}); uso il testo originale"
+        )
+        return text
+
+
+# ============================================================================
+# PARAFRASI CONTROLLATA (DIPPER-style) — leva principale anti-rilevamento
+# ============================================================================
+# Diversamente da academic_deai_rewrite (riscrittura "generica" che riavvicina
+# il testo alla distribuzione AI), qui imponiamo esplicitamente le due manopole
+# che la ricerca indica come efficaci: ALTA DIVERSITÀ LESSICALE + RIORDINO.
+# Applicata in modo RICORSIVO (la ricorsività abbatte di più il rilevamento).
+_CONTROLLED_PARAPHRASE_TEMPLATE = """Sei un revisore accademico esperto. Devi PARAFRASARE il brano di tesi qui sotto (italiano) producendo un testo nuovo che dica le STESSE cose ma con forma il più possibile DIVERSA dall'originale. Obiettivo: un testo accademico formale che non assomigli a quello di partenza a livello di parole e struttura.
+
+═══════════════════════════════════════════════════════════════
+DUE LEVE OBBLIGATORIE
+═══════════════════════════════════════════════════════════════
+1. DIVERSITÀ LESSICALE MASSIMA: riformula con parole e costruzioni DIVERSE dall'originale. Sostituisci verbi, sostantivi e aggettivi con sinonimi formali; cambia le perifrasi; evita di ricalcare gli stessi n-gram (sequenze di 3-4 parole) del testo di partenza. Non limitarti a cambiare qualche parola: riscrivi davvero le frasi.
+2. RIORDINO STRUTTURALE: cambia l'ordine delle frasi e dei blocchi argomentativi quando il senso lo permette; unisci frasi brevi in periodi articolati e spezza i periodi lunghi (ritmo irregolare, "burstiness"). Non mantenere lo stesso ordine frase-per-frase dell'originale.
+
+═══════════════════════════════════════════════════════════════
+REGISTRO — VINCOLI
+═══════════════════════════════════════════════════════════════
+- Resta FORMALE e accademico. VIETATI colloquialismi, interiezioni ("beh", "cioè", "insomma", "ecco"), autocorrezioni, domande retoriche con risposta, esclamazioni, incisi ironici.
+- Niente "errori finti": il testo deve restare corretto e scorrevole.
+- Evita i pattern AI: triadi/tricolon, antitesi bilanciate ("non solo... ma anche"), transizioni da manuale ("Inoltre", "Pertanto", "In conclusione", "È importante notare che"), chiuse a effetto a fine paragrafo.
+
+═══════════════════════════════════════════════════════════════
+DA PRESERVARE OBBLIGATORIAMENTE
+═══════════════════════════════════════════════════════════════
+- SIGNIFICATO: stessi contenuti, argomenti e conclusioni. Non aggiungere né togliere informazioni.
+- LUNGHEZZA: ALMENO __WORDCOUNT__ parole (come l'originale). Non riassumere.
+- CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni [n] (es. [1], [2]) e le note {{nota: ...}}: non rimuoverle, non rinumerarle, non modificarle.
+- Numeri, percentuali, date, nomi propri, titoli di opere e termini tecnici: identici.
+- SEGNAPOSTO ZZASSETnZZ: se compaiono token come ZZASSET0ZZ, ZZASSET1ZZ (segnaposto di tabelle/figure), mantienili INTATTI su riga isolata, nella stessa posizione logica del discorso: non rimuoverli, non duplicarli, non spostarli in fondo.
+- FORMULE: i token ZZMATHnZZ (es. ZZMATH0ZZ) sono segnaposto di formule matematiche: mantienili INTATTI, senza rimuoverli né duplicarli; quelli dentro una frase restano nella stessa posizione sintattica della frase, quelli su riga isolata restano isolati. Eventuali formule LaTeX esplicite ($...$ o $$...$$) vanno copiate INVARIATE carattere per carattere.
+
+═══════════════════════════════════════════════════════════════
+TESTO DA PARAFRASARE (__WORDCOUNT__ parole)
+═══════════════════════════════════════════════════════════════
+__TEXTBODY__
+
+═══════════════════════════════════════════════════════════════
+Restituisci SOLO il testo parafrasato, senza commenti, titoli aggiunti o premesse."""
+
+
+# Variante register-preserving della parafrasi controllata: stesse due leve
+# (diversità lessicale + riordino) ma SENZA imporre il registro accademico. Usata
+# da Genera/Umanizza quando si vuole rispettare lo stile dell'autore appreso,
+# qualunque ne sia il registro (formale o colloquiale). La Tesi continua a usare il
+# template accademico sopra (profile='academic').
+_CONTROLLED_PARAPHRASE_TEMPLATE_INFORMAL = """Sei un revisore esperto. Devi PARAFRASARE il brano qui sotto (italiano) producendo un testo nuovo che dica le STESSE cose ma con forma il più possibile DIVERSA dall'originale, MANTENENDO però il registro e lo stile dell'autore.
+
+═══════════════════════════════════════════════════════════════
+DUE LEVE OBBLIGATORIE
+═══════════════════════════════════════════════════════════════
+1. DIVERSITÀ LESSICALE MASSIMA: riformula con parole e costruzioni DIVERSE dall'originale. Sostituisci verbi, sostantivi e aggettivi con sinonimi coerenti col registro; cambia le perifrasi; evita di ricalcare gli stessi n-gram (sequenze di 3-4 parole) del testo di partenza. Non limitarti a cambiare qualche parola: riscrivi davvero le frasi.
+2. RIORDINO STRUTTURALE: cambia l'ordine delle frasi e dei blocchi quando il senso lo permette; unisci frasi brevi in periodi articolati e spezza i periodi lunghi (ritmo irregolare, "burstiness"). Non mantenere lo stesso ordine frase-per-frase dell'originale.
+
+═══════════════════════════════════════════════════════════════
+REGISTRO — RISPETTA LO STILE DELL'AUTORE
+═══════════════════════════════════════════════════════════════
+- MANTIENI il registro naturale del testo originale: se è formale resta formale, se è colloquiale resta colloquiale. NON formalizzare un testo informale né rendere accademico un testo che non lo è.
+- Conserva le scelte stilistiche genuine dell'autore (lessico caratteristico, ritmo, latinismi, incisi con trattino, punto e virgola, strutture bilanciate): sono firma stilistica, non difetti.
+- Niente "errori finti", autocorrezioni o esitazioni inventate: il testo deve restare scorrevole e corretto.
+- Evita SOLO i tic generici da AI: triadi/tricolon meccanici, antitesi bilanciate inserite a forza, transizioni da manuale ("Inoltre", "Pertanto", "In conclusione", "È importante notare che") usate in serie, chiuse a effetto a fine paragrafo, frasi tutte della stessa lunghezza.
+
+═══════════════════════════════════════════════════════════════
+DA PRESERVARE OBBLIGATORIAMENTE
+═══════════════════════════════════════════════════════════════
+- SIGNIFICATO: stessi contenuti, argomenti e conclusioni. Non aggiungere né togliere informazioni.
+- LUNGHEZZA: ALMENO __WORDCOUNT__ parole (come l'originale). Non riassumere.
+- CITAZIONI E NOTE: mantieni INTATTE tutte le citazioni [n] (es. [1], [2]) e le note {{nota: ...}}: non rimuoverle, non rinumerarle, non modificarle.
+- Numeri, percentuali, date, nomi propri, titoli di opere e termini tecnici: identici.
+- SEGNAPOSTO ZZASSETnZZ: se compaiono token come ZZASSET0ZZ, ZZASSET1ZZ (segnaposto di tabelle/figure), mantienili INTATTI su riga isolata, nella stessa posizione logica del discorso: non rimuoverli, non duplicarli, non spostarli in fondo.
+- FORMULE: i token ZZMATHnZZ (es. ZZMATH0ZZ) sono segnaposto di formule matematiche: mantienili INTATTI, senza rimuoverli né duplicarli; quelli dentro una frase restano nella stessa posizione sintattica della frase, quelli su riga isolata restano isolati. Eventuali formule LaTeX esplicite ($...$ o $$...$$) vanno copiate INVARIATE carattere per carattere.
+
+═══════════════════════════════════════════════════════════════
+TESTO DA PARAFRASARE (__WORDCOUNT__ parole)
+═══════════════════════════════════════════════════════════════
+__TEXTBODY__
+
+═══════════════════════════════════════════════════════════════
+Restituisci SOLO il testo parafrasato, senza commenti, titoli aggiunti o premesse."""
+
+
+def _controlled_paraphrase_once(text: str, model_id: str, temperature: float = 1.0,
+                                profile: str = 'academic') -> str:
+    """Una passata di parafrasi controllata. Ritorna il testo o l'originale su errore.
+
+    profile: 'academic' (default, registro formale forzato — usato dalla Tesi) o
+    'informal' (register-preserving — rispetta lo stile dell'autore).
+    """
+    if not text or not text.strip():
+        return text
+    word_count = len(text.split())
+    max_tokens = cap_output_tokens(max(int(word_count * 2.5) + 2000, 8192))
+    template = (_CONTROLLED_PARAPHRASE_TEMPLATE_INFORMAL if profile == 'informal'
+                else _CONTROLLED_PARAPHRASE_TEMPLATE)
+    prompt = (
+        template
+        .replace("__WORDCOUNT__", str(word_count))
+        .replace("__TEXTBODY__", text)
+    )
+    client = _get_rewrite_client(model_id)
+    out = client.generate_text(prompt, max_tokens=max_tokens, temperature=temperature)
+    return out.strip() if out else text
+
+
+def controlled_paraphrase(
+    text: str,
+    model_id: Optional[str] = None,
+    rounds: Optional[int] = None,
+    target_words: int = 0,
+    profile: str = 'academic',
+) -> str:
+    """
+    Parafrasi controllata RICORSIVA (DIPPER-style): max diversità lessicale +
+    riordino, applicata `rounds` volte (default da THESIS_PARAPHRASE_ROUNDS).
+    Preserva citazioni [x], note {{nota}}, registro e lunghezza.
+
+    profile: 'academic' (default → registro formale, comportamento Tesi invariato)
+    oppure 'informal' (register-preserving → rispetta lo stile dell'autore, anche
+    colloquiale).
+
+    Floor di lunghezza per passata: se una passata scende sotto il 90% del testo
+    in ingresso a quella passata (o del target), la passata viene SCARTATA e si
+    tiene il testo precedente. Su errore (non crediti) ritorna l'ultimo testo valido.
+    """
+    if not text or not text.strip():
+        return text
+    model = model_id or os.getenv("THESIS_PARAPHRASE_MODEL", DEFAULT_CLAUDE_MODEL)
+    try:
+        n_rounds = rounds if rounds is not None else int(os.getenv("THESIS_PARAPHRASE_ROUNDS", "2"))
+    except (TypeError, ValueError):
+        n_rounds = 2
+
+    current = text
+    for i in range(max(0, n_rounds)):
+        try:
+            candidate = _controlled_paraphrase_once(current, model, profile=profile)
+        except InsufficientCreditsError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning(
+                f"controlled_paraphrase passata {i + 1} fallita ({e}); tengo il testo precedente"
+            )
+            break
+        floor = int(max(len(current.split()), target_words) * 0.9)
+        if len(candidate.split()) >= floor:
+            current = candidate
+        else:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"controlled_paraphrase passata {i + 1} troppo corta "
+                f"({len(candidate.split())} < {floor}); scarto questa passata"
+            )
+            # Una passata corta interrompe la ricorsione (evita degradi cumulativi).
+            break
+    return current
 
 
 # ============================================================================

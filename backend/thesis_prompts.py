@@ -7,6 +7,8 @@ della generazione di tesi utilizzando OpenAI o1/o3.
 
 from typing import Dict, Any, List, Optional
 
+import config
+
 
 def _get_citation_instructions(citation_style: str = "footnotes") -> str:
     """Restituisce le istruzioni sulle citazioni in base allo stile scelto.
@@ -64,6 +66,118 @@ def _get_no_citation_instruction(citation_style: str = "footnotes") -> str:
         return "NON inserire note bibliografiche {{nota:...}}"
 
 
+def _get_assets_instructions(citation_style: str = "footnotes") -> str:
+    """
+    Istruzioni per gli elementi visivi (tabelle, grafici, HINT) nel contenuto
+    di sezione. La sintassi è quella riconosciuta da thesis_assets.parse_segments.
+    Ritorna stringa vuota se THESIS_ASSETS_ENABLED è False.
+    """
+    if not getattr(config, 'THESIS_ASSETS_ENABLED', True):
+        return ""
+    citation_ban = "citazioni [x]" if citation_style == "bibliography" else "note {{nota:...}}"
+    if getattr(config, 'THESIS_CHARTS_ENABLED', True):
+        chart_block = '''   GRAFICO — SOLO con dati numerici CONCRETI e REALI presi dalla base di
+   conoscenza (fonti, allegati, paper):
+   ⚠️ NON INVENTARE MAI numeri, percentuali o serie storiche. Se nelle fonti
+   non ci sono dati numerici concreti, NIENTE grafico: usa un HINT.
+   [GRAFICO: <didascalia accademica descrittiva>]
+   {"type": "bar|line|pie|scatter", "x_label": "...", "y_label": "...",
+    "labels": ["..."], "series": [{"name": "...", "values": [numeri]}],
+    "source": "<fonte reale dei dati>"}
+   [/GRAFICO]
+   - Un solo oggetto JSON tra i marcatori. Il campo "source" è OBBLIGATORIO
+     e deve indicare la fonte reale da cui provengono i dati.'''
+    else:
+        chart_block = '''   GRAFICI: non generarli mai direttamente. Se un grafico sarebbe utile in un
+   punto, inserisci un HINT che descriva quale grafico inserire e con quali dati.'''
+    return f"""8. ELEMENTI VISIVI — TABELLE, GRAFICI, IMMAGINI (solo se DAVVERO utili):
+
+   QUANDO USARLI (e quando NO):
+   - MAI forzare un elemento visivo: nella maggior parte delle sezioni non
+     serve nulla, e va benissimo così. Massimo 1-2 elementi per sezione.
+   - TABELLA: solo per confronti strutturati, quadri sinottici o dati che in
+     prosa risulterebbero pesanti da seguire.
+   - GRAFICO: solo alle condizioni indicate sotto.
+   - IMMAGINI, FOTO, SCHEMI che non puoi produrre: inserisci un HINT (vedi
+     sotto), MAI descrizioni finte di immagini inesistenti.
+
+   TABELLA — sintassi obbligatoria (ECCEZIONE ESPLICITA alla regola "niente
+   elenchi/markdown": DENTRO i marcatori [TABELLA]...[/TABELLA] le righe
+   | ... | sono AMMESSE e OBBLIGATORIE):
+   [TABELLA: <didascalia accademica, eventualmente con la fonte>]
+   | Intestazione 1 | Intestazione 2 |
+   | valore | valore |
+   Fonte: <fonte dei dati>
+   (la riga "Fonte:" è opzionale)
+   [/TABELLA]
+   - La prima riga | ... | è l'intestazione. Celle brevi (max ~12 parole).
+   - NIENTE {citation_ban} dentro le celle: la fonte va nella didascalia o
+     nella riga "Fonte: ...".
+
+{chart_block}
+
+   HINT — segnaposto BEN VISIBILE per un elemento che NON puoi generare
+   (fotografie, schemi, diagrammi, grafici senza dati). Riga isolata, tra due
+   righe vuote:
+   HINT: "<descrizione precisa di cosa inserire, perché è utile in quel punto, e dove l'autore può reperirlo>"
+
+   REGOLE COMUNI:
+   - Marcatori SEMPRE su righe isolate, con una riga vuota prima e dopo.
+   - NON numerare tu tabelle e figure ("Tabella 1", "Figura 2.1"): la
+     numerazione e le didascalie numerate vengono aggiunte automaticamente.
+   - Didascalie professionali e descrittive, da tesi di laurea.
+   - Il testo attorno deve introdurre e commentare l'elemento (es. "come
+     mostra la tabella seguente, ..."), mai lasciarlo orfano."""
+
+
+def _get_math_instructions() -> str:
+    """
+    Istruzioni per le formule matematiche LaTeX ($...$ / $$...$$) nel contenuto
+    di sezione. La sintassi è quella riconosciuta da thesis_math (subset comune
+    a OMML/mathtext/KaTeX). Ritorna stringa vuota se THESIS_MATH_ENABLED è False.
+    """
+    if not getattr(config, 'THESIS_MATH_ENABLED', True):
+        return ""
+    # Stringa NON-f: contiene graffe LaTeX letterali.
+    return r"""9. FORMULE MATEMATICHE (solo se la disciplina le richiede DAVVERO):
+
+   QUANDO USARLE (e quando NO):
+   - Solo in tesi tecnico-scientifiche o quantitative (ingegneria, fisica,
+     matematica, statistica, economia quantitativa) e solo dove una formula
+     esprime il concetto meglio della prosa. Nelle tesi umanistiche o
+     discorsive: NESSUNA formula.
+   - Mai decorative: ogni formula va introdotta e commentata nel testo
+     circostante, mai lasciata orfana.
+
+   SINTASSI (ECCEZIONE ESPLICITA alla regola "niente markdown": i
+   delimitatori $ per la matematica sono AMMESSI):
+   - Inline, dentro la frase, per simboli ed espressioni brevi:
+     ... il rapporto $\beta = \omega / \omega_n$ tra le frequenze ...
+     (nessuno spazio subito dopo il $ di apertura né prima di quello di
+     chiusura; mai a cavallo di due righe)
+   - Display, su riga ISOLATA con una riga vuota prima e dopo, solo per le
+     equazioni importanti da mettere in evidenza:
+
+     $$D = \frac{1}{\sqrt{(1 - \beta^2)^2 + (2\xi\beta)^2}}$$
+
+   COMANDI AMMESSI (subset LaTeX renderizzabile ovunque): lettere greche,
+   apici/pedici (^ e _), \frac, \sqrt, \sum, \int, \lim, \cdot (mai *),
+   \times, \pm, \leq, \geq, \neq, \approx, \to, \infty, \partial, \mathrm{},
+   \mathbf{}, \left( \right), \sin \cos \tan \log \ln \exp.
+   VIETATI: ambienti \begin{...}...\end{...} (matrix, align, cases), \label,
+   \ref, \tag, \text{} (usa \mathrm{}), interruzioni \\ e formule multi-riga:
+   una formula = una sola espressione.
+
+   REGOLE:
+   - NON numerare le equazioni ("(1)", "eq. 2.3") e NON citarne i numeri nel
+     testo: la numerazione "(N.M)" viene aggiunta automaticamente. Richiamale
+     in modo discorsivo ("l'equazione precedente", "la relazione appena
+     introdotta").
+   - Niente formule nei titoli, nelle celle delle tabelle o dentro le note.
+   - Gli importi monetari si scrivono in parole o con "euro"/"EUR", MAI col
+     simbolo $."""
+
+
 def build_chapters_prompt(thesis_data: Dict[str, Any], attachments_context: str = "") -> str:
     """
     Costruisce il prompt per la FASE 1: Generazione titoli capitoli.
@@ -118,9 +232,9 @@ DESTINATARI: {thesis_data.get('target_audience_name', 'Pubblico Generale')}
   → Indicazione: {thesis_data.get('target_audience_hint', '')}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CONTESTO DAGLI ALLEGATI
+BASE DI CONOSCENZA (LLM WIKI)
 ═══════════════════════════════════════════════════════════════════════════════
-{attachments_context if attachments_context else "Nessun allegato fornito."}
+{attachments_context if attachments_context else "Nessuna fonte caricata. Procedi con la struttura di tesi piu' standard per il tema dato."}
 
 ═══════════════════════════════════════════════════════════════════════════════
 ISTRUZIONI
@@ -224,9 +338,9 @@ CAPITOLI CONFERMATI
 {chapters_text}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CONTESTO DAGLI ALLEGATI
+BASE DI CONOSCENZA (LLM WIKI)
 ═══════════════════════════════════════════════════════════════════════════════
-{attachments_context if attachments_context else "Nessun allegato fornito."}
+{attachments_context if attachments_context else "Nessuna fonte caricata. Procedi con la struttura di tesi piu' standard per il tema dato."}
 
 ═══════════════════════════════════════════════════════════════════════════════
 ISTRUZIONI
@@ -291,7 +405,8 @@ def build_section_content_prompt(
     section: Dict[str, Any],
     previous_sections_summary: str = "",
     attachments_context: str = "",
-    author_style_context: str = ""
+    author_style_context: str = "",
+    human_style_examples: str = ""
 ) -> str:
     """
     Costruisce il prompt per la FASE 3: Generazione contenuto sezione.
@@ -309,6 +424,13 @@ def build_section_content_prompt(
     """
     key_points = section.get('key_points', [])
     key_points_text = "\n".join([f"• {point}" for point in key_points]) if key_points else "Non specificati"
+
+    assets_block = _get_assets_instructions(thesis_data.get('citation_style', 'footnotes'))
+    math_block = _get_math_instructions()
+    hint_exception = (
+        ' — UNICA ECCEZIONE ammessa: la riga HINT: "..." descritta al punto 8'
+        if assets_block else ""
+    )
 
     return f"""
 ═══════════════════════════════════════════════════════════════════════════════
@@ -352,14 +474,24 @@ CONTESTO PRECEDENTE
 {previous_sections_summary if previous_sections_summary else "Questa è la prima sezione della tesi."}
 
 ═══════════════════════════════════════════════════════════════════════════════
-MATERIALE DI RIFERIMENTO (dagli allegati)
+BASE DI CONOSCENZA (LLM WIKI)
 ═══════════════════════════════════════════════════════════════════════════════
-{attachments_context if attachments_context else "Nessun materiale allegato."}
+{attachments_context if attachments_context else "Nessuna fonte caricata. Genera basandoti sulla conoscenza del modello."}
 
 ═══════════════════════════════════════════════════════════════════════════════
 STILE DELL'AUTORE
 ═══════════════════════════════════════════════════════════════════════════════
 {author_style_context if author_style_context else "Nessuno stile specifico addestrato - usa lo stile richiesto nei parametri."}
+{(
+'''
+═══════════════════════════════════════════════════════════════════════════════
+ESEMPI DI STILE UMANO (imita RITMO e LESSICO, NON i contenuti)
+═══════════════════════════════════════════════════════════════════════════════
+I brani qui sotto sono prosa accademica UMANA reale. Studiane il ritmo irregolare,
+la varietà delle costruzioni e il lessico, e scrivi con uno stile simile.
+NON copiare frasi né contenuti: prendi solo lo STILE (le Similitudini devono restare basse).
+
+''' + human_style_examples) if human_style_examples else ""}
 
 ═══════════════════════════════════════════════════════════════════════════════
 ISTRUZIONI DI SCRITTURA
@@ -441,6 +573,14 @@ ISTRUZIONI DI SCRITTURA
    - MAI chiudere sezioni con "In conclusione/In sintesi/Per concludere"
    - MAI usare piu' di 2 virgole nella stessa frase (spezza in frasi diverse)
    - MAI ripetere la stessa struttura di transizione tra paragrafi
+   - MAI serie di 4 elementi paralleli né formule tipo "X senza Y, Z senza W"
+     o "X, Y, Z e W" usate come schema ricorrente
+   - MAI elenchi con lettere o numeri (a), b), c) — oppure 1., 2., 3.) per
+     enumerare concetti: scrivi in prosa discorsiva, sciogliendo gli elenchi
+   - MAI anafore: due o più frasi vicine che iniziano con le stesse parole
+     ("Una scuola che... Una scuola che...", "Non bastano..., non bastano...")
+   - MAI la formula "non X; è Y" oppure "non si tratta di X, ma di Y" come schema
+   - MAI chiudere la sezione con una frase a effetto, una massima o un aforisma
 
    ═══ NATURALEZZA ═══
    - Ogni tanto una frase puo' essere leggermente meno precisa del necessario
@@ -449,6 +589,10 @@ ISTRUZIONI DI SCRITTURA
    - Non tutte le affermazioni hanno bisogno di una fonte o giustificazione
    - Qualche volta fai un'osservazione personale breve senza citazioni
    - Varia il ritmo: dopo 2-3 paragrafi densi, inserisci uno piu' leggero
+
+{assets_block}
+
+{math_block}
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT
@@ -459,7 +603,7 @@ Scrivi SOLO il contenuto della sezione.
 IMPORTANTE:
 - NON includere il titolo della sezione (verrà aggiunto separatamente)
 - NON includere meta-commenti o note per l'autore
-- NON usare placeholder o [inserire qui]
+- NON usare placeholder o [inserire qui]{hint_exception}
 - Scrivi il contenuto completo e definitivo
 - Il testo deve essere pronto per la pubblicazione
 - RICORDA: ALMENO {thesis_data.get('words_per_section', 5000)} parole! Questo è NON negoziabile.
@@ -588,9 +732,9 @@ STRUTTURA DEI CAPITOLI DELLA TESI
 {chapters_list}
 
 ═══════════════════════════════════════════════════════════════════════════════
-MATERIALE DI RIFERIMENTO (dagli allegati)
+BASE DI CONOSCENZA (LLM WIKI)
 ═══════════════════════════════════════════════════════════════════════════════
-{attachments_context if attachments_context else "Nessun materiale allegato."}
+{attachments_context if attachments_context else "Nessuna fonte caricata. Genera basandoti sulla conoscenza del modello."}
 
 ═══════════════════════════════════════════════════════════════════════════════
 STILE DELL'AUTORE
@@ -626,8 +770,9 @@ SCRIVI COME UNO STUDENTE UNIVERSITARIO REALE:
 - NON iniziare mai due frasi consecutive con la stessa struttura
 - NON iniziare piu' di 2 frasi per paragrafo con articoli (Il, La, Lo)
 - Inizia almeno 3 frasi con congiunzioni: "E", "Ma", "Pero'"
-- NON usare strutture simmetriche ("da un lato... dall'altro")
-- MAI liste di 3 elementi simmetrici ("X, Y e Z")
+- NON usare strutture simmetriche ("da un lato... dall'altro", "non solo... ma anche")
+- MAI liste di 3 o 4 elementi simmetrici ("X, Y e Z"; "X, Y, Z e W") né elenchi a), b), c)
+- MAI anafore (frasi vicine che iniziano con le stesse parole) né la formula "non X; è Y"
 - NON chiudere paragrafi con frasi a effetto o riassuntive
 - Paragrafi di lunghezze MOLTO diverse (da 3 frasi a 10 frasi)
 - Qualche passaggio logico puo' restare implicito
@@ -740,7 +885,9 @@ SCRIVI COME UNO STUDENTE UNIVERSITARIO REALE:
 - Frasi di lunghezze IRREGOLARI: alterna corte (6-10 parole) e lunghe (25-40)
 - NON iniziare mai due frasi consecutive con la stessa struttura
 - Inizia almeno 2 frasi con "E", "Ma", "Pero'"
-- MAI liste di 3 elementi simmetrici ("X, Y e Z")
+- MAI liste di 3 o 4 elementi simmetrici ("X, Y e Z"; "X, Y, Z e W") né elenchi a), b), c)
+- MAI anafore né la formula "non X; è Y" / "non si tratta di X, ma di Y"
+- NON aprire con "In conclusione/In sintesi/Per concludere" né chiudere con una massima
 - NON chiudere paragrafi con frasi a effetto o riassuntive
 - Paragrafi di lunghezze MOLTO diverse tra loro
 - Il tono sia riflessivo ma naturale, non magniloquente

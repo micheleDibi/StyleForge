@@ -1,0 +1,30 @@
+# Config di gitleaks per la CI (.github/workflows/security.yml).
+#
+# Sta qui e non in root perche' il job la passa esplicita via GITLEAKS_CONFIG.
+#
+# Regole di default + una sola eccezione, giustificata sotto. L'allowlist si
+# tiene corta di proposito: e' l'unico punto dove un segreto vero puo' essere
+# reso invisibile per sbaglio, e la vulnerabilita' piu' grave di questo repo
+# era esattamente un segreto in chiaro.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Il placeholder degli esempi curl nella documentazione delle API.
+
+Non e' una chiave: e' la stringa letterale 'sf_k_abc123...', puntini inclusi,
+negli esempi 'X-API-Key:' di API_DOCUMENTATION.md (file poi confluito nel
+README). La regola curl-auth-header di gitleaks lo prende per un segreto e
+faceva fallire la scansione su 3 rilievi, tutti falsi.
+
+Le chiavi vere hanno il prefisso sf_k_ ma sono generate a caso e salvate come
+hash SHA-256: se una finisse davvero in un commit non somiglierebbe a questa,
+e la regola la prenderebbe comunque.
+
+Ristretto alla stringa esatta: non e' un'esenzione per il prefisso sf_k_.
+"""
+regexes = [
+    '''sf_k_abc123''',
+]
