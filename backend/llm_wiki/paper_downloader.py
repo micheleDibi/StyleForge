@@ -14,6 +14,7 @@ Il file markdown risultante ha frontmatter compatibile con CLAUDE.md sez. 4
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 from dataclasses import dataclass
@@ -289,10 +290,17 @@ def _materialize_one(att: ThesisAttachment, root: Path) -> PaperMaterializationR
     md_filename = make_raw_filename(None, slug)  # gia' include slug, no prefisso data
     md_dst = root / "raw" / "paper" / md_filename
 
-    # Anti-collisione
+    # Anti-collisione. Il suffisso va messo DOPO il troncamento di _slugify:
+    # con uno slug gia' al limite verrebbe tagliato via e il ciclo non finirebbe.
+    from llm_wiki.wiki_workspace import _slugify  # noqa: WPS437
+
+    max_len = inspect.signature(_slugify).parameters["max_length"].default
+    base = md_dst.stem
     i = 1
     while md_dst.exists():
-        md_dst = root / "raw" / "paper" / make_raw_filename(None, f"{slug}-{i}")
+        suffix = f"-{i}"
+        candidate = base[: max_len - len(suffix)].rstrip("-") + suffix
+        md_dst = root / "raw" / "paper" / make_raw_filename(None, candidate)
         i += 1
 
     url = _resolve_url(att, meta)

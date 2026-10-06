@@ -184,3 +184,38 @@ def test_restore_snapshot_senza_wiki_corrente(tmp_path, monkeypatch):
 
     assert (tmp_path / "wiki" / "fonti").is_dir()
     assert not backup.exists()
+
+
+# --- (f) paper_downloader: anti-collisione con slug gia' al limite ----------
+
+def test_materialize_one_collisione_slug_lungo_termina(tmp_path, monkeypatch):
+    from llm_wiki import paper_downloader
+
+    # Guardia: con la regressione il ciclo girerebbe all'infinito, cosi' fallisce.
+    calls = []
+    real = paper_downloader.make_raw_filename
+
+    def counted(*args, **kwargs):
+        calls.append(args)
+        assert len(calls) < 10, "ciclo anti-collisione non termina"
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(paper_downloader, "make_raw_filename", counted)
+
+    att = SimpleNamespace(
+        id="att-1",
+        original_filename="parola " * 30,  # slug > 80 char -> troncato al limite
+        extracted_text="",
+        file_path="",  # nessun URL: niente rete
+    )
+    paper_dir = tmp_path / "raw" / "paper"
+    paper_dir.mkdir(parents=True)
+    base = wiki_workspace.make_raw_filename(None, "parola " * 30)
+    assert len(base) == 80 + len(".md")
+    (paper_dir / base).write_text("esistente", encoding="utf-8")
+
+    res = paper_downloader._materialize_one(att, tmp_path)
+
+    nuovo = tmp_path / res.raw_path
+    assert nuovo.exists() and nuovo.name != base
+    assert (paper_dir / base).read_text(encoding="utf-8") == "esistente"
