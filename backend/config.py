@@ -231,7 +231,7 @@ WIKI_INGEST_TIMEOUT_SEC = int(os.getenv("WIKI_INGEST_TIMEOUT_SEC", "900"))  # 15
 # Numero di fonti per turno SDK Anthropic durante l'ingest
 WIKI_INGEST_BATCH_SIZE = int(os.getenv("WIKI_INGEST_BATCH_SIZE", "5"))
 # Max tokens output per turno (ingest)
-WIKI_INGEST_MAX_TOKENS = int(os.getenv("WIKI_INGEST_MAX_TOKENS", "8000"))
+WIKI_INGEST_MAX_TOKENS = int(os.getenv("WIKI_INGEST_MAX_TOKENS", "16000"))
 # Max tokens output per il lint (uno shot read-only)
 WIKI_LINT_MAX_TOKENS = int(os.getenv("WIKI_LINT_MAX_TOKENS", "4000"))
 

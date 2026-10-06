@@ -128,7 +128,7 @@ def _run_tool_loop(
     max_iterations: int = 30,
     deadline_ts: Optional[float] = None,
     force_first_tool: bool = False,
-    api_timeout: float = 180.0,
+    api_timeout: float = 400.0,
 ) -> Tuple[anthropic.types.Message, ToolLoopStats]:
     """
     Esegue un loop messages.create -> apply tool_use -> append tool_result.
@@ -174,8 +174,18 @@ def _run_tool_loop(
             iteration, resp.stop_reason, n_text, n_tool_use, latency, read_only,
         )
 
-        # Append assistant turn
-        messages.append({"role": "assistant", "content": resp.content})
+        # Append assistant turn. Se la risposta e' troncata (es. stop=max_tokens) i
+        # tool_use presenti non avrebbero mai un tool_result e l'API rifiuterebbe il
+        # turno successivo con 400: li scartiamo senza eseguirli (input forse troncato).
+        content = resp.content
+        if resp.stop_reason != "tool_use" and n_tool_use:
+            logger.warning(
+                "wiki_runner: stop=%s con %d tool_use troncati, scartati",
+                resp.stop_reason, n_tool_use,
+            )
+            content = [b for b in content if getattr(b, "type", None) != "tool_use"]
+        if content:
+            messages.append({"role": "assistant", "content": content})
 
         if resp.stop_reason != "tool_use":
             break
@@ -298,7 +308,9 @@ def run_ingest(
                 _names,
             )
 
-        if idx == 1:
+        # `not messages` invece di idx == 1: se il batch 1 fallisce la conversazione
+        # viene azzerata (vedi except sotto) e il batch dopo deve ripartire dal prompt completo.
+        if not messages:
             user_msg = (
                 f"{INGEST_TRIGGER}\n\n"
                 f"In `raw/` ci sono {len(raw_files)} file da ingerire (in {total_batches} batch). "
@@ -346,6 +358,7 @@ def run_ingest(
                 "questo stesso batch — niente wikilink rotti.**"
             )
 
+        msgs_len_before_batch = len(messages)
         messages.append({"role": "user", "content": user_msg})
 
         batch_t0 = time.time()
@@ -415,6 +428,9 @@ def run_ingest(
         except Exception as e:  # noqa: BLE001
             logger.exception("Errore ingest batch %s/%s tesi %s", idx, total_batches, thesis_id)
             summary.errors.append(f"batch {idx}: {e}")
+            # La conversazione del batch fallito puo' essere invalida (es. tool_use senza
+            # tool_result): la scartiamo, altrimenti anche i batch successivi falliscono.
+            del messages[msgs_len_before_batch:]
             # Procedi: errori parziali non bloccano l'intero ingest
 
         if on_progress:

@@ -215,8 +215,9 @@ def count_wiki_pages(thesis_id: str) -> int:
     return sum(
         1
         for sub in WIKI_SUBDIRS
+        if (wiki / sub).is_dir()
         for p in (wiki / sub).iterdir()
-        if (wiki / sub).exists() and p.is_file() and p.suffix == ".md"
+        if p.is_file() and p.suffix == ".md"
     )
 
 
@@ -444,9 +445,17 @@ def restore_snapshot(thesis_id: str, backup: Path) -> None:
     """Ripristina un backup. Cancella la wiki/ corrente."""
     root = get_wiki_root(thesis_id)
     wiki = root / "wiki"
+    # Scambio quasi atomico: rename di wiki/ in un tmp, poi il backup al suo posto,
+    # infine rmtree del tmp. Cosi' wiki/ non resta a meta' cancellata mentre altri
+    # (es. GET /wiki/status) la leggono. Il nome tmp non inizia con "wiki.bak.".
+    trash = None
     if wiki.exists():
-        shutil.rmtree(wiki)
+        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+        trash = root / f"wiki.discard.{ts}"
+        wiki.rename(trash)
     shutil.move(str(backup), str(wiki))
+    if trash is not None:
+        shutil.rmtree(trash, ignore_errors=True)
 
 
 def cleanup_old_snapshots(thesis_id: str, keep: int = 2) -> None:
